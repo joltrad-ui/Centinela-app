@@ -1,0 +1,72 @@
+name: Barrido
+
+# Repositorio público: todo lo que se escribe aquí o en el registro lo puede leer cualquiera.
+# Las reglas y los favoritos entran por secretos y no se publican.
+
+on:
+  schedule:
+    # Cada media hora en horario de mercado de EE. UU. (hora UTC), de lunes a viernes.
+    - cron: "7,37 13-21 * * 1-5"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["web/**", "scanner/**", ".github/workflows/barrido.yml"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: barrido
+  cancel-in-progress: false
+
+jobs:
+  barrido:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Barrido anterior
+        run: |
+          mkdir -p out
+          if git fetch --depth=1 origin gh-pages 2>/dev/null; then
+            git archive FETCH_HEAD data 2>/dev/null | tar -x -C out || true
+          fi
+
+      # Un cambio que solo toca la pantalla se publica al momento, con el barrido que ya había.
+      - name: ¿Hace falta barrer?
+        id: plan
+        run: |
+          barrer=true
+          if [ "${{ github.event_name }}" = "push" ] && [ -f out/data/scan.json ]; then
+            if cambios=$(git diff --name-only HEAD~1 HEAD 2>/dev/null); then
+              if ! echo "$cambios" | grep -qE '^(scanner/|web/engine\.js|\.github/)'; then barrer=false; fi
+            fi
+          fi
+          echo "barrer=$barrer" >> "$GITHUB_OUTPUT"
+
+      - name: Barrer
+        if: steps.plan.outputs.barrer == 'true'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          CENTINELA_CONFIG: ${{ secrets.CENTINELA_CONFIG }}
+          APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: node scanner/scan.mjs --public --out out
+
+      - name: Publicar la app y el barrido
+        run: |
+          cp -r web/. out/
+          touch out/.nojekyll
+          cd out
+          git init -q -b gh-pages
+          git config user.name "centinela"
+          git config user.email "centinela@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Barrido"
+          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" gh-pages

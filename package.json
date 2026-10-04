@@ -1,0 +1,14 @@
+{
+  "name": "centinela",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Filtro de bull puts sobre un universo de acciones y ETF.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "barrido": "node scanner/scan.mjs",
+    "ordenador": "node scanner/scan.mjs --serve",
+    "ejemplo": "node test/make-fixtures.mjs && node scanner/scan.mjs --serve --fixtures test/fixtures --out out-ejemplo",
+    "test": "node --test test/engine.test.mjs"
+  }
+}

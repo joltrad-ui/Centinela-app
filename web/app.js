@@ -1,0 +1,1332 @@
+import {
+  DEFAULT_CONFIG,
+  MAX_FAVORITES,
+  ORDERS,
+  PROB_OFF,
+  assessSymbol,
+  cboeUrl,
+  daysBetween,
+  cleanSymbol,
+  compareSpreads,
+  favoriteDeals,
+  fmtStrike,
+  ivFromPut,
+  labelOf,
+  normalizeConfig,
+  nyToday,
+  rankUniverse,
+  readCboeChain,
+  rulesLine,
+  spreadLine,
+  statusLabel,
+} from "./engine.js";
+
+const LS_CONFIG = "centinela.config.v1";
+const LS_GH = "centinela.github.v1";
+const LS_SEEN = "centinela.avisos.vistos";
+const LS_COPIED = "centinela.secreto.copiado";
+const root = document.getElementById("app");
+// Versión de prueba: la página trae los datos dentro y no lee de la red.
+const EMBED = typeof window !== "undefined" && window.__CENTINELA__ ? window.__CENTINELA__ : null;
+
+function shiftIso(iso, days) {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+/** Los datos de ejemplo se mueven a hoy para que los plazos sigan teniendo sentido. */
+function refreshExample(scan) {
+  const today = nyToday();
+  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${scan.today}T00:00:00Z`)) / 86_400_000);
+  if (!days) return scan;
+  for (const sym of scan.symbols) {
+    for (const row of sym.x) row[0] = shiftIso(row[0], days);
+    if (sym.er?.d) sym.er.d = shiftIso(sym.er.d, days);
+  }
+  scan.today = today;
+  scan.at = Date.now();
+  return scan;
+}
+
+const state = {
+  tab: "universo",
+  scan: null,
+  alerts: [],
+  config: normalizeConfig(DEFAULT_CONFIG),
+  publishedAt: 0,
+  mode: "nube", // "nube" (GitHub) u "ordenador"
+  loading: true,
+  error: null,
+  query: "",
+  detail: null,
+  sync: { state: "idle", message: "" },
+  gh: loadGh(),
+  showGh: false,
+  kept: "", // dónde quedó guardado el último barrido real: "cuenta", "dispositivo" o "no"
+  copied: "",
+  dealsPerName: 10, // 0 = todos
+  dealsShown: 60,
+  dealFilter: { expiries: [], maxWidth: 0, minOtm: 0 },
+};
+
+// ---------- almacenamiento ----------
+
+function readLocal(key) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function writeLocal(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadGh() {
+  const saved = readLocal(LS_GH) ?? {};
+  const host = window.location.hostname;
+  const guessOwner = host.endsWith(".github.io") ? host.slice(0, -".github.io".length) : "";
+  return {
+    owner: saved.owner || guessOwner,
+    repo: saved.repo || "centinela",
+    token: saved.token || "",
+  };
+}
+
+async function getJson(url) {
+  const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
+}
+
+const b64encode = (text) => btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+const b64decode = (text) => new TextDecoder().decode(Uint8Array.from(atob(text.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
+
+async function ghRequest(method, body) {
+  const { owner, repo, token } = state.gh;
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/config.json${method === "GET" ? `?t=${Date.now()}` : ""}`, {
+    method,
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${token}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(res.status === 401 || res.status === 403 ? "La llave no vale o no tiene permiso" : res.status === 404 ? "No encuentro ese repositorio" : `GitHub respondió ${res.status}`);
+  return res.json();
+}
+
+const ghReady = () => Boolean(state.gh.owner && state.gh.repo && state.gh.token);
+
+/** App publicada sin llave: el barrido es público y genérico; reglas y favoritos se quedan en el dispositivo. */
+const isPublic = () => state.mode === "nube" && !ghReady();
+
+/** Lee un archivo JSON del repositorio privado. Los barridos están en la rama "data". */
+async function ghJson(file, ref) {
+  const { owner, repo, token } = state.gh;
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${file}?ref=${ref}&t=${Date.now()}`, {
+    headers: { Accept: "application/vnd.github.raw+json", Authorization: `Bearer ${token}`, "X-GitHub-Api-Version": "2022-11-28" },
+  });
+  if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
+  return res.json();
+}
+
+// ---------- carga ----------
+
+async function load() {
+  state.loading = true;
+  state.error = null;
+  render();
+  if (EMBED) {
+    state.mode = "muestra";
+    const savedScan0 = readLocal(LS_REAL)?.scan;
+    state.scan = savedScan0?.symbols?.length ? savedScan0 : refreshExample(EMBED.scan);
+    state.alerts = EMBED.alerts ?? [];
+    const mine = readLocal(LS_CONFIG);
+    state.config = normalizeConfig(mine ?? EMBED.config ?? DEFAULT_CONFIG);
+    // Si cambia la lista de nombres de la versión de prueba, los favoritos
+    // vuelven a los de la muestra; las reglas guardadas se conservan.
+    if (EMBED.id && readLocal("centinela.muestra") !== EMBED.id) {
+      state.config = normalizeConfig({ ...state.config, favorites: EMBED.config?.favorites ?? [], extra: [] });
+      writeLocal(LS_CONFIG, state.config);
+      writeLocal("centinela.muestra", EMBED.id);
+    }
+    state.sync = { state: "local", message: "" };
+    state.kept = state.scan?.real ? "dispositivo" : "";
+    state.loading = false;
+    render();
+    // Lo guardado en la cuenta manda si es más reciente que lo de este dispositivo.
+    const [savedScan, savedConfig] = await Promise.all([cloudRead("scan"), cloudRead("config")]);
+    if (savedScan?.symbols?.length && (!state.scan?.real || savedScan.at >= state.scan.at)) {
+      state.scan = savedScan;
+      state.kept = "cuenta";
+    }
+    if (savedConfig && (savedConfig.savedAt ?? 0) > state.config.savedAt) {
+      state.config = normalizeConfig(savedConfig);
+      writeLocal(LS_CONFIG, state.config);
+    }
+    render();
+    return;
+  }
+  try {
+    await getJson("api/ping");
+    state.mode = "ordenador";
+  } catch {
+    state.mode = "nube";
+  }
+  // Con la llave puesta, los datos salen del repositorio privado; si no, de la propia dirección.
+  const fromRepo = state.mode === "nube" && ghReady();
+  try {
+    state.scan = fromRepo ? await ghJson("data/scan.json", "data") : await getJson("data/scan.json");
+  } catch (error) {
+    state.scan = null;
+    state.error = !fromRepo
+      ? state.mode === "nube"
+        ? "Todavía no hay ningún barrido publicado. El primero tarda unos diez minutos."
+        : "Todavía no hay ningún barrido."
+      : error?.status === 401 || error?.status === 403
+        ? "La llave no vale o no tiene permiso para leer el repositorio. Revísala en Reglas."
+        : error?.status === 404
+          ? "No encuentro el barrido en tu repositorio. O aún no se ha hecho el primero, o el usuario y el repositorio de Reglas no son los correctos."
+          : "No se pudo leer el barrido de tu repositorio. Comprueba la conexión.";
+  }
+  // En la versión pública los avisos no se publican: llegan solo a ntfy.
+  try {
+    state.alerts = isPublic() ? [] : ((fromRepo ? await ghJson("data/alerts.json", "data") : await getJson("data/alerts.json")).log ?? []);
+  } catch {
+    state.alerts = [];
+  }
+
+  let published = null;
+  try {
+    published = state.mode === "ordenador" ? await getJson("api/config") : null;
+  } catch {
+    /* sin reglas publicadas todavía */
+  }
+  if (state.mode === "nube" && ghReady()) {
+    try {
+      const file = await ghRequest("GET");
+      published = JSON.parse(b64decode(file.content));
+    } catch {
+      /* se queda con la copia publicada */
+    }
+  }
+  const pub = published ? normalizeConfig(published) : null;
+  state.publishedAt = pub?.savedAt ?? 0;
+  const local = readLocal(LS_CONFIG);
+  const mine = local ? normalizeConfig(local) : null;
+  if (mine && (!pub || mine.savedAt > pub.savedAt)) {
+    state.config = mine;
+    if (pub && mine.savedAt > pub.savedAt) queueSave();
+  } else if (pub) {
+    state.config = pub;
+    writeLocal(LS_CONFIG, pub);
+  }
+  state.loading = false;
+  render();
+}
+
+// ---------- guardar reglas y favoritos ----------
+
+let saveTimer = null;
+
+function changeConfig(mutate) {
+  const next = structuredClone(state.config);
+  mutate(next);
+  state.config = normalizeConfig({ ...next, savedAt: Date.now() });
+  writeLocal(LS_CONFIG, state.config);
+  queueSave();
+  render();
+}
+
+function queueSave() {
+  if (saveTimer != null) window.clearTimeout(saveTimer);
+  if (state.mode === "muestra") {
+    state.sync = { state: "local", message: "" };
+    saveTimer = window.setTimeout(() => {
+      saveTimer = null;
+      void cloudWrite("config", state.config).then((ok) => {
+        state.sync = { state: ok ? "saved" : "local", message: "" };
+        if (state.tab === "reglas" || state.tab === "avisos") render();
+      });
+    }, 1500);
+    return;
+  }
+  if (state.mode === "nube" && !ghReady()) {
+    state.sync = { state: "local", message: "" };
+    return;
+  }
+  state.sync = { state: "pending", message: "" };
+  saveTimer = window.setTimeout(saveNow, 1800);
+}
+
+async function saveNow() {
+  saveTimer = null;
+  const config = state.config;
+  state.sync = { state: "saving", message: "" };
+  render();
+  try {
+    if (state.mode === "ordenador") {
+      const res = await fetch("api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+      if (!res.ok) throw new Error(`El ordenador respondió ${res.status}`);
+    } else {
+      const current = await ghRequest("GET");
+      await ghRequest("PUT", {
+        message: "Reglas y favoritos desde la app",
+        content: b64encode(`${JSON.stringify(config, null, 2)}\n`),
+        sha: current.sha,
+      });
+    }
+    state.publishedAt = config.savedAt;
+    state.sync = { state: "saved", message: "" };
+  } catch (error) {
+    state.sync = { state: "error", message: error instanceof Error ? error.message : "No se pudo guardar" };
+  }
+  render();
+}
+
+function syncLine() {
+  const s = state.sync.state;
+  if (state.mode === "muestra") {
+    return s === "saved"
+      ? "Reglas y favoritos guardados en tu cuenta de Claude. No barre ni avisa sola."
+      : "Tus cambios se guardan en este dispositivo. No barre ni avisa sola.";
+  }
+  if (state.mode === "ordenador") {
+    if (s === "error") return `No se pudo guardar en el ordenador: ${state.sync.message}`;
+    return s === "saving" || s === "pending" ? "Guardando en el ordenador…" : "Guardado en este ordenador. Los avisos usan estas reglas.";
+  }
+  if (!ghReady()) {
+    return "Guardado solo en este dispositivo. No se publica.";
+  }
+  if (s === "error") return `No se pudo guardar en tu repositorio: ${state.sync.message}`;
+  if (s === "saving" || s === "pending") return "Guardando en tu repositorio privado…";
+  return "Guardado en tu repositorio privado. El siguiente barrido ya usa estas reglas y favoritos.";
+}
+
+// ---------- datos reales en la versión de prueba ----------
+// Solo para la app con datos incrustados (un archivo suelto o una página de prueba).
+// La app publicada no usa nada de esto: sus datos vienen del barrido.
+
+const LS_REAL = "centinela.real.v1";
+const real = { busy: false, done: 0, total: 0, note: "", error: "", lastPaint: 0 };
+/** Otra fuente de datos, si la página que incrusta la app trae una. */
+let extraSource = null;
+
+// Guardado en la cuenta de Claude de quien mira la página: sobrevive a cerrar
+// la app y vale en todos sus dispositivos. Fuera de Claude no existe.
+let cloud = null; // null = sin mirar todavía; false = no disponible
+async function cloudStore() {
+  if (cloud !== null) return cloud || null;
+  try {
+    const [db, user] = await Promise.all([window.claude?.use?.("db"), window.claude?.use?.("user")]);
+    const id = db && user ? await user.id() : null;
+    cloud = id ? { scan: db.doc(`data/users/${id}/scan`), config: db.doc(`data/users/${id}/config`) } : false;
+  } catch {
+    cloud = false;
+  }
+  return cloud || null;
+}
+async function cloudRead(kind) {
+  const store = await cloudStore();
+  if (!store) return null;
+  try {
+    const snap = await store[kind].get();
+    const json = snap.exists ? snap.data()?.json : null;
+    return typeof json === "string" ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
+}
+async function cloudWrite(kind, value) {
+  const store = await cloudStore();
+  if (!store) return false;
+  try {
+    await store[kind].set({ json: JSON.stringify(value), savedAt: Date.now() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Guarda el barrido real donde se pueda y deja dicho dónde quedó. */
+async function keepScan(scan, ids) {
+  const local = writeLocal(LS_REAL, { ids, scan });
+  const account = await cloudWrite("scan", scan);
+  state.kept = account ? "cuenta" : local ? "dispositivo" : "no";
+}
+
+function realPaint(force = false) {
+  const now = Date.now();
+  if (!force && now - real.lastPaint < 500) return;
+  real.lastPaint = now;
+  render();
+}
+
+// Un archivo suelto no puede leer CBOE directamente si CBOE no lo permite.
+// Un "puente" es un servicio que pide los datos por la página y se los devuelve.
+// Los tres de la lista son gratuitos y de terceros: pueden fallar o cambiar.
+const LS_BRIDGE = "centinela.puente";
+const BRIDGES = [
+  { id: "directo", url: (u) => u },
+  { id: "allorigins", url: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}` },
+  { id: "corsproxy", url: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}` },
+  { id: "codetabs", url: (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}` },
+];
+function bridgeList() {
+  const own = String(readLocal(LS_BRIDGE) ?? "").trim();
+  return own.startsWith("https://") ? [{ id: "propio", url: (u) => own + encodeURIComponent(u) }, ...BRIDGES] : BRIDGES;
+}
+
+/** Pide la cadena de un nombre probando los puentes por orden; recuerda el que funciona. */
+async function fetchCboe(name, bridges, memo) {
+  const variants = name.includes(".") ? [name.replace(".", ""), name] : [name];
+  const order = memo.good ? [memo.good, ...bridges.filter((item) => item !== memo.good)] : bridges;
+  let lastError = "sin respuesta";
+  for (const bridge of order) {
+    if (memo.dead.has(bridge.id)) continue;
+    for (const variant of variants) {
+      try {
+        const res = await fetch(bridge.url(cboeUrl(variant)), { cache: "no-store", signal: AbortSignal.timeout(45_000) });
+        if (!res.ok) {
+          lastError = `${bridge.id}: respondió ${res.status}`;
+          continue;
+        }
+        const body = await res.json();
+        if (body?.data?.options) {
+          memo.good = bridge;
+          return { body, via: bridge.id };
+        }
+        lastError = `${bridge.id}: respuesta sin datos`;
+      } catch (error) {
+        lastError = `${bridge.id}: ${error?.name === "TimeoutError" ? "tardó demasiado" : "el navegador no pudo leerlo"}`;
+        // Si el navegador niega la lectura directa, no se vuelve a intentar con los demás nombres.
+        if (bridge.id === "directo" && error instanceof TypeError) memo.dead.add("directo");
+        break;
+      }
+    }
+  }
+  throw new Error(lastError);
+}
+
+/** Lectura de CBOE desde el navegador (archivo descargado, sin servidor). */
+async function loadCboe() {
+  if (real.busy) return;
+  real.busy = true;
+  real.error = "";
+  real.done = 0;
+  const names = state.config.favorites.slice(0, 12);
+  real.total = names.length;
+  realPaint(true);
+  const today = nyToday();
+  const known = new Map((EMBED?.scan?.symbols ?? []).map((sym) => [sym.s, sym.n]));
+  const bridges = bridgeList();
+  const memo = { good: null, dead: new Set() };
+  const symbols = [];
+  const failed = [];
+  const log = [];
+  for (const name of names) {
+    real.note = `Leyendo ${name} en CBOE…`;
+    realPaint(true);
+    try {
+      const { body, via } = await fetchCboe(name, bridges, memo);
+      const sym = readCboeChain(name, body, today);
+      if (!sym) throw new Error("respuesta sin precio");
+      sym.n = known.get(name) ?? name;
+      sym.er = null;
+      symbols.push(sym);
+      log.push(logLine(sym, via));
+    } catch (error) {
+      failed.push(name);
+      log.push({ s: name, ok: false, why: String(error?.message ?? "error").slice(0, 140) });
+    }
+    real.done++;
+  }
+  if (symbols.length) {
+    const via = memo.good?.id ?? "directo";
+    const scan = {
+      v: 1,
+      at: Date.now(),
+      today,
+      source: `CBOE, con 15 minutos de retraso${via === "directo" ? "" : `, por el puente ${via}`}`,
+      real: true,
+      failed,
+      log,
+      symbols,
+    };
+    state.scan = scan;
+    state.error = null;
+    await keepScan(scan, readLocal(LS_REAL)?.ids ?? {});
+  } else {
+    real.error = `No se pudo leer CBOE ni directamente ni por los puentes. Último intento: ${log.at(-1)?.why ?? "sin respuesta"}.`;
+  }
+  real.busy = false;
+  real.note = "";
+  realPaint(true);
+}
+
+/** Con la fuente propia de la página, si la trae; si no, directo a CBOE. */
+function loadReal() {
+  return extraSource ? extraSource() : loadCboe();
+}
+
+function useExample() {
+  if (!EMBED) return;
+  const saved = readLocal(LS_REAL) ?? {};
+  writeLocal(LS_REAL, { ids: saved.ids ?? {} });
+  void cloudWrite("scan", { symbols: [] });
+  state.kept = "";
+  state.scan = refreshExample(EMBED.scan);
+  real.error = "";
+  render();
+}
+
+// ---------- formato ----------
+
+const esc = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const priceFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (n) => `$${priceFmt.format(n)}`;
+const usd = (n) => `$${new Intl.NumberFormat("en-US").format(Math.round(n))}`;
+const pct = (n, d = 0) => `${n.toFixed(d)}%`;
+const signed = (n) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
+const whenFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const when = (ms) => whenFmt.format(new Date(ms));
+const nameOf = (sym) => (sym.n && sym.n !== sym.s ? sym.n : "");
+const kpiText = (sp) => (sp.balance == null ? "—" : sp.balance.toFixed(2));
+const widthText = (sp) => `$${Number.isInteger(sp.width) ? sp.width.toFixed(0) : sp.width.toFixed(2).replace(/0$/, "")}`;
+const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
+
+function ranked() {
+  const symbols = state.scan?.symbols ?? [];
+  return rankUniverse(symbols, state.config.rules, state.config.order, nyToday());
+}
+
+// ---------- vistas ----------
+
+const ICONS = {
+  universo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6-6"/></svg>',
+  favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.8z"/></svg>',
+  deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
+  avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
+  reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
+};
+
+function header(eyebrow, title) {
+  const scan = state.scan;
+  const status = state.loading
+    ? "Leyendo el barrido…"
+    : scan
+      ? `Barrido ${when(scan.at)} · ${esc(scan.source)}`
+      : "Sin barrido todavía";
+  return `
+    <header class="top">
+      <p class="eyebrow">${eyebrow}</p>
+      <div class="top-row">
+        <h1>${title}</h1>
+        ${
+          EMBED
+            ? `<button class="btn primary" data-act="real" ${real.busy ? "disabled" : ""}>${real.busy ? (real.total ? `Leyendo ${real.done}/${real.total}` : "Leyendo…") : "Datos reales"}</button>`
+            : `<button class="btn primary" data-act="reload" ${state.loading ? "disabled" : ""}>Actualizar</button>`
+        }
+      </div>
+      <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
+      <button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>
+    </header>
+    ${scan?.example ? '<p class="banner small">Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer tus favoritos.</p>' : ""}
+    ${scan?.real ? readSummary(scan) : ""}
+    ${real.error ? `<p class="banner err small">${esc(real.error)}</p>` : ""}
+    ${state.error && !state.loading ? `<p class="banner err small">${esc(state.error)}</p>` : ""}`;
+}
+
+/** Resumen de la última lectura real: qué se leyó, si quedó guardada y el detalle por nombre. */
+function readSummary(scan) {
+  const log = scan.log ?? [];
+  const ok = log.filter((row) => row.ok);
+  const puts = ok.reduce((sum, row) => sum + (row.puts ?? 0), 0);
+  const kept =
+    state.kept === "cuenta"
+      ? "Guardada en tu cuenta de Claude: seguirá aquí al volver a entrar."
+      : state.kept === "dispositivo"
+        ? "Guardada en este dispositivo."
+        : state.kept === "no"
+          ? "No se pudo guardar: al salir habrá que leer de nuevo."
+          : "";
+  const allOk = log.length > 0 && ok.length === log.length;
+  const lines = log
+    .map((row) =>
+      row.ok
+        ? `<li><b>${esc(row.s)}</b> ${money(row.p)} · ${row.exp} ${row.exp === 1 ? "vencimiento" : "vencimientos"} · ${row.puts} puts${row.via && row.via !== "directo" ? ` · puente ${esc(row.via)}` : ""}</li>`
+        : `<li class="down"><b>${esc(row.s)}</b> no se pudo leer: ${esc(row.why ?? "")}</li>`,
+    )
+    .join("");
+  return `<div class="readbox ${allOk ? "ok" : "warn"}">
+    <p class="small"><b>${allOk ? "Lectura correcta" : `Lectura incompleta`}</b>: ${ok.length} de ${log.length} nombres, ${puts} puts, ${when(scan.at)}. ${kept}</p>
+    <details><summary class="small muted">Detalle de la lectura</summary>
+      <ul class="small">${lines}</ul>
+      <p class="small muted">${scan.window ? `Leído para ${esc(scan.window)}. Si cambias el plazo o el % abajo, pulsa "Datos reales" otra vez. ` : ""}Sin fechas de resultados.</p>
+      <button class="btn quiet" data-act="example">Volver a los datos de ejemplo</button>
+    </details>
+  </div>`;
+}
+
+function funnel(f) {
+  const steps = [
+    ["leídos", f.leidos],
+    ["en el plazo", f.conPlazo],
+    ["con el % abajo", f.abajo],
+    ["con el ancho", f.ancho],
+    ["con el crédito", f.credito],
+    ["con la prob.", f.prob],
+    ["con el equilibrio", f.equilibrio],
+  ];
+  return `<div class="funnel small" aria-label="Cuántos nombres superan cada regla">
+    ${steps.map(([label, n]) => `<span class="step"><b class="num">${n}</b> ${label}</span><span class="sep">›</span>`).join("")}
+    <span class="step last"><b class="num">${f.cumplen}</b> cumplen</span>
+  </div>`;
+}
+
+function star(symbol) {
+  const on = state.config.favorites.includes(symbol);
+  return `<button class="star" data-fav="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar de favoritos" : "Añadir a favoritos"} ${esc(symbol)}">${on ? "★" : "☆"}</button>`;
+}
+
+function metrics(sp) {
+  return `<dl class="metrics">
+    <div class="metric"><dt>Prob. asignación</dt><dd>${probText(sp)}</dd></div>
+    <div class="metric"><dt>Rentabilidad</dt><dd>${pct(sp.ret)}</dd></div>
+    <div class="metric kpi"><dt>Equilibrio</dt><dd>${kpiText(sp)}</dd></div>
+    <div class="metric"><dt>Ancho</dt><dd>${widthText(sp)}</dd></div>
+    <div class="metric"><dt>Cobras</dt><dd>${usd(sp.creditUsd)}</dd></div>
+    <div class="metric"><dt>Pérdida máx.</dt><dd>${usd(sp.lossUsd)}</dd></div>
+  </dl>`;
+}
+
+function card(sym, res) {
+  const sp = res.best;
+  const up = sym.c >= 0;
+  const earn = sp?.earnInside && sym.er ? `<p class="small brass" style="margin-top:8px">Resultados ${esc(labelOf(sym.er.d))}</p>` : "";
+  const why = res.status !== "entrada" && sp?.fails.length ? `<p class="small muted" style="margin-top:6px">No pasa: ${esc(sp.fails.join(" · "))}</p>` : "";
+  const noSpread = !sp
+    ? `<p class="small muted line">${res.status === "sin-cadena" ? "No llegaron puts de este nombre." : res.status === "sin-plazo" ? "No hay vencimientos en tu plazo." : "No hay ningún bull put cerca de tu punto."}</p>`
+    : "";
+  return `<li class="card ${res.status}">
+    <button class="row-open" data-open="${esc(sym.s)}" aria-label="Ver ${esc(sym.s)}"></button>
+    <div class="card-head">
+      <div style="min-width:0">
+        <p class="sym">${esc(sym.s)} <span class="pill ${res.status}" style="margin-left:6px">${statusLabel(res.status)}</span></p>
+        <p class="name small muted">${esc(nameOf(sym))}</p>
+      </div>
+      <div style="display:flex;gap:6px;align-items:flex-start">
+        <div class="price"><p class="num" style="font-weight:500">${money(sym.p)}</p><p class="num small ${up ? "up" : "down"}">${signed(sym.c)}</p></div>
+        ${star(sym.s)}
+      </div>
+    </div>
+    ${sp ? `<p class="line">${esc(spreadLine(sp))}</p>${metrics(sp)}` : noSpread}
+    ${why}${earn}
+  </li>`;
+}
+
+const TABLE_COLS = [
+  ["abajo", "% abajo"],
+  [null, "Cobras"],
+  [null, "% del ancho"],
+  ["prob", "Prob. asig."],
+  ["rentab", "Rentab."],
+  [null, "Pérdida máx."],
+  ["equilibrio", "Equilibrio"],
+];
+
+function table(rows) {
+  const order = state.config.order;
+  const head = TABLE_COLS.map(([id, label]) =>
+    id ? `<th><button data-order="${id}" aria-pressed="${order === id}">${label}${order === id ? " ↓" : ""}</button></th>` : `<th>${label}</th>`,
+  ).join("");
+  const body = rows
+    .map(({ sym, res }) => {
+      const sp = res.best;
+      return `<tr data-open="${esc(sym.s)}">
+        <td class="l">${star(sym.s)}</td>
+        <td class="l"><b style="font-weight:500">${esc(sym.s)}</b><span class="name">${esc(nameOf(sym))}</span></td>
+        <td>${money(sym.p)}<br><span class="xs ${sym.c >= 0 ? "up" : "down"}">${signed(sym.c)}</span></td>
+        <td class="l">${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)}<br><span class="xs muted">${esc(sp.expiryLabel)} · ${sp.dte} d</span></td>
+        <td>${pct(sp.otm, 1)}</td>
+        <td>${usd(sp.creditUsd)}</td>
+        <td>${pct(sp.creditPct)}</td>
+        <td>${probText(sp)}</td>
+        <td>${pct(sp.ret)}</td>
+        <td>${usd(sp.lossUsd)}</td>
+        <td>${kpiText(sp)}</td>
+        <td class="l small ${sp.earnInside ? "brass" : "muted"}">${sp.earnInside && sym.er ? esc(labelOf(sym.er.d)) : "—"}</td>
+      </tr>`;
+    })
+    .join("");
+  return `<div class="table-wrap"><table>
+    <thead><tr><th class="l"></th><th class="l">Nombre</th><th>Precio</th><th class="l">Corto/largo</th>${head}<th class="l">Resultados</th></tr></thead>
+    <tbody>${body}</tbody></table></div>`;
+}
+
+function viewUniverso() {
+  const { rows, funnel: f, bySymbol } = ranked();
+  const q = state.query.trim().toUpperCase();
+  // Si nada cumple, se enseñan los que se quedan más cerca, con el motivo.
+  const near = rows.length
+    ? []
+    : (state.scan?.symbols ?? [])
+        .map((sym) => ({ sym, res: bySymbol.get(sym.s) }))
+        .filter((row) => row.res?.best)
+        .sort((a, b) => b.res.stage - a.res.stage || compareSpreads(a.res.best, b.res.best, state.config.order))
+        .slice(0, 10);
+  const shown = q ? rows.filter(({ sym }) => sym.s.includes(q) || (sym.n ?? "").toUpperCase().includes(q)) : rows;
+  const order = ORDERS.find((o) => o.id === state.config.order);
+  const list = shown.length
+    ? `<ul class="cards">${shown.map(({ sym, res }) => card(sym, res)).join("")}</ul>${table(shown)}`
+    : `<div class="empty"><h2>${rows.length ? "Nada con ese nombre" : "Ningún nombre cumple"}</h2>
+        <p class="small muted" style="margin-top:8px">${rows.length ? "Prueba con otro símbolo." : "Mira arriba en qué regla se quedan y aflójala en Reglas."}</p></div>
+        ${near.length ? `<h2 style="margin:20px 0 12px;font-size:1.25rem">Los que se quedan más cerca</h2><ul class="cards near">${near.map(({ sym, res }) => card(sym, res)).join("")}</ul>` : ""}`;
+  return `<div class="universo">
+    ${header("Bull put · universo", "Centinela")}
+    ${state.scan ? funnel(f) : ""}
+    <div class="tools">
+      <div class="chips" role="group" aria-label="Orden">
+        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
+      </div>
+      <input class="search" id="buscar" type="search" placeholder="Buscar nombre" value="${esc(state.query)}" data-search aria-label="Buscar nombre">
+    </div>
+    <p class="small muted" style="margin:-6px 0 12px">${esc(order?.hint ?? "")}</p>
+    ${state.scan ? list : ""}
+    ${foot()}
+  </div>`;
+}
+
+function viewFavoritos() {
+  const today = nyToday();
+  const bySymbol = new Map((state.scan?.symbols ?? []).map((sym) => [sym.s, sym]));
+  const rows = state.config.favorites.map((symbol) => {
+    const sym = bySymbol.get(symbol);
+    return sym ? { sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) } : { sym: null, symbol };
+  });
+  const rank = (row) => (!row.sym ? 3 : row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
+  rows.sort((a, b) => rank(a) - rank(b) || (a.sym && b.sym && a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
+  const options = (state.scan?.symbols ?? []).map((sym) => `<option value="${esc(sym.s)}">${esc(sym.n ?? "")}</option>`).join("");
+  const cards = rows
+    .map((row) =>
+      row.sym
+        ? card(row.sym, row.res)
+        : `<li class="card"><div class="card-head"><div><p class="sym">${esc(row.symbol)} <span class="pill" style="margin-left:6px">Sin lectura</span></p>
+            <p class="small muted">${isPublic() ? ((state.scan?.failed ?? []).includes(row.symbol) ? "No llegó en el último barrido." : "No está en el universo que se barre.") : state.config.extra.includes(row.symbol) ? "Entra en el próximo barrido." : "No llegó en el último barrido."}</p></div>${star(row.symbol)}</div></li>`,
+    )
+    .join("");
+  return `
+    ${header("Bull put · tu lista", "Favoritos")}
+    <form class="add" data-add>
+      <input id="nuevo-favorito" name="symbol" list="universe" placeholder="Añadir nombre (AAPL, SPY…)" autocomplete="off" autocapitalize="characters" aria-label="Añadir nombre a favoritos">
+      <datalist id="universe">${options}</datalist>
+      <button class="btn primary" type="submit">Añadir</button>
+    </form>
+    <p class="small muted" style="margin:8px 0 14px">${state.config.favorites.length} de ${MAX_FAVORITES}. Aquí se queda cada nombre aunque no pase, con el motivo.</p>
+    ${rows.length ? `<ul class="cards">${cards}</ul>` : '<div class="empty"><h2>Tu lista está vacía</h2><p class="small muted" style="margin-top:8px">Añade un nombre arriba o marca la estrella en Universo.</p></div>'}
+    ${foot()}`;
+}
+
+function stepper(path, label, hint, min, max, step, format) {
+  const value = path.split(".").reduce((obj, key) => obj[key], state.config);
+  return `<div class="field">
+    <div class="txt"><b>${label}</b><span class="small muted">${hint}</span></div>
+    <div class="stepper">
+      <button data-step="${path}" data-dir="-1" data-min="${min}" data-max="${max}" data-by="${step}" aria-label="Bajar ${esc(label)}">−</button>
+      <span>${format(value)}</span>
+      <button data-step="${path}" data-dir="1" data-min="${min}" data-max="${max}" data-by="${step}" aria-label="Subir ${esc(label)}">+</button>
+    </div>
+  </div>`;
+}
+
+function gate(key, title, hint, inner = "") {
+  const on = state.config.rules.gates[key];
+  return `<div class="gate">
+    <button role="switch" aria-checked="${on}" data-gate="${key}">
+      <span style="min-width:0"><b>${title}</b><span class="small muted">${hint}</span></span>
+      <span class="switch"><i></i></span>
+    </button>
+    ${on ? inner : ""}
+  </div>`;
+}
+
+function viewReglas() {
+  const r = state.config.rules;
+  const eq = (r.minCreditPct / (100 - r.minCreditPct)) * 100;
+  const days = (n) => `${n} d`;
+  const p0 = (n) => `${n.toFixed(0)}%`;
+  const d0 = (n) => `$${n.toFixed(0)}`;
+  return `<div class="narrow">
+    <header class="top">
+      <p class="eyebrow">Bull put</p>
+      <h1 style="margin-top:4px">Reglas</h1>
+      <p class="small muted" style="margin-top:8px">Filtran el universo al instante en este dispositivo. ${esc(syncLine())}</p>
+    </header>
+    <div class="panel">
+      ${stepper("rules.minDte", "Vencimiento desde", "No mires puts que caduquen antes.", 5, 60, 1, days)}
+      ${stepper("rules.maxDte", "Vencimiento hasta", "Ni los que caduquen después.", 5, 60, 1, days)}
+      ${stepper("rules.minOtm", "% abajo, desde", "El put corto, como mínimo así de lejos del precio.", 1, 30, 1, p0)}
+      ${stepper("rules.maxOtm", "% abajo, hasta", "Y como máximo así de lejos.", 1, 35, 1, p0)}
+      ${stepper("rules.width", "Ancho máximo del spread", "Dólares entre el put que vendes y el que compras. Vale ese ancho y cualquiera menor.", 1, 50, 1, d0)}
+      ${stepper("rules.minCreditPct", "Crédito mínimo", `Parte del ancho que te pagan. ${r.minCreditPct.toFixed(0)}% del ancho es un ${eq.toFixed(0)}% de rentabilidad.`, 1, 40, 1, p0)}
+      ${stepper("rules.maxProb", "Prob. de asignación máxima", "Probabilidad de que el corto acabe en dinero al vencimiento.", 2, PROB_OFF, 1, (n) => (n >= PROB_OFF ? "sin límite" : p0(n)))}
+      ${stepper("rules.minBalance", "Equilibrio mínimo", "Lo que esperas ganar por cada dólar que esperas perder. En 1 se igualan.", 0, 1.5, 0.05, (n) => (n <= 0 ? "sin mínimo" : n.toFixed(2)))}
+    </div>
+
+    <section class="block">
+      <h2>Si lo enciendes</h2>
+      <p class="small muted">Apagado, no cuenta. Encendido, el nombre sale del universo y en Favoritos dice por qué no pasa.</p>
+      <div class="panel">
+        ${gate("event", "Sin resultados en el plazo", "Hasta dos días después del vencimiento.")}
+        ${gate(
+          "liquid",
+          "Corto con mercado",
+          "Interés abierto en el corto y horquilla que no se coma el crédito.",
+          stepper("rules.gates.oiMin", "Interés abierto mínimo", "Contratos abiertos en el put corto.", 0, 5000, 50, (n) => n.toFixed(0)) +
+            stepper("rules.gates.spreadPct", "Horquilla máxima", "Suma de las dos horquillas, sobre el crédito a precio medio.", 5, 100, 5, p0),
+        )}
+        ${gate(
+          "loss",
+          "Pérdida por contrato",
+          "El ancho menos el crédito, en dólares.",
+          stepper("rules.gates.lossMin", "Desde", "Por debajo de esto, no pasa.", 20, 2000, 10, d0) +
+            stepper("rules.gates.lossMax", "Hasta", "Por encima, tampoco.", 20, 5000, 10, d0),
+        )}
+        ${gate("room", "Fuera del movimiento", "El corto, más lejos que la mitad de lo que el mercado espera que se mueva el precio.")}
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Cómo se calcula</h2>
+      <div class="panel">
+        <details>
+          <summary>Las columnas, una a una</summary>
+          <dl>
+            <div><dt>Crédito (cobras)</dt><dd>Bid del put corto menos ask del put largo, por 100. Es el precio al que entra seguro, no el medio.</dd></div>
+            <div><dt>% del ancho</dt><dd>Crédito partido por el ancho.</dd></div>
+            <div><dt>Pérdida máx.</dt><dd>Ancho menos crédito, por 100.</dd></div>
+            <div><dt>Rentabilidad</dt><dd>Crédito partido por la pérdida máxima.</dd></div>
+            <div><dt>Prob. de asignación</dt><dd>Probabilidad de que el precio acabe por debajo del corto el día del vencimiento, sacada de la volatilidad implícita de ese strike. No mide la asignación anticipada.</dd></div>
+            <div><dt>Equilibrio</dt><dd>Lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. Sube con la rentabilidad y baja con la probabilidad. En 1, lo esperado a ganar iguala lo esperado a perder. Cuenta cada asignación como la pérdida máxima, así que es prudente.</dd></div>
+            <div><dt>Movimiento esperado</dt><dd>Precio × volatilidad implícita al dinero × raíz de (días / 365).</dd></div>
+          </dl>
+        </details>
+      </div>
+    </section>
+
+    ${state.mode === "nube" ? (ghReady() ? ghBlock() : secretBlock()) : ""}
+    ${state.mode === "muestra" && !window.claude?.use ? bridgeBlock() : ""}
+
+    <button class="btn quiet" style="margin-top:16px" data-act="reset">Volver al bull put de mesa</button>
+    ${foot()}
+  </div>`;
+}
+
+/** Texto para pegar en el secreto CENTINELA_CONFIG de GitHub. */
+function secretText() {
+  const { rules, order, favorites, extra, alerts } = state.config;
+  return JSON.stringify({ rules, order, favorites, extra, alerts });
+}
+
+function secretBlock() {
+  const copiedAt = Number(readLocal(LS_COPIED) ?? 0);
+  const stale = copiedAt > 0 && state.config.savedAt > copiedAt;
+  const status = !copiedAt
+    ? "Todavía no has copiado la configuración desde este dispositivo."
+    : stale
+      ? "Has cambiado reglas o favoritos después de la última copia: los avisos siguen con lo anterior."
+      : "Los avisos usan lo que copiaste por última vez desde este dispositivo.";
+  return `<section class="block">
+    <h2>Avisos al móvil</h2>
+    <p class="small muted">Tus reglas y favoritos se guardan solo en este dispositivo; no se publican. Para que los avisos los sigan, copia la configuración y pégala en GitHub como secreto <b>CENTINELA_CONFIG</b>. Repítelo cuando cambies favoritos o reglas.</p>
+    <div class="panel"><div class="form">
+      <p class="small${stale ? "" : " muted"}">${status}</p>
+      <button class="btn primary" style="margin-top:10px" data-act="copy-secret">Copiar configuración para avisos</button>
+      ${state.copied ? `<p class="small" style="margin-top:10px">${esc(state.copied)}</p>` : ""}
+      ${state.copied && state.copied.startsWith("No") ? `<textarea class="textfield" id="secreto" readonly style="height:120px;padding:10px;margin-top:10px">${esc(secretText())}</textarea>` : ""}
+    </div></div>
+  </section>`;
+}
+
+function bridgeBlock() {
+  const own = String(readLocal(LS_BRIDGE) ?? "");
+  return `<section class="block">
+    <h2>Puente de datos</h2>
+    <p class="small muted">Este archivo prueba a leer CBOE directamente y, si no puede, por tres puentes gratuitos de terceros. Si tienes un puente propio, pon aquí su dirección y será el primero que pruebe.</p>
+    <div class="panel"><div class="form">
+      <form data-bridge>
+        <label for="puente">Dirección del puente propio (opcional)<input class="textfield" id="puente" name="bridge" value="${esc(own)}" placeholder="https://…/?url=" autocomplete="off"></label>
+        <button class="btn primary" style="margin-top:12px" type="submit">Guardar</button>
+      </form>
+    </div></div>
+  </section>`;
+}
+
+function ghBlock() {
+  const ready = ghReady();
+  return `<section class="block">
+    <h2>Tu repositorio privado</h2>
+    <p class="small muted">${ready ? "Conectada. Los barridos, las reglas y los favoritos se leen y se guardan en tu repositorio privado." : "La app necesita tu usuario, el nombre del repositorio y una llave de acceso para leer tus barridos. La llave se queda solo en este dispositivo."}</p>
+    <div class="panel">
+      <div class="form">
+        ${
+          state.showGh || !ready
+            ? `<form data-gh>
+                <label for="gh-owner">Usuario de GitHub<input class="textfield" id="gh-owner" name="owner" value="${esc(state.gh.owner)}" autocomplete="off" autocapitalize="none"></label>
+                <label for="gh-repo">Repositorio<input class="textfield" id="gh-repo" name="repo" value="${esc(state.gh.repo)}" autocomplete="off" autocapitalize="none"></label>
+                <label for="gh-token">Llave de acceso<input class="textfield" id="gh-token" name="token" type="password" value="${esc(state.gh.token)}" autocomplete="off"></label>
+                <button class="btn primary" style="margin-top:12px" type="submit">Conectar</button>
+              </form>`
+            : `<p class="small">${esc(state.gh.owner)}/${esc(state.gh.repo)}</p>
+               <button class="btn quiet" style="margin-top:8px" data-act="gh-edit">Cambiar</button>
+               <button class="btn quiet" style="margin-top:8px" data-act="gh-clear">Desconectar</button>`
+        }
+      </div>
+    </div>
+  </section>`;
+}
+
+/** El número que se enseña a la derecha de cada deal: el del orden elegido. */
+function orderText(sp, order) {
+  if (order === "rentab") return pct(sp.ret);
+  if (order === "prob") return probText(sp);
+  if (order === "abajo") return pct(sp.otm, 1);
+  if (order === "credito") return usd(sp.creditUsd);
+  return kpiText(sp);
+}
+
+const PER_NAME = [
+  [3, "3 por nombre"],
+  [10, "10 por nombre"],
+  [0, "Sin tope"],
+];
+function viewDeals() {
+  const symbols = state.scan?.symbols ?? [];
+  const f = state.dealFilter;
+  const order = state.config.order;
+  const { deals, counts, expiries, widths, otmRange, matched } = favoriteDeals(symbols, state.config.favorites, state.config.rules, order, nyToday(), {
+    perName: state.dealsPerName,
+    expiries: f.expiries,
+    maxWidth: f.maxWidth,
+    minOtm: f.minOtm,
+  });
+  // Escalones de 2 en 2 dentro de lo que hay en la lista: "desde 8%", "desde 10%"…
+  const otmSteps = [];
+  if (otmRange) for (let n = Math.ceil((otmRange[0] + 0.01) / 2) * 2; n <= otmRange[1]; n += 2) otmSteps.push(n);
+  const today = nyToday();
+  const money0 = (n) => `$${Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2).replace(/0$/, "")}`;
+  const names = Object.keys(counts);
+  const okTotal = names.reduce((sum, name) => sum + counts[name].ok, 0);
+  const noTotal = names.reduce((sum, name) => sum + counts[name].no, 0);
+  const shown = deals.slice(0, state.dealsShown);
+  const filtered = f.expiries.length > 0 || f.maxWidth > 0 || f.minOtm > 0;
+  const summary = names.length
+    ? `${okTotal} cumplen y ${noTotal} no, en ${names.length} favoritos.${filtered ? ` Con tus filtros quedan ${matched}.` : ""} Ves ${shown.length}${
+        deals.length < matched ? `, con el tope de ${state.dealsPerName} por nombre` : shown.length < deals.length ? ` de ${deals.length}` : ""
+      }.`
+    : "";
+  const why = (sp) => (sp.ok ? "" : `No pasa: ${sp.fails.join(" · ")}`);
+  const rows = shown
+    .map(
+      ({ sym, sp }) => `<li>
+        <button class="deal ${sp.ok ? "ok" : "no"}" data-open="${esc(sym.s)}">
+          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(sym.s)}</b> <span class="muted">${esc(sp.expiryLabel)} · ${sp.dte} d ·</span> ${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} <span class="muted">· ancho ${widthText(sp)}</span>
+            <span class="deal-kpi num">${orderText(sp, order)}</span></span>
+          <span class="deal-sub small muted">${pct(sp.otm, 1)} abajo · prob. ${probText(sp)} · rentab. ${pct(sp.ret)} · equilibrio ${kpiText(sp)} · cobras ${usd(sp.creditUsd)} · pierdes máx. ${usd(sp.lossUsd)}${sp.earnInside && sym.er ? ` · resultados ${esc(labelOf(sym.er.d))}` : ""}</span>
+          ${sp.ok ? "" : `<span class="deal-why small">${esc(why(sp))}</span>`}
+        </button>
+      </li>`,
+    )
+    .join("");
+  const head = [
+    ["abajo", "% abajo"],
+    ["credito", "Cobras"],
+    [null, "% del ancho"],
+    ["prob", "Prob. asig."],
+    ["rentab", "Rentab."],
+    [null, "Pérdida máx."],
+    ["equilibrio", "Equilibrio"],
+  ]
+    .map(([id, label]) => (id ? `<th><button data-order="${id}" aria-pressed="${order === id}">${label}${order === id ? " ↓" : ""}</button></th>` : `<th>${label}</th>`))
+    .join("");
+  const body = shown
+    .map(
+      ({ sym, sp }) => `<tr data-open="${esc(sym.s)}" class="${sp.ok ? "ok" : "no"}">
+        <td class="l"><i class="dot" aria-hidden="true"></i><b style="font-weight:500">${esc(sym.s)}</b></td>
+        <td class="l">${esc(sp.expiryLabel)} <span class="xs muted">${sp.dte} d</span></td>
+        <td class="l">${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)}</td>
+        <td>${widthText(sp)}</td>
+        <td>${pct(sp.otm, 1)}</td>
+        <td>${usd(sp.creditUsd)}</td>
+        <td>${pct(sp.creditPct)}</td>
+        <td>${probText(sp)}</td>
+        <td>${pct(sp.ret)}</td>
+        <td>${usd(sp.lossUsd)}</td>
+        <td>${kpiText(sp)}</td>
+        <td class="l small ${sp.ok ? "up" : "brass"}" style="white-space:normal;min-width:150px">${sp.ok ? "Cumple" : esc(sp.fails.join(" · "))}${sp.earnInside && sym.er && sp.ok ? ` <span class="brass">· resultados ${esc(labelOf(sym.er.d))}</span>` : ""}</td>
+      </tr>`,
+    )
+    .join("");
+  const list = shown.length
+    ? `<p class="small muted deal-head"><span>Bull put</span><span>${esc(ORDERS.find((o) => o.id === order)?.label ?? "")}</span></p>
+       <ul class="rows">${rows}</ul>
+       <div class="table-wrap"><table>
+         <thead><tr><th class="l">Nombre</th><th class="l">Vence</th><th class="l">Corto/largo</th><th>Ancho</th>${head}<th class="l">Cumple o por qué no</th></tr></thead>
+         <tbody>${body}</tbody></table></div>
+       ${deals.length > shown.length ? `<button class="btn" style="margin-top:12px" data-act="more-deals">Ver ${Math.min(60, deals.length - shown.length)} más (quedan ${deals.length - shown.length})</button>` : ""}`
+    : `<div class="empty"><h2>${!state.config.favorites.length ? "Tu lista está vacía" : filtered ? "Nada con esos filtros" : "Sin bull puts cerca de tu punto"}</h2>
+        <p class="small muted" style="margin-top:8px">${!state.config.favorites.length ? "Añade nombres en Favoritos." : filtered ? "Quita algún filtro para ver más." : "Ningún favorito tiene puts en tu plazo y alrededor de tu % abajo."}</p>
+        ${filtered ? '<button class="btn" style="margin-top:12px" data-act="clear-filters">Quitar filtros</button>' : ""}</div>`;
+  const chip = (attr, value, label, on) => `<button class="chip quiet" ${attr}="${esc(value)}" aria-pressed="${on}">${esc(label)}</button>`;
+  return `<div class="deals">
+    ${header("Bull put · favoritos", "Deals")}
+    ${summary ? `<p class="small" style="margin-top:12px">${summary}</p>` : ""}
+    <div class="tools">
+      <div class="chips" role="group" aria-label="Orden">
+        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === order}">${o.label}</button>`).join("")}
+      </div>
+    </div>
+    <div class="filters" aria-label="Filtros">
+      ${
+        widths.length
+          ? `<div class="frow" role="group" aria-label="Ancho del spread"><span class="flabel xs muted">Ancho</span>
+        ${chip("data-f-width", "0", "Todos", !(f.maxWidth > 0))}${widths.slice(0, -1).map((w) => chip("data-f-width", String(w), `hasta ${money0(w)}`, f.maxWidth === w)).join("")}</div>`
+          : ""
+      }
+      ${
+        expiries.length
+          ? `<div class="frow" role="group" aria-label="Vencimiento"><span class="flabel xs muted">Vence</span>
+        ${chip("data-f-exp", "", "Todos", f.expiries.length === 0)}${expiries.map((iso) => chip("data-f-exp", iso, `${labelOf(iso)} · ${daysBetween(today, iso)} d`, f.expiries.includes(iso))).join("")}</div>`
+          : ""
+      }
+      ${
+        otmSteps.length
+          ? `<div class="frow" role="group" aria-label="Porcentaje abajo"><span class="flabel xs muted">% abajo</span>
+        ${chip("data-f-otm", "0", "Todos", !(f.minOtm > 0))}${otmSteps.map((n) => chip("data-f-otm", String(n), `desde ${n}%`, f.minOtm === n)).join("")}</div>`
+          : ""
+      }
+      <div class="frow" role="group" aria-label="Cuántos por nombre"><span class="flabel xs muted">Tope</span>
+        ${PER_NAME.map(([n, label]) => chip("data-per-name", String(n), label, state.dealsPerName === n)).join("")}</div>
+    </div>
+    ${state.scan ? list : ""}
+    ${foot()}
+  </div>`;
+}
+
+function viewAvisos() {
+  const a = state.config.alerts;
+  const push = state.scan?.push;
+  const items = state.alerts.length
+    ? state.alerts
+        .map(
+          (alert) => `<div class="alert">
+            <p class="xs muted num">${when(alert.at)}</p>
+            <p><b>${esc(alert.title)}</b></p>
+            <p class="small muted">${esc(alert.text)}</p>
+          </div>`,
+        )
+        .join("")
+    : `<div class="alert"><p class="small muted">${isPublic() ? "Los avisos se ven en la app ntfy. El primer barrido solo toma nota; avisa cuando algo cambia." : "Sin avisos todavía. El primer barrido solo toma nota; avisa cuando algo cambia."}</p></div>`;
+  return `<div class="narrow">
+    <header class="top">
+      <p class="eyebrow">Bull put</p>
+      <h1 style="margin-top:4px">Avisos</h1>
+      <p class="small muted" style="margin-top:8px">${
+        state.mode === "muestra" ? "Versión de prueba: aquí se anotarán los avisos cuando la app barra de verdad." : isPublic() ? (push ? "Avisos al móvil activos. Llegan a la app ntfy; aquí no se anotan, porque esta página la puede abrir cualquiera." : "Avisos al móvil sin configurar. Faltan los secretos NTFY_TOPIC y CENTINELA_CONFIG en GitHub.") : push ? "Avisos al móvil activos." : state.mode === "nube" ? "Avisos al móvil sin configurar: se anotan aquí, pero no llegan al teléfono. Falta el secreto NTFY_TOPIC en tu repositorio." : "Avisos al móvil sin configurar: se anotan aquí, pero no llegan al teléfono. El LEEME explica cómo activarlos con ntfy."
+      }</p>
+    </header>
+    <div class="panel">
+      <div class="gate">
+        <button role="switch" aria-checked="${a.favorites}" data-alert="favorites">
+          <span><b>Un favorito pasa a cumplir</b><span class="small muted">Avisa cuando un nombre de tu lista entra en tus reglas.</span></span>
+          <span class="switch"><i></i></span>
+        </button>
+      </div>
+      ${stepper("alerts.universeTop", "Nombre nuevo entre los primeros", "Del universo, con tu orden. En 0 no avisa.", 0, 25, 1, (n) => (n === 0 ? "apagado" : `${n} primeros`))}
+    </div>
+    <p class="small muted" style="margin-top:8px">${esc(syncLine())}</p>
+    <section class="block">
+      <h2>Bitácora</h2>
+      <div class="panel">${items}</div>
+    </section>
+    ${foot()}
+  </div>`;
+}
+
+function foot() {
+  const failed = state.scan?.failed?.length ?? 0;
+  const kept = state.scan?.kept?.length ?? 0;
+  return `<p class="foot xs muted">${failed ? `Sin lectura en el último barrido: ${failed} nombres. ` : ""}${kept ? `Con datos del barrido anterior: ${kept} nombres. ` : ""}Un bull put puede perder el ancho menos el crédito. No es una orden ni un consejo, y los datos van con retraso.</p>`;
+}
+
+function sheet() {
+  if (!state.detail) return "";
+  const sym = (state.scan?.symbols ?? []).find((item) => item.s === state.detail);
+  if (!sym) return "";
+  const res = assessSymbol(sym, state.config.rules, state.config.order, nyToday());
+  const sp = res.best;
+  const stat = (label, value) => `<div class="metric"><dt>${label}</dt><dd>${value}</dd></div>`;
+  const byOrder = (a, b) => compareSpreads(a, b, state.config.order);
+  const okIdeas = res.all.filter((idea) => idea.ok).sort(byOrder);
+  const otherIdeas = res.all.filter((idea) => !idea.ok).sort((a, b) => b.stage - a.stage || byOrder(a, b));
+  const MAX_OK = 40;
+  const MAX_OTHER = 12;
+  const ideaRow = (idea) => `<li class="${sp && idea.expiry === sp.expiry && idea.shortStrike === sp.shortStrike && idea.longStrike === sp.longStrike ? "watched" : ""}">
+      <p class="small">${esc(idea.expiryLabel)} · ${fmtStrike(idea.shortStrike)}/${fmtStrike(idea.longStrike)} · ancho ${widthText(idea)} · ${pct(idea.otm, 1)} abajo · cobras ${usd(idea.creditUsd)}</p>
+      <p class="small muted">prob. ${probText(idea)} · rentab. ${pct(idea.ret)} · equilibrio ${kpiText(idea)} · ${pct(idea.creditPct)} del ancho${idea.ok ? "" : ` · ${esc(idea.fails.join(" · "))}`}</p>
+    </li>`;
+  const gap = sp?.quoteGap == null ? "—" : money(sp.quoteGap);
+  return `<div class="sheet-back" data-close>
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">
+      <div class="sheet-head">
+        <div style="min-width:0">
+          <h2 style="font-size:2rem">${esc(sym.s)} <span class="pill ${res.status}" style="vertical-align:middle;font-family:var(--sans)">${statusLabel(res.status)}</span></h2>
+          <p class="small muted">${esc(nameOf(sym))}</p>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">${star(sym.s)}<button class="btn quiet" data-close>Cerrar</button></div>
+      </div>
+      <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
+        <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
+      ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${sym.iv30.toFixed(0)}%</p>` : ""}
+      ${
+        sp
+          ? `<p style="margin-top:14px">${esc(spreadLine(sp))}</p>
+        ${sp.fails.length ? `<p class="small muted" style="margin-top:4px">No pasa: ${esc(sp.fails.join(" · "))}</p>` : ""}
+        <dl class="stats">
+          ${stat("Corto / largo", `${fmtStrike(sp.shortStrike)} / ${fmtStrike(sp.longStrike)}`)}
+          ${stat("Vencimiento", `${esc(sp.expiryLabel)} · ${sp.dte} d`)}
+          ${stat("Bajo el precio", pct(sp.otm, 1))}
+          ${stat("Ancho", widthText(sp))}
+          ${stat("Crédito", `${money(sp.credit)} · ${usd(sp.creditUsd)}`)}
+          ${stat("Del ancho", pct(sp.creditPct))}
+          ${stat("Pérdida máx.", usd(sp.lossUsd))}
+          ${stat("Prob. asignación", probText(sp))}
+          ${stat("Rentabilidad", pct(sp.ret))}
+          ${stat("Equilibrio", kpiText(sp))}
+          ${stat("Break-even", money(sp.breakeven))}
+          ${stat("IV del corto", sp.iv == null ? "—" : pct(sp.iv * 100))}
+          ${stat("Delta", sp.delta == null ? "—" : sp.delta.toFixed(2).replace("-", "−"))}
+          ${stat("Interés corto / largo", `${sp.shortOi} / ${sp.longOi}`)}
+          ${stat("Horquilla", gap)}
+        </dl>
+        ${
+          sp.move
+            ? `<p class="small" style="margin-top:12px">Movimiento esperado ${money(sp.move.dollars)} (${pct(sp.move.pct, 1)}). El corto está ${money(sym.p - sp.shortStrike)} más abajo${sym.p - sp.shortStrike < sp.move.dollars / 2 ? ", dentro de la mitad de ese movimiento." : ", fuera de la mitad."}</p>`
+            : ""
+        }`
+          : '<p class="small muted" style="margin-top:14px">No hay ningún bull put cerca de tu punto en tu plazo.</p>'
+      }
+      <p class="small ${sp?.earnInside ? "brass" : "muted"}" style="margin-top:10px">${
+        sym.er ? `Resultados ${esc(labelOf(sym.er.d))} · ${esc(sym.er.x)}${sp ? (sp.earnInside ? " · dentro del plazo" : " · fuera del plazo de este spread") : ""}` : sym.k === "etf" ? "ETF: sin resultados." : "Sin fecha de resultados en el calendario consultado."
+      }</p>
+      ${
+        res.all.length
+          ? `<h3 style="font-size:1.25rem;margin-top:18px">Bull puts de ${esc(sym.s)}</h3>
+        <div class="chips" role="group" aria-label="Orden" style="margin-top:8px">
+          ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
+        </div>
+        <p class="small muted" style="margin-top:10px">Cumplen ${okIdeas.length}${okIdeas.length > MAX_OK ? `, se ven los ${MAX_OK} primeros` : ""}.</p>
+        ${okIdeas.length ? `<ul class="ideas">${okIdeas.slice(0, MAX_OK).map(ideaRow).join("")}</ul>` : ""}
+        ${otherIdeas.length ? `<p class="small muted" style="margin-top:12px">No cumplen, los más cercanos:</p><ul class="ideas">${otherIdeas.slice(0, MAX_OTHER).map(ideaRow).join("")}</ul>` : ""}`
+          : ""
+      }
+    </div>
+  </div>`;
+}
+
+function dock() {
+  const seen = Number(readLocal(LS_SEEN) ?? 0);
+  const unseen = state.alerts.filter((alert) => alert.at > seen).length;
+  const item = (id, label) =>
+    `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
+  return `<nav class="dock" aria-label="Secciones"><div>
+    ${item("universo", "Universo")}${item("favoritos", "Favoritos")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+  </div></nav>`;
+}
+
+function render() {
+  const keepFocus = document.activeElement?.matches?.("[data-search]");
+  const view =
+    state.tab === "favoritos" ? viewFavoritos() : state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewUniverso();
+  root.innerHTML = `<main class="wrap">${view}</main>${dock()}${sheet()}`;
+  if (keepFocus) {
+    const input = root.querySelector("[data-search]");
+    input?.focus();
+    input?.setSelectionRange(state.query.length, state.query.length);
+  }
+}
+
+// ---------- eventos ----------
+
+function setPath(config, path, value) {
+  const keys = path.split(".");
+  let obj = config;
+  for (const key of keys.slice(0, -1)) obj = obj[key];
+  obj[keys.at(-1)] = value;
+}
+
+const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
+
+root.addEventListener("click", (event) => {
+  const el = event.target.closest("[data-fav],[data-step],[data-gate],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  if (!el) return;
+  if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
+  if (el.dataset.fav) {
+    const symbol = el.dataset.fav;
+    changeConfig((config) => {
+      if (config.favorites.includes(symbol)) config.favorites = config.favorites.filter((item) => item !== symbol);
+      else if (config.favorites.length < MAX_FAVORITES) config.favorites.push(symbol);
+    });
+  } else if (el.dataset.step) {
+    const path = el.dataset.step;
+    const current = path.split(".").reduce((obj, key) => obj[key], state.config);
+    const by = Number(el.dataset.by);
+    const next = Math.min(Number(el.dataset.max), Math.max(Number(el.dataset.min), Math.round((current + Number(el.dataset.dir) * by) * 100) / 100));
+    changeConfig((config) => {
+      setPath(config, path, next);
+      const low = PAIRS[path];
+      if (low && low.split(".").reduce((obj, key) => obj[key], config) > next) setPath(config, low, next);
+    });
+  } else if (el.dataset.gate) {
+    changeConfig((config) => {
+      config.rules.gates[el.dataset.gate] = !config.rules.gates[el.dataset.gate];
+    });
+  } else if (el.dataset.alert) {
+    changeConfig((config) => {
+      config.alerts[el.dataset.alert] = !config.alerts[el.dataset.alert];
+    });
+  } else if (el.dataset.order) {
+    state.dealsShown = 60;
+    changeConfig((config) => {
+      config.order = el.dataset.order;
+    });
+  } else if (el.dataset.perName != null) {
+    state.dealsPerName = Number(el.dataset.perName);
+    state.dealsShown = 60;
+    render();
+  } else if (el.dataset.fWidth != null) {
+    state.dealFilter.maxWidth = Number(el.dataset.fWidth) || 0;
+    state.dealsShown = 60;
+    render();
+  } else if (el.dataset.fOtm != null) {
+    state.dealFilter.minOtm = Number(el.dataset.fOtm) || 0;
+    state.dealsShown = 60;
+    render();
+  } else if (el.dataset.fExp != null) {
+    const value = el.dataset.fExp;
+    const list = state.dealFilter.expiries;
+    state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+    state.dealsShown = 60;
+    render();
+  } else if (el.dataset.act === "clear-filters") {
+    state.dealFilter = { expiries: [], maxWidth: 0, minOtm: 0 };
+    state.dealsShown = 60;
+    render();
+  } else if (el.dataset.act === "copy-secret") {
+    const done = (text) => {
+      state.copied = text;
+      render();
+      root.querySelector("#secreto")?.select();
+    };
+    try {
+      navigator.clipboard.writeText(secretText()).then(
+        () => {
+          writeLocal(LS_COPIED, Date.now());
+          done("Copiado. Pégalo en GitHub: Settings → Secrets and variables → Actions → CENTINELA_CONFIG.");
+        },
+        () => done("No se pudo copiar solo. Mantén pulsado el texto de abajo y cópialo a mano."),
+      );
+    } catch {
+      done("No se pudo copiar solo. Mantén pulsado el texto de abajo y cópialo a mano.");
+    }
+  } else if (el.dataset.act === "more-deals") {
+    state.dealsShown += 60;
+    render();
+  } else if (el.dataset.tab) {
+    state.tab = el.dataset.tab;
+    state.detail = null;
+    if (state.tab === "avisos") writeLocal(LS_SEEN, Date.now());
+    window.scrollTo(0, 0);
+    render();
+  } else if (el.dataset.open) {
+    state.detail = el.dataset.open;
+    render();
+  } else if (el.dataset.close != null) {
+    state.detail = null;
+    render();
+  } else if (el.dataset.act === "reload") {
+    void load();
+  } else if (el.dataset.act === "real") {
+    void loadReal();
+  } else if (el.dataset.act === "example") {
+    useExample();
+  } else if (el.dataset.act === "reset") {
+    changeConfig((config) => {
+      config.rules = structuredClone(DEFAULT_CONFIG.rules);
+      config.order = DEFAULT_CONFIG.order;
+    });
+  } else if (el.dataset.act === "gh-edit") {
+    state.showGh = true;
+    render();
+  } else if (el.dataset.act === "gh-clear") {
+    state.gh = { ...state.gh, token: "" };
+    writeLocal(LS_GH, state.gh);
+    state.sync = { state: "local", message: "" };
+    render();
+  }
+});
+
+root.addEventListener("input", (event) => {
+  if (event.target.matches("[data-search]")) {
+    state.query = event.target.value;
+    render();
+  }
+});
+
+root.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.target;
+  if (form.matches("[data-add]")) {
+    const symbol = cleanSymbol(new FormData(form).get("symbol") ?? "");
+    if (!symbol) return;
+    const known = (state.scan?.symbols ?? []).some((sym) => sym.s === symbol);
+    changeConfig((config) => {
+      if (!config.favorites.includes(symbol) && config.favorites.length < MAX_FAVORITES) config.favorites.push(symbol);
+      if (!known && !isPublic() && !config.extra.includes(symbol)) config.extra.push(symbol);
+    });
+  } else if (form.matches("[data-bridge]")) {
+    writeLocal(LS_BRIDGE, String(new FormData(form).get("bridge") ?? "").trim());
+    render();
+  } else if (form.matches("[data-gh]")) {
+    const data = new FormData(form);
+    state.gh = {
+      owner: String(data.get("owner") ?? "").trim(),
+      repo: String(data.get("repo") ?? "").trim(),
+      token: String(data.get("token") ?? "").trim(),
+    };
+    writeLocal(LS_GH, state.gh);
+    state.showGh = false;
+    state.tab = "universo";
+    void load();
+  }
+});
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.detail) {
+    state.detail = null;
+    render();
+  }
+});
+
+if (!EMBED && "serviceWorker" in navigator && window.location.protocol !== "file:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+
+void load();

@@ -1,0 +1,6 @@
+out/
+out-ejemplo/
+site/
+test/fixtures/
+node_modules/
+.DS_Store

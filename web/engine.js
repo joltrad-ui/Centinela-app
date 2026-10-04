@@ -1,0 +1,584 @@
+// Motor de Centinela. Lo usan la app (para filtrar y ordenar al instante)
+// y el barrido (para decidir los avisos). Sin dependencias.
+//
+// Hoy solo hay una estrategia: bull put. Para añadir otra (iron condor,
+// bear call) se añade un constructor de spreads como buildBullPuts y se
+// registra en STRATEGIES; el resto (reglas, orden, avisos) ya es común.
+
+export const RATE = 0.04; // tipo sin riesgo usado en la prob. de asignación
+
+export const DEFAULT_RULES = {
+  minDte: 20,
+  maxDte: 30,
+  minOtm: 8, // % abajo, desde
+  maxOtm: 12, // % abajo, hasta
+  width: 5, // ancho máximo: vale ese y cualquiera menor
+  minCreditPct: 10,
+  maxProb: 50, // 50 = sin límite
+  minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
+  gates: {
+    event: false,
+    liquid: false,
+    oiMin: 100,
+    spreadPct: 10,
+    loss: false,
+    lossMin: 100,
+    lossMax: 300,
+    room: false,
+  },
+};
+
+export const DEFAULT_CONFIG = {
+  savedAt: 0,
+  strategy: "bullPut",
+  rules: DEFAULT_RULES,
+  order: "equilibrio",
+  favorites: ["AAPL", "NVDA", "MSFT", "SPY"],
+  extra: [],
+  alerts: { favorites: true, universeTop: 5 },
+};
+
+export const ORDERS = [
+  { id: "equilibrio", label: "Equilibrio", hint: "Lo que esperas ganar por cada dólar que esperas perder. Sube con la rentabilidad y baja con la probabilidad de asignación." },
+  { id: "rentab", label: "Rentabilidad", hint: "Crédito partido por la pérdida máxima." },
+  { id: "prob", label: "Prob. asignación", hint: "La más baja primero." },
+  { id: "abajo", label: "% abajo", hint: "El corto más lejos del precio primero." },
+  { id: "credito", label: "Crédito", hint: "Lo que más cobra por contrato primero." },
+];
+
+export const PROB_OFF = 50;
+export const MAX_FAVORITES = 40;
+
+// ---------- utilidades ----------
+
+const r1 = (n) => Math.round(n * 10) / 10;
+const r2 = (n) => Math.round(n * 100) / 100;
+
+function clamp(value, min, max, fallback) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+export function cleanSymbol(raw) {
+  if (typeof raw !== "string") return null;
+  const symbol = raw.trim().toUpperCase();
+  return /^[A-Z][A-Z0-9.-]{0,7}$/.test(symbol) ? symbol : null;
+}
+
+function symbolList(value, max) {
+  const out = [];
+  if (!Array.isArray(value)) return out;
+  for (const raw of value) {
+    const symbol = cleanSymbol(raw);
+    if (symbol && !out.includes(symbol)) out.push(symbol);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export function normalizeRules(input) {
+  const row = input && typeof input === "object" ? input : {};
+  const base = DEFAULT_RULES;
+  const g = row.gates && typeof row.gates === "object" ? row.gates : {};
+  const minDte = Math.round(clamp(row.minDte, 5, 60, base.minDte));
+  const maxDte = Math.max(minDte, Math.round(clamp(row.maxDte, 5, 60, base.maxDte)));
+  const minOtm = clamp(row.minOtm, 1, 30, base.minOtm);
+  const maxOtm = Math.max(minOtm, clamp(row.maxOtm, 1, 35, base.maxOtm));
+  const lossMin = clamp(g.lossMin, 20, 2000, base.gates.lossMin);
+  const lossMax = Math.max(lossMin, clamp(g.lossMax, 20, 5000, base.gates.lossMax));
+  return {
+    minDte,
+    maxDte,
+    minOtm,
+    maxOtm,
+    width: clamp(row.width, 1, 50, base.width),
+    minCreditPct: clamp(row.minCreditPct, 1, 40, base.minCreditPct),
+    maxProb: clamp(row.maxProb, 2, PROB_OFF, base.maxProb),
+    minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
+    gates: {
+      event: g.event === true,
+      liquid: g.liquid === true,
+      oiMin: Math.round(clamp(g.oiMin, 0, 5000, base.gates.oiMin)),
+      spreadPct: clamp(g.spreadPct, 5, 100, base.gates.spreadPct),
+      loss: g.loss === true,
+      lossMin,
+      lossMax,
+      room: g.room === true,
+    },
+  };
+}
+
+export function normalizeConfig(input) {
+  const row = input && typeof input === "object" ? input : {};
+  const alerts = row.alerts && typeof row.alerts === "object" ? row.alerts : {};
+  const favorites = Array.isArray(row.favorites)
+    ? symbolList(row.favorites, MAX_FAVORITES)
+    : [...DEFAULT_CONFIG.favorites];
+  return {
+    savedAt: typeof row.savedAt === "number" && Number.isFinite(row.savedAt) ? row.savedAt : 0,
+    strategy: "bullPut",
+    rules: normalizeRules(row.rules),
+    order: ORDERS.some((o) => o.id === row.order) ? row.order : "equilibrio",
+    favorites,
+    extra: symbolList(row.extra, 200),
+    alerts: {
+      favorites: alerts.favorites !== false,
+      universeTop: Math.round(clamp(alerts.universeTop, 0, 25, DEFAULT_CONFIG.alerts.universeTop)),
+    },
+  };
+}
+
+export function nyToday(now = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+export function daysBetween(from, to) {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.round((end - start) / 86_400_000);
+}
+
+export function labelOf(iso) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", timeZone: "UTC" }).format(
+    new Date(Date.UTC(year, (month ?? 1) - 1, day)),
+  );
+}
+
+function normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327 * Math.exp((-x * x) / 2);
+  const p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x > 0 ? 1 - p : p;
+}
+
+/** Probabilidad de que el precio acabe por debajo del strike al vencimiento,
+ *  según la volatilidad implícita de ese strike. En %. */
+export function probBelow(price, strike, dte, iv) {
+  if (!(price > 0) || !(strike > 0) || !(iv > 0)) return null;
+  const t = Math.max(dte, 0.5) / 365;
+  const d2 = (Math.log(price / strike) + (RATE - (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
+  return normCdf(-d2) * 100;
+}
+
+/** Precio teórico de una put (Black-Scholes, sin dividendos). */
+export function putPrice(price, strike, dte, iv) {
+  const t = Math.max(dte, 0.5) / 365;
+  const d1 = (Math.log(price / strike) + (RATE + (iv * iv) / 2) * t) / (iv * Math.sqrt(t));
+  const d2 = d1 - iv * Math.sqrt(t);
+  return strike * Math.exp(-RATE * t) * normCdf(-d2) - price * normCdf(-d1);
+}
+
+/** Volatilidad implícita de una put a partir de su precio, por bisección.
+ *  Sirve cuando la fuente da precios pero no la volatilidad. */
+export function ivFromPut(price, strike, dte, optionPrice) {
+  if (!(price > 0) || !(strike > 0) || !(optionPrice > 0)) return null;
+  let low = 0.01;
+  let high = 4;
+  if (putPrice(price, strike, dte, low) > optionPrice || putPrice(price, strike, dte, high) < optionPrice) return null;
+  for (let i = 0; i < 60; i++) {
+    const mid = (low + high) / 2;
+    if (putPrice(price, strike, dte, mid) > optionPrice) high = mid;
+    else low = mid;
+  }
+  return (low + high) / 2;
+}
+
+export function impliedMove(price, dte, iv) {
+  const dollars = price * iv * Math.sqrt(Math.max(dte, 1) / 365);
+  return { dollars, pct: (dollars / price) * 100 };
+}
+
+// ---------- cadena de CBOE ----------
+
+const CBOE_MIN_DTE = 5;
+const CBOE_MAX_DTE = 60;
+const CBOE_FLOOR = 0.62; // se guardan puts desde el 62% del precio hasta el precio
+const CBOE_MAX_ROWS = 1400; // por nombre; por encima, solo vencimientos de viernes
+
+export function cboeUrl(symbol) {
+  return `https://cdn.cboe.com/api/global/delayed_quotes/options/${encodeURIComponent(symbol)}.json`;
+}
+
+function numOf(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const n = Number(value.trim().replace(/,/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseOcc(root, option) {
+  if (!option.startsWith(root)) return null;
+  const match = /^(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(option.slice(root.length));
+  if (!match) return null;
+  return { expiry: `20${match[1]}-${match[2]}-${match[3]}`, call: match[4] === "C", strike: Number(match[5]) / 1000 };
+}
+
+const roundTo = (n, digits) => Math.round(n * 10 ** digits) / 10 ** digits;
+
+/** De la respuesta de CBOE a lo que guarda Centinela para un nombre. */
+export function readCboeChain(symbol, body, today = nyToday()) {
+  const data = body?.data;
+  const price = numOf(data?.current_price) ?? numOf(data?.close);
+  const options = Array.isArray(data?.options) ? data.options : [];
+  if (!(price > 0)) return null;
+  const root = symbol.replace(".", "");
+  const floor = price * CBOE_FLOOR;
+  const byExpiry = new Map();
+  const atm = new Map();
+  for (const row of options) {
+    const parsed = parseOcc(root, typeof row?.option === "string" ? row.option : "");
+    if (!parsed || parsed.call) continue;
+    const dte = daysBetween(today, parsed.expiry);
+    if (dte < CBOE_MIN_DTE || dte > CBOE_MAX_DTE) continue;
+    const ivRaw = numOf(row.iv);
+    const iv = ivRaw != null && ivRaw > 0.01 && ivRaw <= 3 ? ivRaw : null;
+    const dist = Math.abs(parsed.strike - price);
+    if (iv != null && dist / price <= 0.08) {
+      const prev = atm.get(parsed.expiry);
+      if (!prev || dist < prev.dist) atm.set(parsed.expiry, { iv, dist });
+    }
+    if (parsed.strike >= price || parsed.strike < floor) continue;
+    const ask = numOf(row.ask);
+    if (!(ask > 0)) continue;
+    const bid = numOf(row.bid) ?? 0;
+    const deltaRaw = numOf(row.delta);
+    const delta = deltaRaw != null && deltaRaw < 0 && deltaRaw >= -1 ? deltaRaw : 0;
+    const list = byExpiry.get(parsed.expiry) ?? new Map();
+    const oi = Math.round(numOf(row.open_interest) ?? 0);
+    const prev = list.get(parsed.strike);
+    if (!prev || oi > prev[3]) {
+      list.set(parsed.strike, [parsed.strike, roundTo(bid, 2), roundTo(ask, 2), oi, iv == null ? 0 : roundTo(iv, 3), roundTo(delta, 3)]);
+    }
+    byExpiry.set(parsed.expiry, list);
+  }
+  let expiries = [...byExpiry.keys()].sort();
+  const count = (list) => list.reduce((sum, expiry) => sum + byExpiry.get(expiry).size, 0);
+  if (count(expiries) > CBOE_MAX_ROWS) {
+    const fridays = expiries.filter((iso) => new Date(`${iso}T12:00:00Z`).getUTCDay() === 5);
+    if (fridays.length) expiries = fridays;
+  }
+  return {
+    s: symbol,
+    k: data?.security_type === "stock" || !data?.security_type ? "stock" : String(data.security_type),
+    p: roundTo(price, 2),
+    c: roundTo(numOf(data?.price_change_percent) ?? 0, 2),
+    iv30: numOf(data?.iv30) == null ? null : roundTo(numOf(data.iv30), 1),
+    t: typeof data?.last_trade_time === "string" ? data.last_trade_time : null,
+    x: expiries.map((expiry) => [expiry, roundTo(atm.get(expiry)?.iv ?? 0, 3), [...byExpiry.get(expiry).values()].sort((a, b) => a[0] - b[0])]),
+  };
+}
+
+// ---------- bull put ----------
+
+// Fila de la cadena: [strike, bid, ask, interés abierto, iv, delta]
+const K = 0, BID = 1, ASK = 2, OI = 3, IV = 4, DELTA = 5;
+
+/** Puts largos posibles para un corto: todos los que dejan un ancho igual o
+ *  menor que el máximo. Si la cadena no tiene ninguno (strikes más separados
+ *  que el ancho pedido), devuelve el más cercano para poder decir por qué no pasa. */
+function longLegs(rows, shortStrike, maxWidth) {
+  const inside = [];
+  let nearest = null;
+  for (const leg of rows) {
+    if (leg[K] >= shortStrike) continue;
+    if (!(leg[ASK] > 0)) continue;
+    const width = shortStrike - leg[K];
+    if (width < 0.5 - 1e-9) continue;
+    if (width <= maxWidth + 1e-9) inside.push(leg);
+    if (!nearest || leg[K] > nearest[K]) nearest = leg;
+  }
+  if (inside.length) return inside;
+  return nearest ? [nearest] : [];
+}
+
+/** Orden en que se comprueban las reglas. La etapa de un spread es cuántas
+ *  ha superado seguidas; sirve para el embudo y para elegir "lo más cerca". */
+export const STAGES = ["abajo", "ancho", "credito", "prob", "equilibrio", "interruptores"];
+
+function buildBullPuts(sym, rules, today) {
+  const gates = rules.gates;
+  const out = [];
+  for (const [expiry, atmIv, rows] of sym.x ?? []) {
+    const dte = daysBetween(today, expiry);
+    if (dte < rules.minDte || dte > rules.maxDte) continue;
+    for (const short of rows) {
+      const ks = short[K];
+      const sb = short[BID];
+      if (!(ks < sym.p) || !(sb > 0)) continue;
+      const otm = ((sym.p - ks) / sym.p) * 100;
+      if (otm < rules.minOtm - 8 || otm > rules.maxOtm + 8) continue;
+      for (const long of longLegs(rows, ks, rules.width)) {
+        const width = r2(ks - long[K]);
+        const credit = r2(sb - long[ASK]);
+        if (credit <= 0) continue;
+        const maxLoss = r2(width - credit);
+        if (maxLoss <= 0) continue;
+
+        const sa = short[ASK] > 0 ? short[ASK] : null;
+        const lb = long[BID] >= 0 ? long[BID] : null;
+        const la = long[ASK];
+        const iv = short[IV] > 0 ? short[IV] : null;
+        const delta = short[DELTA] < 0 ? short[DELTA] : null;
+        const prob = iv != null ? probBelow(sym.p, ks, dte, iv) : delta != null ? Math.abs(delta) * 100 : null;
+        const creditPct = (credit / width) * 100;
+        const ret = (credit / maxLoss) * 100;
+        const balance = balanceOf(ret, prob);
+        const quoteGap = sa != null && lb != null ? r2(sa - sb + (la - lb)) : null;
+        const midCredit = sa != null && lb != null ? (sb + sa) / 2 - (lb + la) / 2 : null;
+        const moveIv = atmIv > 0 ? atmIv : iv;
+        const move = moveIv != null ? impliedMove(sym.p, dte, moveIv) : null;
+        const lossUsd = Math.round(maxLoss * 100);
+
+        const fails = [];
+        const fitsOtm = otm >= rules.minOtm - 1e-9 && otm <= rules.maxOtm + 1e-9;
+        const fitsWidth = width <= rules.width + 1e-9;
+        const fitsCredit = creditPct + 1e-9 >= rules.minCreditPct;
+        const fitsProb = rules.maxProb >= PROB_OFF || (prob != null && prob <= rules.maxProb + 1e-9);
+        if (!fitsOtm) fails.push("fuera del punto");
+        if (!fitsWidth) fails.push(`ancho de $${fmtWidth(width)}`);
+        if (!fitsCredit) fails.push("crédito corto");
+        if (!fitsProb) fails.push(prob == null ? "sin dato de probabilidad" : "probabilidad alta");
+        const fitsBalance = !(rules.minBalance > 0) || (balance != null && balance >= rules.minBalance - 1e-9);
+        if (!fitsBalance) fails.push("equilibrio bajo");
+
+        const gateFails = [];
+        const earn = sym.er && sym.er.d ? sym.er : null;
+        const earnDte = earn ? daysBetween(today, earn.d) : null;
+        const earnInside = earnDte != null && earnDte >= 0 && earnDte <= dte + 2;
+        if (gates.event && earnInside) gateFails.push(`resultados el ${labelOf(earn.d)}`);
+        if (gates.liquid) {
+          if (short[OI] < gates.oiMin) gateFails.push("poco interés en el corto");
+          if (quoteGap != null && midCredit != null && midCredit > 0 && quoteGap > (midCredit * gates.spreadPct) / 100 + 1e-9) {
+            gateFails.push("horquilla ancha");
+          }
+        }
+        if (gates.loss) {
+          if (lossUsd > gates.lossMax) gateFails.push("pérdida por encima del tope");
+          else if (lossUsd < gates.lossMin) gateFails.push("pérdida por debajo del suelo");
+        }
+        if (gates.room && move && sym.p - ks < move.dollars / 2) gateFails.push("dentro del movimiento");
+
+        const checks = [fitsOtm, fitsWidth, fitsCredit, fitsProb, fitsBalance, gateFails.length === 0];
+        let stage = 0;
+        while (stage < checks.length && checks[stage]) stage++;
+
+        out.push({
+          symbol: sym.s,
+          expiry,
+          expiryLabel: labelOf(expiry),
+          dte,
+          shortStrike: ks,
+          longStrike: long[K],
+          otm: r1(otm),
+          width,
+          credit,
+          creditUsd: Math.round(credit * 100),
+          creditPct: r1(creditPct),
+          maxLoss,
+          lossUsd,
+          ret: r1(ret),
+          prob: prob == null ? null : r1(prob),
+          balance,
+          breakeven: r2(ks - credit),
+          shortOi: short[OI] ?? 0,
+          longOi: long[OI] ?? 0,
+          shortBid: sb,
+          shortAsk: sa,
+          longBid: lb,
+          longAsk: la,
+          quoteGap,
+          iv,
+          delta,
+          move: move ? { dollars: r2(move.dollars), pct: r1(move.pct) } : null,
+          earnInside,
+          fails: [...fails, ...gateFails],
+          stage,
+          ok: stage === checks.length,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/** Equilibrio: ganancia esperada partida por pérdida esperada.
+ *  Ganas el crédito con probabilidad (1 − p) y pierdes la pérdida máxima con
+ *  probabilidad p, así que queda rentabilidad × (1 − p) / p.
+ *  1 = lo esperado a ganar iguala lo esperado a perder. */
+export function balanceOf(ret, prob) {
+  if (prob == null || !(prob > 0) || prob >= 100) return null;
+  return r2(((ret / 100) * (100 - prob)) / prob);
+}
+
+function fmtWidth(n) {
+  return Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2).replace(/0$/, "");
+}
+
+export const STRATEGIES = {
+  bullPut: { id: "bullPut", label: "Bull put", build: buildBullPuts },
+};
+
+// ---------- orden ----------
+
+function orderValue(sp, order) {
+  if (order === "rentab") return sp.ret;
+  if (order === "prob") return sp.prob == null ? null : -sp.prob;
+  if (order === "abajo") return sp.otm;
+  if (order === "credito") return sp.creditUsd;
+  return sp.balance;
+}
+
+export function compareSpreads(a, b, order) {
+  const va = orderValue(a, order);
+  const vb = orderValue(b, order);
+  if (va == null && vb == null) return b.ret - a.ret;
+  if (va == null) return 1;
+  if (vb == null) return -1;
+  return (
+    vb - va ||
+    (a.prob ?? 99) - (b.prob ?? 99) ||
+    b.ret - a.ret ||
+    a.symbol.localeCompare(b.symbol) ||
+    a.expiry.localeCompare(b.expiry) ||
+    b.shortStrike - a.shortStrike ||
+    b.longStrike - a.longStrike
+  );
+}
+
+// ---------- lectura de un nombre ----------
+
+/** Estado de un nombre con las reglas dadas.
+ *  status: "entrada" | "no-pasa" | "sin-plazo" | "sin-cadena"
+ *  best:   el spread que cumple y va primero en el orden, o lo más cerca. */
+export function assessSymbol(sym, rules, order, today = nyToday()) {
+  const strategy = STRATEGIES.bullPut;
+  const spreads = strategy.build(sym, rules, today);
+  const passing = spreads.filter((sp) => sp.ok).sort((a, b) => compareSpreads(a, b, order));
+  const hasChain = (sym.x ?? []).some(([, , rows]) => rows.length > 0);
+  const inWindow = (sym.x ?? []).some(([expiry]) => {
+    const dte = daysBetween(today, expiry);
+    return dte >= rules.minDte && dte <= rules.maxDte;
+  });
+  if (passing.length) {
+    return { status: "entrada", best: passing[0], spreads: passing, all: spreads, stage: STAGES.length };
+  }
+  const near = [...spreads].sort((a, b) => b.stage - a.stage || compareSpreads(a, b, order));
+  const status = !hasChain ? "sin-cadena" : !inWindow ? "sin-plazo" : "no-pasa";
+  return { status, best: near[0] ?? null, spreads: near, all: spreads, stage: near[0]?.stage ?? 0 };
+}
+
+export function statusLabel(status) {
+  if (status === "entrada") return "Entrada";
+  if (status === "no-pasa") return "No pasa";
+  if (status === "sin-plazo") return "Sin vencimiento";
+  if (status === "sin-cadena") return "Sin cadena";
+  return "Sin lectura";
+}
+
+/** Barre todos los nombres. Devuelve los que cumplen, ya ordenados,
+ *  y el embudo: cuántos nombres superan cada regla. */
+export function rankUniverse(symbols, rules, order, today = nyToday()) {
+  const rows = [];
+  const funnel = { leidos: symbols.length, conPlazo: 0, abajo: 0, ancho: 0, credito: 0, prob: 0, equilibrio: 0, cumplen: 0 };
+  const bySymbol = new Map();
+  for (const sym of symbols) {
+    const res = assessSymbol(sym, rules, order, today);
+    bySymbol.set(sym.s, res);
+    if (res.status !== "sin-cadena" && res.status !== "sin-plazo") funnel.conPlazo++;
+    if (res.stage >= 1) funnel.abajo++;
+    if (res.stage >= 2) funnel.ancho++;
+    if (res.stage >= 3) funnel.credito++;
+    if (res.stage >= 4) funnel.prob++;
+    if (res.stage >= 5) funnel.equilibrio++;
+    if (res.status === "entrada") {
+      funnel.cumplen++;
+      rows.push({ sym, res });
+    }
+  }
+  rows.sort((a, b) => compareSpreads(a.res.best, b.res.best, order));
+  return { rows, funnel, bySymbol };
+}
+
+/** Todos los bull puts de todos los favoritos en una sola lista ordenada.
+ *  opts.status: "todos" | "ok" (cumplen) | "no" (no cumplen)
+ *  opts.names / opts.expiries: si traen algo, solo esos nombres o vencimientos
+ *  opts.maxWidth: si es > 0, solo spreads de ese ancho o menos
+ *  opts.minOtm: si es > 0, solo spreads con el corto al menos ese % abajo
+ *  opts.perName: si es > 0, solo los N primeros de cada nombre
+ *  counts da, por nombre, cuántos cumplen y cuántos no (sin filtros) y cuántos
+ *  quedan con los filtros de estado, vencimiento y ancho (shown). */
+export function favoriteDeals(symbols, favorites, rules, order, today = nyToday(), opts = {}) {
+  const { perName = 0, status = "todos", names = [], expiries = [], maxWidth = 0, minOtm = 0 } = opts;
+  const widths = new Set();
+  let otmMin = Infinity;
+  let otmMax = -Infinity;
+  // Los que cumplen van siempre delante; dentro de cada grupo manda el orden elegido.
+  const byRank = (a, b) => Number(b.ok) - Number(a.ok) || compareSpreads(a, b, order);
+  const bySymbol = new Map(symbols.map((sym) => [sym.s, sym]));
+  const deals = [];
+  const counts = {};
+  const seen = new Set();
+  let matched = 0;
+  for (const name of favorites) {
+    const sym = bySymbol.get(name);
+    if (!sym) continue;
+    const res = assessSymbol(sym, rules, order, today);
+    if (!res.all.length) continue;
+    const ok = res.all.filter((sp) => sp.ok).length;
+    counts[name] = { ok, no: res.all.length - ok };
+    for (const sp of res.all) {
+      seen.add(sp.expiry);
+      widths.add(sp.width);
+      if (sp.otm < otmMin) otmMin = sp.otm;
+      if (sp.otm > otmMax) otmMax = sp.otm;
+    }
+    const list = res.all
+      .filter((sp) => (status === "ok" ? sp.ok : status === "no" ? !sp.ok : true))
+      .filter((sp) => !expiries.length || expiries.includes(sp.expiry))
+      .filter((sp) => !(maxWidth > 0) || sp.width <= maxWidth + 1e-9)
+      .filter((sp) => !(minOtm > 0) || sp.otm >= minOtm - 1e-9)
+      .sort(byRank);
+    counts[name].shown = list.length; // con los filtros de estado, vencimiento y ancho
+    if (names.length && !names.includes(name)) continue;
+    matched += list.length;
+    for (const sp of perName > 0 ? list.slice(0, perName) : list) deals.push({ sym, sp });
+  }
+  deals.sort((a, b) => byRank(a.sp, b.sp));
+  return {
+    deals,
+    counts,
+    expiries: [...seen].sort(),
+    widths: [...widths].sort((a, b) => a - b),
+    otmRange: Number.isFinite(otmMin) ? [otmMin, otmMax] : null,
+    matched,
+  };
+}
+
+// ---------- textos ----------
+
+export function spreadLine(sp) {
+  return `${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} · ${sp.expiryLabel} · ${sp.otm.toFixed(1)}% abajo · ${sp.creditPct.toFixed(0)}% del ancho`;
+}
+
+export function fmtStrike(n) {
+  return Number.isInteger(n) ? n.toFixed(0) : String(n);
+}
+
+export function alertText(sp) {
+  const prob = sp.prob == null ? "" : ` · prob. ${sp.prob.toFixed(0)}%`;
+  return `${spreadLine(sp)}${prob} · rentab. ${sp.ret.toFixed(0)}%`;
+}
+
+export function rulesLine(rules) {
+  const prob =
+    (rules.maxProb >= PROB_OFF ? "" : ` · prob. ≤${rules.maxProb.toFixed(0)}%`) +
+    (rules.minBalance > 0 ? ` · equilibrio ≥${rules.minBalance.toFixed(2)}` : "");
+  return `ancho ≤$${fmtWidth(rules.width)} · ${rules.minDte}–${rules.maxDte} días · ${rules.minOtm.toFixed(0)}–${rules.maxOtm.toFixed(0)}% abajo · crédito ≥${rules.minCreditPct.toFixed(0)}%${prob}`;
+}

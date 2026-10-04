@@ -1,0 +1,36 @@
+{
+  "savedAt": 0,
+  "strategy": "bullPut",
+  "rules": {
+    "minDte": 20,
+    "maxDte": 30,
+    "minOtm": 8,
+    "maxOtm": 12,
+    "width": 5,
+    "minCreditPct": 10,
+    "maxProb": 50,
+    "minBalance": 0.5,
+    "gates": {
+      "event": false,
+      "liquid": false,
+      "oiMin": 100,
+      "spreadPct": 10,
+      "loss": false,
+      "lossMin": 100,
+      "lossMax": 300,
+      "room": false
+    }
+  },
+  "order": "equilibrio",
+  "favorites": [
+    "AAPL",
+    "NVDA",
+    "MSFT",
+    "SPY"
+  ],
+  "extra": [],
+  "alerts": {
+    "favorites": true,
+    "universeTop": 5
+  }
+}
