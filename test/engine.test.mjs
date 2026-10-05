@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -197,4 +197,44 @@ test("off: los nombres quitados de la lista se limpian y se conservan", () => {
   const config = normalizeConfig({ off: ["nvda", "NVDA", "??", "xle"] });
   assert.deepEqual(config.off, ["NVDA", "XLE"]);
   assert.deepEqual(normalizeConfig({}).off, []);
+});
+
+test("igual riesgo: corto por prob., largo exacto, neto con comisión", () => {
+  const probs = marketProbs(sym.x[0][2]);
+  const target = Math.ceil(probs[2] * 10) / 10; // deja pasar el strike 90 pero no el 95
+  assert.ok(probs[3] > target);
+  const row = equalRisk(sym, { prob: target, width: 5, expiry: "2026-10-30", fee: 1.4 }, today);
+  assert.equal(row.status, "ok");
+  assert.equal(`${row.shortStrike}/${row.longStrike}`, "90/85");
+  assert.equal(row.credit, 0.6);
+  assert.equal(row.net, 58.6); // 60 − 1,40
+  assert.equal(row.loss, 441.4); // 500 − 58,6
+  assert.equal(row.ret, 13.3); // 58,6 / 441,4
+  assert.equal(row.probSrc, "mercado");
+  assert.equal(row.prob, Math.round(probs[2] * 10) / 10);
+  assert.equal(row.longProb, Math.round(probs[1] * 10) / 10);
+  assert.equal(row.earnInside, true);
+});
+
+test("igual riesgo: sin ancho, sin vencimiento, sin strike cerca y sin precio", () => {
+  const probs = marketProbs(sym.x[0][2]);
+  const ok = { prob: Math.ceil(probs[2] * 10) / 10, width: 5, expiry: "2026-10-30", fee: 0 };
+  assert.equal(equalRisk(sym, { ...ok, width: 3 }, today).status, "sin-ancho");
+  assert.equal(equalRisk(sym, { ...ok, expiry: "2026-11-20" }, today).status, "sin-vencimiento");
+  assert.equal(equalRisk(sym, { ...ok, prob: probs[2] + 6 }, today).status, "sin-strike"); // el corto queda >3 puntos por debajo
+  const noBid = { ...sym, x: [["2026-10-30", 0.4, sym.x[0][2].map((r) => (r[0] === 90 ? [90, 0, 1.1, 1200, 0.42, -0.17] : r))]] };
+  assert.equal(equalRisk(noBid, ok, today).status, "sin-precio");
+});
+
+test("igual riesgo: orden por rentabilidad neta, sin precio al final; fecha común", () => {
+  const probs = marketProbs(sym.x[0][2]);
+  const opts = { prob: Math.ceil(probs[2] * 10) / 10, width: 5, expiry: "2026-10-30", fee: 1.4 };
+  const rich = { ...sym, s: "RICH", x: [["2026-10-30", 0.4, sym.x[0][2].map((r) => (r[0] === 90 ? [90, 1.3, 1.4, 1200, 0.42, -0.17] : r))]] };
+  const none = { ...sym, s: "NONE", x: [["2026-11-27", 0.4, sym.x[0][2]]] };
+  const { rows, out } = equalRiskList([sym, none, rich], opts, today);
+  assert.deepEqual(rows.map((row) => row.sym.s), ["RICH", "XYZ"]);
+  assert.deepEqual(out.map((row) => row.sym.s), ["NONE"]);
+  const list = commonExpiries([sym, rich, none], normalizeRules({ minDte: 10, maxDte: 60 }), today);
+  assert.equal(defaultExpiry(list), "2026-10-30");
+  assert.equal(list.length, 2);
 });

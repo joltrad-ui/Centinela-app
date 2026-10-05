@@ -26,7 +26,7 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 ## Estructura
 
 - `web/engine.js`: motor puro, compartido por la app y el barrido. Reglas, construcción de spreads, columnas, orden, embudo. Las estrategias se registran en `STRATEGIES`; hoy solo `bullPut`.
-- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Lista, Deals, Avisos, Reglas). La principal es Lista, agrupada por bloque: enseña todos los nombres de la lista base. Una sola lista: se ven los 32 y cada nombre tiene Quitar / Poner (`config.off`, solo en el dispositivo; los quitados quedan atenuados). Instalable (manifest y `sw.js`).
+- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cinco pantallas (Lista, Deals, Avisos, Reglas y la pestaña de prueba "Igual riesgo": mismo prob., ancho y vencimiento para todos, `equalRisk` en el motor; sus controles y la comisión van en `localStorage`, clave `centinela.igual.v1`). La principal es Lista, agrupada por bloque: enseña todos los nombres de la lista base. Una sola lista: se ven los 32 y cada nombre tiene Quitar / Poner (`config.off`, solo en el dispositivo; los quitados quedan atenuados). Instalable (manifest y `sw.js`).
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
 - `scanner/universe.json`: la lista base, genérica: 32 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre y lo que enseña la app, entera.
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.

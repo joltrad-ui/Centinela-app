@@ -6,7 +6,10 @@ import {
   cboeUrl,
   daysBetween,
   cleanSymbol,
+  commonExpiries,
   compareSpreads,
+  defaultExpiry,
+  equalRiskList,
   favoriteDeals,
   fmtStrike,
   ivFromPut,
@@ -23,6 +26,7 @@ const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
 const LS_SEEN = "centinela.avisos.vistos";
 const LS_COPIED = "centinela.secreto.copiado";
+const LS_EQUAL = "centinela.igual.v1";
 const root = document.getElementById("app");
 // Versión de prueba: la página trae los datos dentro y no lee de la red.
 const EMBED = typeof window !== "undefined" && window.__CENTINELA__ ? window.__CENTINELA__ : null;
@@ -44,6 +48,10 @@ function refreshExample(scan) {
   return scan;
 }
 
+const EQ_PROBS = [5, 8, 10];
+const EQ_WIDTHS = [1, 2, 3, 5, 10];
+const EQ_OK = { prob: (v) => EQ_PROBS.includes(v), width: (v) => EQ_WIDTHS.includes(v) };
+
 const state = {
   tab: "favoritos",
   scan: null,
@@ -64,7 +72,21 @@ const state = {
   dealsPerName: 10, // 0 = todos
   dealsShown: 60,
   dealFilter: { expiries: [], maxWidth: 0, minOtm: 0 },
+  equal: loadEqual(), // pestaña de prueba "Igual riesgo": solo en el dispositivo
 };
+
+
+
+function loadEqual() {
+  const saved = readLocal(LS_EQUAL) ?? {};
+  const num = (value, ok) => (EQ_OK[ok](value) ? value : null);
+  return {
+    prob: num(saved.prob, "prob"),
+    width: num(saved.width, "width"),
+    expiry: typeof saved.expiry === "string" ? saved.expiry : null,
+    fee: typeof saved.fee === "number" && saved.fee >= 0 && saved.fee <= 20 ? saved.fee : 1.4,
+  };
+}
 
 // ---------- almacenamiento ----------
 
@@ -583,6 +605,7 @@ const ICONS = {
   favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
+  igual: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 9h14M5 15h14"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
 
@@ -1170,19 +1193,82 @@ function sheet() {
   </div>`;
 }
 
+// ---------- Igual riesgo (pestaña de prueba) ----------
+
+const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
+const dec = (n, d = 1) => n.toFixed(d).replace(".", ",");
+const usdDec = (n) => `$${dec(n, 2)}`;
+
+function equalOpts(symbols) {
+  const rules = state.config.rules;
+  const eq = state.equal;
+  const expiries = commonExpiries(symbols, rules, nyToday());
+  const expiry = eq.expiry && expiries.some((item) => item.expiry === eq.expiry) ? eq.expiry : defaultExpiry(expiries);
+  return {
+    expiries,
+    opts: {
+      prob: eq.prob ?? nearest(EQ_PROBS, rules.maxProb >= PROB_OFF ? 10 : rules.maxProb),
+      width: eq.width ?? nearest(EQ_WIDTHS, rules.width),
+      expiry,
+      fee: eq.fee,
+    },
+  };
+}
+
+function viewIgual() {
+  const symbols = listSymbols();
+  const { expiries, opts } = equalOpts(symbols);
+  const { rows, out } = opts.expiry ? equalRiskList(symbols, opts, nyToday()) : { rows: [], out: [] };
+  const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
+  const blockOf = (sym) => sym.b ?? "";
+  const list = rows
+    .map(
+      (row) => `<li>
+        <button class="deal ok" data-open="${esc(row.sym.s)}">
+          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} <span class="muted">· ${dec(row.otm)} % abajo</span>
+            <span class="deal-kpi num">${dec(row.ret)} %</span></span>
+          <span class="deal-sub small muted">prob. asig. ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · pierdes máx. ${usdDec(row.loss)} · rentab. neta ${dec(row.ret)} %${row.earnInside && row.sym.er ? ` · resultados ${esc(labelOf(row.sym.er.d))}` : ""}</span>
+        </button>
+      </li>`,
+    )
+    .join("");
+  const rest = out
+    .map(
+      (row) => `<li class="muted" style="padding:9px 0;opacity:.7"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="small">${esc(blockOf(row.sym))} · ${esc(row.why)}</span></li>`,
+    )
+    .join("");
+  const empty = !symbols.length
+    ? "Esperando el primer barrido de la lista."
+    : !opts.expiry
+      ? "Ningún vencimiento cae dentro del plazo de Reglas."
+      : "";
+  return `
+    ${header("Prueba", "Igual riesgo")}
+    <div class="filters">
+      <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted">Prob. objetivo</span>${EQ_PROBS.map((n) => chip("eq-prob", n, `${n} %`, opts.prob === n)).join("")}</div>
+      <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
+      <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
+      <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
+        <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
+    </div>
+    <p class="small muted" style="margin:0 0 8px">Todos a la misma prob. de asignación, mismo ancho y mismo vencimiento. La prob. se saca de los precios, así que a igual prob. lo que se cobra se parece mucho; la diferencia está en el coste de entrar y en la prob. de pérdida máxima.</p>
+    ${empty ? `<div class="empty"><h2>${empty}</h2></div>` : `<ul class="rows">${list}</ul>${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`}
+    ${foot()}`;
+}
+
 function dock() {
   const seen = Number(readLocal(LS_SEEN) ?? 0);
   const unseen = state.alerts.filter((alert) => alert.at > seen).length;
   const item = (id, label) =>
-    `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
+    `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "igual" ? '<span class="tag">prueba</span>' : ""}${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("favoritos", "Lista")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("favoritos", "Lista")}${item("deals", "Deals")}${item("igual", "Igual")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
+    state.tab === "deals" ? viewDeals() : state.tab === "igual" ? viewIgual() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${sheet()}`;
 }
 
@@ -1198,10 +1284,18 @@ function setPath(config, path, value) {
 const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-eq-prob],[data-eq-width],[data-eq-exp],[data-eq-fee],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
-  if (el.dataset.off) {
+  if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp || el.dataset.eqFee) {
+    const eq = state.equal;
+    if (el.dataset.eqProb) eq.prob = Number(el.dataset.eqProb);
+    if (el.dataset.eqWidth) eq.width = Number(el.dataset.eqWidth);
+    if (el.dataset.eqExp) eq.expiry = el.dataset.eqExp;
+    if (el.dataset.eqFee) eq.fee = Math.min(20, Math.max(0, Math.round((eq.fee + Number(el.dataset.eqFee) * 0.1) * 100) / 100));
+    writeLocal(LS_EQUAL, eq);
+    render();
+  } else if (el.dataset.off) {
     const name = el.dataset.off;
     changeConfig((config) => {
       config.off = config.off.includes(name) ? config.off.filter((s) => s !== name) : [...config.off, name];

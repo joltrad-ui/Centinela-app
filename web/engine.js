@@ -482,6 +482,94 @@ function buildBullPuts(sym, rules, today) {
   return out;
 }
 
+/** Fechas de vencimiento dentro del plazo de las reglas y cuántos nombres tienen cada una. */
+export function commonExpiries(symbols, rules, today = nyToday()) {
+  const count = new Map();
+  for (const sym of symbols) {
+    for (const [expiry] of sym.x ?? []) {
+      const dte = daysBetween(today, expiry);
+      if (dte < rules.minDte || dte > rules.maxDte) continue;
+      count.set(expiry, (count.get(expiry) ?? 0) + 1);
+    }
+  }
+  return [...count.entries()].map(([expiry, names]) => ({ expiry, names, label: labelOf(expiry) })).sort((a, b) => (a.expiry < b.expiry ? -1 : 1));
+}
+
+/** La fecha con más nombres (a igualdad, la más cercana). */
+export function defaultExpiry(list) {
+  return list.reduce((best, item) => (!best || item.names > best.names ? item : best), null)?.expiry ?? null;
+}
+
+/** "Igual riesgo": una fila por nombre con la misma prob. de asignación, ancho y vencimiento.
+ *  Corto = el strike más alto cuya prob. (la de mercado, o la fórmula de reserva) no pasa del objetivo.
+ *  Largo = el que deja exactamente el ancho. Crédito a precio natural; comisión por spread al abrir.
+ *  No aplica crédito mínimo, equilibrio ni interruptores. Estados: ok, sin-strike, sin-ancho, sin-vencimiento, sin-precio. */
+export function equalRisk(sym, opts, today = nyToday()) {
+  const { prob: target, width, expiry, fee = 0 } = opts;
+  const entry = (sym.x ?? []).find((item) => item[0] === expiry);
+  if (!entry) return { sym, status: "sin-vencimiento", why: "Sin ese vencimiento" };
+  const rows = entry[2];
+  const dte = daysBetween(today, expiry);
+  const market = marketProbs(rows);
+  const probOf = (index) => {
+    if (market[index] != null) return { value: market[index], src: "mercado" };
+    const row = rows[index];
+    const model = row[IV] > 0 ? probBelow(sym.p, row[K], dte, row[IV]) : row[DELTA] < 0 ? Math.abs(row[DELTA]) * 100 : null;
+    return model == null ? { value: null, src: null } : { value: model, src: "formula" };
+  };
+  let shortIndex = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (!(rows[i][K] < sym.p)) continue;
+    const p = probOf(i).value;
+    if (p == null || p > target + 1e-9) continue;
+    if (shortIndex < 0 || rows[i][K] > rows[shortIndex][K]) shortIndex = i;
+  }
+  if (shortIndex < 0) return { sym, status: "sin-strike", why: "Sin strike cerca: ninguno llega al objetivo" };
+  const short = rows[shortIndex];
+  const shortProb = probOf(shortIndex);
+  if (shortProb.value < target - 3 - 1e-9) {
+    return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${r1(shortProb.value)} %`.replace(".", ",") };
+  }
+  const longIndex = rows.findIndex((row) => Math.abs(row[K] - (short[K] - width)) < 1e-6);
+  if (longIndex < 0) return { sym, status: "sin-ancho", why: `Sin ese ancho: no hay strike en ${fmtStrike(short[K] - width)}` };
+  const long = rows[longIndex];
+  if (!(short[BID] > 0) || !(long[ASK] > 0)) return { sym, status: "sin-precio", why: "Sin precio: falta bid del corto o ask del largo" };
+  const credit = r2(short[BID] - long[ASK]);
+  if (credit <= 0) return { sym, status: "sin-precio", why: "Sin precio: a precio natural no hay crédito" };
+  const net = credit * 100 - fee;
+  const loss = width * 100 - net;
+  if (!(loss > 0)) return { sym, status: "sin-precio", why: "Sin precio: el crédito iguala el ancho" };
+  const longProb = probOf(longIndex).value;
+  const earn = sym.er && sym.er.d ? sym.er : null;
+  const earnDte = earn ? daysBetween(today, earn.d) : null;
+  return {
+    sym,
+    status: "ok",
+    expiry,
+    dte,
+    shortStrike: short[K],
+    longStrike: long[K],
+    otm: r1(((sym.p - short[K]) / sym.p) * 100),
+    width,
+    credit,
+    prob: r1(shortProb.value),
+    probSrc: shortProb.src,
+    longProb: longProb == null ? null : r1(longProb),
+    net: r2(net),
+    loss: r2(loss),
+    ret: r1((net / loss) * 100),
+    earnInside: earnDte != null && earnDte >= 0 && earnDte <= dte + 2,
+  };
+}
+
+/** Todas las filas: las que tienen precio por rentabilidad neta, y al final las que no. */
+export function equalRiskList(symbols, opts, today = nyToday()) {
+  const all = symbols.map((sym) => equalRisk(sym, opts, today));
+  const rows = all.filter((row) => row.status === "ok").sort((a, b) => b.ret - a.ret);
+  const out = all.filter((row) => row.status !== "ok");
+  return { rows, out };
+}
+
 /** Equilibrio: ganancia esperada partida por pérdida esperada.
  *  Ganas el crédito con probabilidad (1 − p) y pierdes la pérdida máxima con
  *  probabilidad p, así que queda rentabilidad × (1 − p) / p.

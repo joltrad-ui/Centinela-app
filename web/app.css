@@ -223,3 +223,6 @@ nav.dock svg { width: 20px; height: 20px; }
 .pick { margin-top: 12px; }
 .pick .chips { margin-top: 6px; flex-wrap: wrap; }
 .pick .chip b { font-weight: 500; color: var(--fg); margin-right: 4px; }
+
+nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; line-height: 1; color: var(--brass); letter-spacing: 0.02em; }
+.frow > .small { flex: none; }
