@@ -14,7 +14,15 @@ Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de re
 
 ## Cómo está montado
 
-Un solo repositorio público de GitHub. Cada media hora, en horario de mercado de EE. UU., GitHub barre el universo y publica la app junto con el resultado en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/`. En repositorios públicos esto es gratis y sin límite de minutos.
+Un solo repositorio público de GitHub. La app y el barrido se publican juntos en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/` (rama `gh-pages`), pero cada uno por su lado:
+
+- **Publicar** (`.github/workflows/publicar.yml`): cada cambio en `web/` que llega a `main` publica la app en un par de minutos, con el barrido que ya hubiera. No barre nunca.
+- **Barrido** (`.github/workflows/barrido.yml`): solo por horario o a mano. La lista rápida (`scanner/rapida.json`, unos 30 nombres muy líquidos repartidos por bloques) se barre cada media hora en horario de mercado y tarda menos de un minuto. El universo completo, tres veces al día y tarda de 9 a 13 minutos.
+- Ninguno pisa al otro: publicar solo cambia los archivos de la app y el barrido solo la carpeta `data/`.
+
+La app guarda el último barrido en el dispositivo: al abrirla lo enseña al momento y solo descarga lo que haya cambiado.
+
+En repositorios públicos todo esto es gratis y sin límite de minutos.
 
 ### Qué es público y qué no
 
@@ -36,9 +44,10 @@ Consecuencias de que sea así:
 
 ## Puesta en marcha
 
-1. Sube este proyecto entero a un repositorio público, incluida la carpeta `.github`. El primer barrido arranca solo y tarda unos diez minutos.
-2. Cuando termine: **Settings → Pages → Source: Deploy from a branch → gh-pages / (root)**.
-3. Abre `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/`. En Chrome: menú → **Instalar app**.
+1. Sube este proyecto entero a un repositorio público, incluida la carpeta `.github`. La app se publica sola.
+2. En **Actions → Barrido → Run workflow**, elige `completa` para el primer barrido (unos diez minutos).
+3. **Settings → Pages → Source: Deploy from a branch → gh-pages / (root)**.
+4. Abre `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/`. En Chrome: menú → **Instalar app**.
 
 ### Avisos al móvil
 
@@ -95,5 +104,7 @@ El barrido lee de CBOE 548 de los 550 nombres en unos 8 minutos y medio (CBOE ad
 - `scanner/scan.mjs` el barrido y los avisos.
 - `scanner/universe.json` lista de reserva del universo.
 - `config.json` reglas de fábrica. Solo se usa en el modo ordenador.
-- `.github/workflows/barrido.yml` el barrido automático.
+- `scanner/rapida.json` la lista rápida, por bloques.
+- `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
+- `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar la otra.
 - `test/` pruebas y generador de datos de ejemplo.

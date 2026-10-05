@@ -1,0 +1,28 @@
+name: Publicar
+
+# Publica la app (web/) con el barrido que ya hay. No barre nunca: tarda segundos.
+# Repositorio público: nada personal aquí ni en el registro.
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "scripts/rama.sh", ".github/workflows/publicar.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publicar
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publicar la app
+        env:
+          REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: bash scripts/rama.sh app web

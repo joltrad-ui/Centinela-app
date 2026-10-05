@@ -1,20 +1,29 @@
 name: Barrido
 
+# Solo por horario o a mano: un push no barre nunca.
+#   Lista rápida (scanner/rapida.json): cada media hora en horario de mercado.
+#   Universo completo: tres veces al día.
 # Repositorio público: todo lo que se escribe aquí o en el registro lo puede leer cualquiera.
 # Las reglas y los favoritos entran por secretos y no se publican.
 
 on:
   schedule:
-    # Cada media hora en horario de mercado de EE. UU. (hora UTC), de lunes a viernes.
-    - cron: "7,37 13-21 * * 1-5"
+    # Horas en UTC, de lunes a viernes.
+    - cron: "7,37 13-21 * * 1-5" # lista rápida
+    - cron: "45 14,19 * * 1-5" # universo completo
+    - cron: "15 17 * * 1-5" # universo completo
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: ["web/**", "scanner/**", ".github/workflows/barrido.yml"]
+    inputs:
+      lista:
+        description: Qué barrer
+        type: choice
+        options: [rapida, completa]
+        default: rapida
 
 permissions:
   contents: write
 
+# Los barridos van de uno en uno entre sí; publicar la app no espera por ellos.
 concurrency:
   group: barrido
   cancel-in-progress: false
@@ -25,12 +34,21 @@ jobs:
     timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Qué toca
+        id: plan
+        run: |
+          lista=completa
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            lista="${{ inputs.lista }}"
+          elif [ "${{ github.event.schedule }}" = "7,37 13-21 * * 1-5" ]; then
+            lista=rapida
+          fi
+          echo "lista=$lista" >> "$GITHUB_OUTPUT"
 
       - name: Barrido anterior
         run: |
@@ -39,34 +57,14 @@ jobs:
             git archive FETCH_HEAD data 2>/dev/null | tar -x -C out || true
           fi
 
-      # Un cambio que solo toca la app (pantalla o motor) se publica al momento, con el barrido que ya había.
-      - name: ¿Hace falta barrer?
-        id: plan
-        run: |
-          barrer=true
-          if [ "${{ github.event_name }}" = "push" ] && [ -f out/data/scan.json ]; then
-            if cambios=$(git diff --name-only HEAD~1 HEAD 2>/dev/null); then
-              if ! echo "$cambios" | grep -qE '^(scanner/|\.github/)'; then barrer=false; fi
-            fi
-          fi
-          echo "barrer=$barrer" >> "$GITHUB_OUTPUT"
-
       - name: Barrer
-        if: steps.plan.outputs.barrer == 'true'
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           CENTINELA_CONFIG: ${{ secrets.CENTINELA_CONFIG }}
           APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: node scanner/scan.mjs --public --out out
+        run: node scanner/scan.mjs --public --out out ${{ steps.plan.outputs.lista == 'rapida' && '--lista rapida' || '' }}
 
-      - name: Publicar la app y el barrido
-        run: |
-          cp -r web/. out/
-          touch out/.nojekyll
-          cd out
-          git init -q -b gh-pages
-          git config user.name "centinela"
-          git config user.email "centinela@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Barrido"
-          git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" gh-pages
+      - name: Guardar el barrido
+        env:
+          REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: bash scripts/rama.sh datos out/data

@@ -5,6 +5,7 @@
 //   node scanner/scan.mjs --serve         barre cada 30 min y sirve la app (modo ordenador)
 //
 // Opciones: --out <carpeta>  --port <n>  --prev-url <url>  --fixtures <carpeta>  --limit <n>
+//           --lista rapida   solo la lista rápida; deja el universo como estaba.
 //           --public   lo que se escribe va a publicarse: nada personal en claro.
 //
 // Modo --public. Las reglas y los favoritos no se leen de config.json sino del
@@ -37,6 +38,10 @@ const DATA = path.join(OUT, "data");
 const CONFIG_PATH = path.join(ROOT, "config.json");
 const FIXTURES = args.fixtures ? path.resolve(args.fixtures) : null;
 const PUBLIC = Boolean(args.public);
+// --lista rapida: solo la lista rápida (scanner/rapida.json), a data/rapido.json.
+// Sin esa opción, el universo completo, a data/scan.json.
+const FAST = args.lista === "rapida";
+const OUT_FILE = FAST ? "rapido.json" : "scan.json";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
@@ -448,8 +453,14 @@ export async function scanOnce({ force = false } = {}) {
     const ivHist = await loadPrev("iv.json", { dates: [], s: {} });
 
     const universe = await loadUniverse(config);
-    const list = args.limit ? universe.symbols.slice(0, Number(args.limit)) : universe.symbols;
-    log(`Barrido de ${list.length} nombres${universe.fresh ? "" : " (lista de reserva)"}`);
+    let list = universe.symbols;
+    if (FAST) {
+      const fast = JSON.parse(await readFile(path.join(ROOT, "scanner", "rapida.json"), "utf8"));
+      const wanted = new Set(Object.values(fast.bloques ?? {}).flat().map(cleanSymbol).filter(Boolean));
+      list = [...wanted];
+    }
+    if (args.limit) list = list.slice(0, Number(args.limit));
+    log(`${FAST ? "Lista rápida" : "Barrido"} de ${list.length} nombres${universe.fresh ? "" : " (lista de reserva)"}`);
 
     // Motivo de cada nombre sin lectura, para poder ver qué pasa desde la app.
     const why = new Map();
@@ -501,7 +512,7 @@ export async function scanOnce({ force = false } = {}) {
     // (como mucho de hace tres horas), marcado con la hora de esos datos.
     const kept = [];
     if (why.size && !FIXTURES) {
-      const before = await loadPrev("scan.json", null).catch(() => null);
+      const before = await loadPrev(OUT_FILE, null).catch(() => null);
       const old = new Map((before?.symbols ?? []).map((sym) => [sym.s, sym]));
       list.forEach((symbol, index) => {
         if (read[index]) return;
@@ -529,14 +540,14 @@ export async function scanOnce({ force = false } = {}) {
       sym.er = hit && hit.d && hit.d >= today ? { d: hit.d, x: hit.x } : null;
     }
 
-    // IV diaria por nombre, para tener historia propia.
+    // IV diaria por nombre, para tener historia propia. La anota el barrido completo.
     const dates = ivHist.dates ?? [];
     let col = dates.indexOf(today);
     if (col < 0) {
       dates.push(today);
       col = dates.length - 1;
     }
-    for (const sym of symbols) {
+    for (const sym of FAST ? [] : symbols) {
       if (sym.iv30 == null) continue;
       const serie = ivHist.s[sym.s] ?? [];
       while (serie.length < col) serie.push(null);
@@ -550,8 +561,16 @@ export async function scanOnce({ force = false } = {}) {
     }
     ivHist.dates = dates;
 
+    // Los avisos miran siempre el universo entero: en la lista rápida, el último barrido
+    // completo con los nombres recién leídos puestos encima.
+    let seen = symbols;
+    if (FAST) {
+      const full = await loadPrev("scan.json", null).catch(() => null);
+      const fresh = new Map(symbols.map((sym) => [sym.s, sym]));
+      seen = [...(full?.symbols ?? []).filter((sym) => !fresh.has(sym.s)), ...symbols];
+    }
     const open = force || FIXTURES ? true : marketOpenNow();
-    const { alerts: live, passing } = canAlert ? buildAlerts(config, symbols, state, today, open) : { alerts: [], passing: 0 };
+    const { alerts: live, passing } = canAlert ? buildAlerts(config, seen, state, today, open) : { alerts: [], passing: 0 };
     const pushed = await pushAlerts(live);
     const at = Date.now();
     state.log = [...live.map((alert) => ({ at, ...alert })), ...(state.log ?? [])].slice(0, 80);
@@ -569,8 +588,12 @@ export async function scanOnce({ force = false } = {}) {
       push: PUBLIC ? canAlert : pushed.configured,
       symbols,
     };
-    await writeJson(path.join(DATA, "scan.json"), scan);
-    await writeJson(path.join(DATA, "iv.json"), ivHist);
+    await writeJson(path.join(DATA, OUT_FILE), scan);
+    if (!FAST) await writeJson(path.join(DATA, "iv.json"), ivHist);
+    // Hora de cada archivo, para que la app solo descargue el que ha cambiado.
+    const version = { scan: 0, rapido: 0, ...(await loadPrev("version.json", {}).catch(() => ({}))) };
+    version[FAST ? "rapido" : "scan"] = at;
+    await writeJson(path.join(DATA, "version.json"), { scan: Number(version.scan) || 0, rapido: Number(version.rapido) || 0 });
     if (PUBLIC) {
       // Público: solo lo genérico en claro; lo de los avisos, cifrado.
       await writeJson(path.join(DATA, "state.json"), { v: 1, earn: state.earn });
@@ -590,7 +613,7 @@ export async function scanOnce({ force = false } = {}) {
         : `Leídos ${symbols.length}, sin lectura ${failures.length}, cumplen ${passing}, avisos ${live.length}` +
             ` (enviados ${pushed.sent}), ${secs}s${open ? "" : " · mercado cerrado: sin avisos"}`,
     );
-    if (process.env.GITHUB_ACTIONS) console.log(`::notice title=Barrido::Leídos ${symbols.length - kept.length}, del barrido anterior ${kept.length}, sin lectura ${failures.length}, ${secs}s. Motivos: ${JSON.stringify(reasons)}`);
+    if (process.env.GITHUB_ACTIONS) console.log(`::notice title=${FAST ? "Lista rápida" : "Barrido"}::Leídos ${symbols.length - kept.length}, del barrido anterior ${kept.length}, sin lectura ${failures.length}, ${secs}s. Motivos: ${JSON.stringify(reasons)}`);
     if (failures.length) log(`Motivos: ${JSON.stringify(reasons)}`);
     if (failures.length) log(`Sin lectura: ${failures.slice(0, 30).join(" ")}${failures.length > 30 ? " …" : ""}`);
     return { symbols: symbols.length, failures: failures.length, passing, alerts: live.length };

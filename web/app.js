@@ -54,6 +54,8 @@ const state = {
   publishedAt: 0,
   mode: "nube", // "nube" (GitHub) u "ordenador"
   loading: true,
+  checking: false, // enseñando lo guardado mientras se mira si hay barrido nuevo
+  offline: false,
   error: null,
   query: "",
   detail: null,
@@ -136,6 +138,111 @@ async function ghJson(file, ref) {
   return res.json();
 }
 
+// ---------- barrido guardado en el dispositivo ----------
+// La app publicada enseña al momento lo último que guardó y solo descarga un archivo
+// del barrido cuando data/version.json dice que ha cambiado.
+
+const DATA_CACHE = "centinela-datos-v1";
+const FULL_FILE = "data/scan.json";
+const FAST_FILE = "data/rapido.json";
+
+async function keptJson(name) {
+  try {
+    const cache = await caches.open(DATA_CACHE);
+    const hit = await cache.match(name);
+    return hit ? await hit.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Descarga un archivo del barrido y lo deja guardado para la próxima vez. */
+async function fetchAndKeep(name, stamp) {
+  const res = await fetch(`${name}?v=${stamp}`, { cache: "no-store" });
+  if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
+  const text = await res.text();
+  const json = JSON.parse(text);
+  try {
+    const cache = await caches.open(DATA_CACHE);
+    await cache.put(name, new Response(text, { headers: { "Content-Type": "application/json" } }));
+  } catch {
+    /* sin sitio para guardar: se descargará otra vez la próxima */
+  }
+  return json;
+}
+
+/** El universo completo con la lista rápida puesta encima, si es más reciente. */
+function mergeScans(full, fast) {
+  if (!full?.symbols?.length && !fast?.symbols?.length) return null;
+  if (!fast?.symbols?.length || (full?.symbols?.length && !(fast.at > full.at))) return { ...full, fullAt: full.at, fastAt: 0 };
+  if (!full?.symbols?.length) return { ...fast, fullAt: 0, fastAt: fast.at };
+  const fresh = new Map(fast.symbols.map((sym) => [sym.s, sym]));
+  const symbols = [...full.symbols.filter((sym) => !fresh.has(sym.s)), ...fast.symbols].sort((a, b) => a.s.localeCompare(b.s));
+  return {
+    ...full,
+    at: fast.at,
+    today: fast.today,
+    push: fast.push,
+    failed: (full.failed ?? []).filter((symbol) => !fresh.has(symbol)),
+    symbols,
+    fullAt: full.at,
+    fastAt: fast.at,
+  };
+}
+
+async function loadPublic() {
+  const local = readLocal(LS_CONFIG);
+  if (local) state.config = normalizeConfig(local);
+  state.alerts = [];
+  state.publishedAt = 0;
+  let [full, fast] = await Promise.all([keptJson(FULL_FILE), keptJson(FAST_FILE)]);
+  const show = () => {
+    state.scan = mergeScans(full, fast);
+    render();
+  };
+  if (full || fast) {
+    state.loading = false;
+    state.checking = true;
+    show();
+  }
+  let offline = false;
+  try {
+    let version = null;
+    try {
+      version = await getJson("data/version.json");
+    } catch (error) {
+      if (error?.message !== "404") throw error; // 404: todavía no hay archivo de versiones
+    }
+    const want = [
+      [FULL_FILE, version ? version.scan : Date.now(), full, (json) => (full = json), !version],
+      [FAST_FILE, version ? version.rapido : 0, fast, (json) => (fast = json), false],
+    ];
+    await Promise.all(
+      want.map(async ([name, stamp, have, set, always]) => {
+        if (!(stamp > 0) || (!always && have?.at === stamp)) return;
+        try {
+          set(await fetchAndKeep(name, stamp));
+          show();
+        } catch (error) {
+          if (!error?.status) throw error;
+        }
+      }),
+    );
+  } catch {
+    offline = true;
+  }
+  state.checking = false;
+  state.loading = false;
+  state.scan = mergeScans(full, fast);
+  state.error = state.scan
+    ? null
+    : offline
+      ? "No se pudo leer el barrido. Comprueba la conexión."
+      : "Todavía no hay ningún barrido publicado.";
+  state.offline = offline && Boolean(state.scan);
+  render();
+}
+
 // ---------- carga ----------
 
 async function load() {
@@ -173,12 +280,17 @@ async function load() {
     render();
     return;
   }
-  try {
-    await getJson("api/ping");
-    state.mode = "ordenador";
-  } catch {
-    state.mode = "nube";
+  if (window.location.hostname.endsWith(".github.io")) {
+    state.mode = "nube"; // publicada: no hay ordenador al que preguntar
+  } else {
+    try {
+      await getJson("api/ping");
+      state.mode = "ordenador";
+    } catch {
+      state.mode = "nube";
+    }
   }
+  if (isPublic()) return loadPublic();
   // Con la llave puesta, los datos salen del repositorio privado; si no, de la propia dirección.
   const fromRepo = state.mode === "nube" && ghReady();
   try {
@@ -519,10 +631,15 @@ const ICONS = {
 
 function header(eyebrow, title) {
   const scan = state.scan;
+  const times = !scan
+    ? ""
+    : scan.fastAt && scan.fullAt
+      ? `Lista rápida ${when(scan.fastAt)} · universo ${when(scan.fullAt)}`
+      : `Barrido ${when(scan.at)}`;
   const status = state.loading
     ? "Leyendo el barrido…"
     : scan
-      ? `Barrido ${when(scan.at)} · ${esc(scan.source)}`
+      ? `${times} · ${esc(scan.source)}${state.checking ? " · comprobando si hay uno nuevo…" : state.offline ? " · sin conexión: es el último guardado" : ""}`
       : "Sin barrido todavía";
   return `
     <header class="top">

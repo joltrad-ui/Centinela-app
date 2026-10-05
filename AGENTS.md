@@ -30,7 +30,15 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
 - `scanner/universe.json`: lista de reserva (S&P 500, Nasdaq 100, ETF).
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
-- `.github/workflows/barrido.yml`: barrido cada media hora en horario de mercado, con `--public`. Publica `web/` y `data/` juntos en la rama `gh-pages`. Un cambio que solo toca `web/` se publica sin volver a barrer.
+- `scanner/rapida.json`: lista rápida genérica, por bloques. No son los favoritos de nadie.
+- `.github/workflows/publicar.yml`: en cada push a `main` que toque `web/`, publica la app. No barre.
+- `.github/workflows/barrido.yml`: solo por horario o a mano. Lista rápida (`--lista rapida`, a `data/rapido.json`) cada media hora; universo completo (a `data/scan.json`) tres veces al día. Los dos con `--public`.
+- `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/`; `datos` = solo `data/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
+- `data/version.json`: hora de `scan.json` y de `rapido.json`. La app guarda los dos en el dispositivo (Cache API) y solo descarga el que ha cambiado; luego pone la lista rápida encima del universo (`mergeScans`).
+
+## Cómo probar sin esperar
+
+Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemplo`, y `node scanner/scan.mjs --public --fixtures test/fixtures --out /tmp/x [--lista rapida]`. Un barrido real del universo tarda más de diez minutos. Agrupar los cambios en un solo envío.
 
 ## Privacidad (el repositorio es público)
 
