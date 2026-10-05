@@ -192,3 +192,9 @@ test("las reglas guardadas se sanean", () => {
   assert.deepEqual(config.favorites, ["AAPL"]);
   assert.equal(config.alerts.universeTop, 0);
 });
+
+test("off: los nombres quitados de la lista se limpian y se conservan", () => {
+  const config = normalizeConfig({ off: ["nvda", "NVDA", "??", "xle"] });
+  assert.deepEqual(config.off, ["NVDA", "XLE"]);
+  assert.deepEqual(normalizeConfig({}).off, []);
+});

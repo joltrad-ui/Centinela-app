@@ -656,7 +656,7 @@ function metrics(sp) {
   </dl>`;
 }
 
-function card(sym, res) {
+function card(sym, res, withToggle = false) {
   const sp = res.best;
   const up = sym.c >= 0;
   const earn = sp?.earnInside && sym.er ? `<p class="small brass" style="margin-top:8px">Resultados ${esc(labelOf(sym.er.d))}</p>` : "";
@@ -674,6 +674,7 @@ function card(sym, res) {
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start">
         <div class="price"><p class="num" style="font-weight:500">${money(sym.p)}</p><p class="num small ${up ? "up" : "down"}">${signed(sym.c)}</p></div>
+        ${withToggle ? toggle(sym.s, true) : ""}
       </div>
     </div>
     ${sp ? `<p class="line">${esc(spreadLine(sp))}</p>${metrics(sp)}` : noSpread}
@@ -692,14 +693,35 @@ function blockOrder() {
 
 /** La lista: los nombres de la lista base, que es lo único que se barre.
  *  Fuera de la app publicada (ordenador, versión de prueba), todo lo que traiga el barrido. */
-function listSymbols() {
+function allListSymbols() {
   const symbols = state.scan?.symbols ?? [];
   if (symbols.some((sym) => sym.b)) return symbols.filter((sym) => sym.b);
   return isPublic() ? [] : symbols;
 }
 
+/** Los nombres que él deja puestos: la lista base menos los que ha quitado (solo en el dispositivo). */
+function listSymbols() {
+  const off = state.config.off ?? [];
+  return allListSymbols().filter((sym) => !off.includes(sym.s));
+}
+
+function offCard(sym) {
+  return `<li class="card off" style="opacity:.6">
+    <div class="card-head">
+      <div style="min-width:0"><p class="sym">${esc(sym.s)}</p><p class="name small muted">${esc(nameOf(sym))} · fuera de tu lista</p></div>
+      ${toggle(sym.s, false)}
+    </div>
+  </li>`;
+}
+
+function toggle(symbol, on) {
+  return `<button class="chip quiet toggle" data-off="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar" : "Poner"} ${esc(symbol)} ${on ? "de" : "en"} mi lista">${on ? "Quitar" : "Poner"}</button>`;
+}
+
 function viewFavoritos() {
   const today = nyToday();
+  const everyone = allListSymbols();
+  const offNames = state.config.off ?? [];
   const rows = listSymbols().map((sym) => ({ sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) }));
   const rank = (row) => (row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
   rows.sort((a, b) => rank(a) - rank(b) || (a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
@@ -707,10 +729,11 @@ function viewFavoritos() {
   const groups = [...blockOrder(), NO_BLOCK]
     .map((name) => {
       const own = rows.filter((row) => (row.sym.b ?? NO_BLOCK) === name);
-      if (!own.length) return "";
+      const out = everyone.filter((sym) => (sym.b ?? NO_BLOCK) === name && offNames.includes(sym.s));
+      if (!own.length && !out.length) return "";
       const ok = own.filter((row) => row.res.status === "entrada").length;
       return `<h2 class="group">${esc(name)}<span class="small muted">${ok} de ${own.length} ${own.length === 1 ? "cumple" : "cumplen"}</span></h2>
-        <ul class="cards">${own.map((row) => card(row.sym, row.res)).join("")}</ul>`;
+        <ul class="cards">${own.map((row) => card(row.sym, row.res, true)).join("")}${out.map(offCard).join("")}</ul>`;
     })
     .join("");
   const order = ORDERS.find((o) => o.id === state.config.order);
@@ -725,8 +748,8 @@ function viewFavoritos() {
       </div>
     </div>
     <p class="small muted" style="margin:-6px 0 4px">${esc(order?.hint ?? "")}</p>
-    <p class="small muted" style="margin:0 0 6px">${rows.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "nombre cumple" : "nombres cumplen"}. Los que no pasan dicen el motivo.` : ""}</p>
-    ${rows.length ? groups : empty}
+    <p class="small muted" style="margin:0 0 6px">${everyone.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "nombre cumple" : "nombres cumplen"} (${rows.length} de ${everyone.length} en tu lista). Con Quitar / Poner eliges cuáles ves; la elección se queda solo en este dispositivo.` : ""}</p>
+    ${everyone.length ? groups : empty}
     ${foot()}`;
 }
 
@@ -836,8 +859,8 @@ function viewReglas() {
 
 /** Texto para pegar en el secreto CENTINELA_CONFIG de GitHub. */
 function secretText() {
-  const { rules, order, alerts } = state.config;
-  return JSON.stringify({ rules, order, alerts });
+  const { rules, order, alerts, off } = state.config;
+  return JSON.stringify({ rules, order, alerts, off });
 }
 
 function secretBlock() {
@@ -1175,10 +1198,15 @@ function setPath(config, path, value) {
 const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
-  if (el.dataset.step) {
+  if (el.dataset.off) {
+    const name = el.dataset.off;
+    changeConfig((config) => {
+      config.off = config.off.includes(name) ? config.off.filter((s) => s !== name) : [...config.off, name];
+    });
+  } else if (el.dataset.step) {
     const path = el.dataset.step;
     const current = path.split(".").reduce((obj, key) => obj[key], state.config);
     const by = Number(el.dataset.by);

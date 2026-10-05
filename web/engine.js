@@ -134,6 +134,7 @@ export function normalizeConfig(input) {
     order: ORDERS.some((o) => o.id === row.order) ? row.order : "equilibrio",
     favorites,
     extra: symbolList(row.extra, 200),
+    off: symbolList(row.off, 200), // nombres de la lista que él ha quitado de su selección
     alerts: {
       favorites: alerts.favorites !== false,
       universeTop: 0, // ya no hay universo: solo avisan los favoritos

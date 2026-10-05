@@ -26,7 +26,7 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 ## Estructura
 
 - `web/engine.js`: motor puro, compartido por la app y el barrido. Reglas, construcción de spreads, columnas, orden, embudo. Las estrategias se registran en `STRATEGIES`; hoy solo `bullPut`.
-- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Lista, Deals, Avisos, Reglas). La principal es Lista, agrupada por bloque: enseña todos los nombres de la lista base. No hay "universo" ni "favoritos" que elegir: una sola lista. Instalable (manifest y `sw.js`).
+- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Lista, Deals, Avisos, Reglas). La principal es Lista, agrupada por bloque: enseña todos los nombres de la lista base. Una sola lista: se ven los 32 y cada nombre tiene Quitar / Poner (`config.off`, solo en el dispositivo; los quitados quedan atenuados). Instalable (manifest y `sw.js`).
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
 - `scanner/universe.json`: la lista base, genérica: 32 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre y lo que enseña la app, entera.
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
@@ -45,6 +45,7 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 - Los commits se firman con una dirección `@users.noreply.github.com`.
 - Las reglas viven en el dispositivo (`localStorage`) y, para los avisos, en el secreto `CENTINELA_CONFIG`. La lista de nombres es pública (`scanner/universe.json`). El estado de los avisos va cifrado en `data/privado.json` con clave derivada de `NTFY_TOPIC` y tamaño fijo.
 - En modo `--public` solo se barre la lista base, nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista es pública: antes de añadir o quitar nombres a petición del dueño, avisarle de que el cambio se ve en el repositorio y de que una lista recortada a lo que opera lo delata.
+- Qué nombres quita o deja el dueño (`off`) vive solo en `localStorage` y en `CENTINELA_CONFIG`; nunca en el repositorio ni en `data/`. El barrido público sigue leyendo los 32.
 - Antes de añadir cualquier archivo a `data/` o cualquier línea al registro, comprobar que no depende de la configuración personal.
 
 ## Datos

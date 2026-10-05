@@ -109,7 +109,7 @@ dl { margin: 0; }
 .star[aria-pressed="true"] { color: var(--brass); }
 .row-open { position: absolute; inset: 0; border-radius: 16px; }
 .card > *:not(.row-open) { position: relative; pointer-events: none; }
-.card .star { pointer-events: auto; }
+.card .star, .card .toggle { pointer-events: auto; }
 
 .table-wrap { display: none; background: var(--surface); border-radius: 16px; box-shadow: var(--border); overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }

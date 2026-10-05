@@ -523,7 +523,7 @@ export async function scanOnce({ force = false } = {}) {
 
     // Una sola lista: avisa cualquier nombre barrido que pase a cumplir.
     const open = force || FIXTURES ? true : marketOpenNow();
-    const { alerts: live, passing } = canAlert ? buildAlerts({ ...config, favorites: symbols.map((sym) => sym.s) }, symbols, state, today, open) : { alerts: [], passing: 0 };
+    const { alerts: live, passing } = canAlert ? buildAlerts({ ...config, favorites: symbols.map((sym) => sym.s).filter((s) => !config.off.includes(s)) }, symbols, state, today, open) : { alerts: [], passing: 0 };
     const pushed = await pushAlerts(live);
     const at = Date.now();
     state.log = [...live.map((alert) => ({ at, ...alert })), ...(state.log ?? [])].slice(0, 80);
