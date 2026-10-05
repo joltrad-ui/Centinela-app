@@ -28,6 +28,10 @@ const MAX_GAP_DAYS = 10; // hueco de calendario a partir del cual la historia an
 // Nombres cuya sigla tuvo antes otro producto: su historia empieza aquí.
 const DESDE = { IBIT: "2024-01-11" };
 
+// En GitHub Actions deja el resultado como anotación del trabajo, que se lee sin abrir el registro.
+const note = (kind, text) => {
+  if (process.env.GITHUB_ACTIONS) console.log(`::${kind}::${String(text).replace(/\r?\n/g, " ").slice(0, 3000)}`);
+};
 const log = (...parts) => console.log(new Date().toISOString().slice(11, 19), ...parts);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const urlOf = (symbol) => `https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/${encodeURIComponent(symbol)}.json`;
@@ -74,7 +78,7 @@ export function toSeries(symbol, body, today) {
     }
   }
   const closes = dates.map((date) => Math.round(byDate.get(date) * 100) / 100);
-  return { d: dates[0] ?? null, last: dates.at(-1) ?? null, c: closes, cut };
+  return { d: dates[0] ?? null, last: dates.at(-1) ?? null, c: closes, cut, dates };
 }
 
 /** Motivo por el que una serie no vale, o "" si vale. */
@@ -82,7 +86,9 @@ export function checkSeries(series, today) {
   if (series.c.length < 2) return "sin cierres";
   if (sessionsBetween(series.last, today) > MAX_STALE) return `último cierre atrasado (${series.last})`;
   for (let i = 1; i < series.c.length; i++) {
-    if (Math.abs(series.c[i] / series.c[i - 1] - 1) > MAX_JUMP) return "salto diario mayor del 40 %";
+    if (Math.abs(series.c[i] / series.c[i - 1] - 1) > MAX_JUMP) {
+      return `salto diario mayor del 40 % (${series.dates?.[i] ?? "?"}: ${series.c[i - 1]} → ${series.c[i]})`;
+    }
   }
   return "";
 }
@@ -123,7 +129,7 @@ async function main() {
   }
   if (bad.length) throw new Error(`Control fallido, no se publica: ${bad.join("; ")}`);
   const got = Object.keys(symbols).length;
-  if (got < names.length * 0.8) throw new Error(`Solo hay historia de ${got} de ${names.length} nombres; no se publica`);
+  if (got < names.length * 0.8) throw new Error(`Solo hay historia de ${got} de ${names.length} nombres (sin respuesta: ${missing.join(", ")}); no se publica`);
 
   await mkdir(OUT, { recursive: true });
   // Si no ha cambiado nada (fin de semana, festivo), se conserva la hora anterior
@@ -140,12 +146,15 @@ async function main() {
   }
   await writeFile(file, JSON.stringify({ v: 1, at, last, example: Boolean(FIXTURES), symbols }));
   await writeFile(path.join(OUT, "version.json"), JSON.stringify({ cierres: at }));
-  log(`Con historia ${got}, sin historia ${missing.length}, recortados por hueco ${shortened}, último cierre ${last}`);
+  const summary = `Con historia ${got}, sin historia ${missing.length}${missing.length ? ` (${missing.join(", ")})` : ""}, recortados por hueco ${shortened}, último cierre ${last}`;
+  log(summary);
+  note("notice", summary);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
     console.error(error.message);
+    note("error", error.message);
     process.exit(1);
   });
 }
