@@ -41,7 +41,7 @@ export const DEFAULT_CONFIG = {
   order: "equilibrio",
   favorites: ["AAPL", "NVDA", "MSFT", "SPY"],
   extra: [],
-  alerts: { favorites: true, universeTop: 5 },
+  alerts: { favorites: true, universeTop: 0 },
 };
 
 export const ORDERS = [
@@ -136,7 +136,7 @@ export function normalizeConfig(input) {
     extra: symbolList(row.extra, 200),
     alerts: {
       favorites: alerts.favorites !== false,
-      universeTop: Math.round(clamp(alerts.universeTop, 0, 25, DEFAULT_CONFIG.alerts.universeTop)),
+      universeTop: 0, // ya no hay universo: solo avisan los favoritos
     },
   };
 }

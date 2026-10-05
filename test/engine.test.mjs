@@ -190,5 +190,5 @@ test("las reglas guardadas se sanean", () => {
   assert.equal(config.rules.maxDte, 40);
   assert.equal(config.rules.width, 5);
   assert.deepEqual(config.favorites, ["AAPL"]);
-  assert.equal(config.alerts.universeTop, 25);
+  assert.equal(config.alerts.universeTop, 0);
 });

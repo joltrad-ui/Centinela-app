@@ -1,13 +1,13 @@
 # Centinela
 
-Filtro de bull puts sobre un universo amplio de acciones y ETF de EE. UU. No da órdenes ni consejos: barre, filtra con tus reglas, ordena con tu orden y te avisa.
+Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da órdenes ni consejos: barre, filtra con tus reglas, ordena con tu orden y te avisa.
 
 ## Qué hace
 
-- **Universo**: barre unas 550 empresas y ETF (S&P 500, Nasdaq 100 y 32 ETF). Enseña los que cumplen tus reglas, con el orden que elijas.
-- **Favoritos**: tu lista acotada. Cada nombre se queda aunque no pase, con el motivo.
+- **Lista base**: 32 nombres con opciones líquidas, repartidos en bloques (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json` y es igual para cualquiera.
+- **Favoritos**: la pantalla principal. Los eliges dentro de la lista base y se ven agrupados por bloque. Cada nombre se queda aunque no pase, con el motivo.
 - **Deals**: todos los bull puts de tus favoritos en una sola lista, con filtros por ancho, vencimiento y % abajo.
-- **Avisos**: cuando un favorito pasa a cumplir, o un nombre nuevo entra entre los primeros del universo. Llegan al móvil con la app gratuita ntfy.
+- **Avisos**: cuando un favorito pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
 - **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
 
 Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de resultados, de StockAnalysis.
@@ -17,7 +17,7 @@ Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de re
 Un solo repositorio público de GitHub. La app y el barrido se publican juntos en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/` (rama `gh-pages`), pero cada uno por su lado:
 
 - **Publicar** (`.github/workflows/publicar.yml`): cada cambio en `web/` que llega a `main` publica la app en un par de minutos, con el barrido que ya hubiera. No barre nunca.
-- **Barrido** (`.github/workflows/barrido.yml`): solo por horario o a mano. La lista rápida (`scanner/rapida.json`, unos 30 nombres muy líquidos repartidos por bloques) se barre cada media hora en horario de mercado y tarda menos de un minuto. El universo completo, tres veces al día y tarda de 9 a 13 minutos.
+- **Barrido** (`.github/workflows/barrido.yml`): solo por horario o a mano. Barre la lista base cada media hora en horario de mercado y tarda menos de un minuto.
 - Ninguno pisa al otro: publicar solo cambia los archivos de la app y el barrido solo la carpeta `data/`.
 
 La app guarda el último barrido en el dispositivo: al abrirla lo enseña al momento y solo descarga lo que haya cambiado.
@@ -29,7 +29,7 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | | Dónde está | ¿Lo ve alguien más? |
 |---|---|---|
 | El código y la pantalla de la app | Repositorio y página | Sí |
-| El barrido del universo (precios y cadenas de los 550 nombres) | Página, carpeta `data/` | Sí. Es igual para cualquiera y no dice nada de quien lo usa |
+| La lista base y su barrido (precios y cadenas de los 32 nombres) | Repositorio y página, carpeta `data/` | Sí. Es igual para cualquiera y no dice cuáles son los favoritos de nadie |
 | Reglas, orden y favoritos | En tu dispositivo | No |
 | Reglas y favoritos para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
 | Qué favorito cumplía y qué se avisó hoy | `data/privado.json`, cifrado | El archivo se ve, el contenido no. La clave sale del secreto `NTFY_TOPIC` y el tamaño es fijo |
@@ -37,7 +37,7 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 
 Consecuencias de que sea así:
 
-- El barrido público solo lleva el universo de base. Un nombre de fuera no se puede añadir desde la app, porque su sola presencia en un archivo público lo delataría.
+- Los favoritos se eligen dentro de la lista base. Un nombre de fuera no se puede añadir desde la app, porque su sola presencia en un archivo público lo delataría. Para ampliar la lista base se cambia `scanner/universe.json`, y eso sí es público.
 - Las reglas y los favoritos no pasan solos de un dispositivo a otro.
 - Los avisos no se anotan en la app; se ven en ntfy.
 - El registro de cada barrido en **Actions** también es público: solo dice cuántos nombres se han leído.
@@ -45,7 +45,7 @@ Consecuencias de que sea así:
 ## Puesta en marcha
 
 1. Sube este proyecto entero a un repositorio público, incluida la carpeta `.github`. La app se publica sola.
-2. En **Actions → Barrido → Run workflow**, elige `completa` para el primer barrido (unos diez minutos).
+2. En **Actions → Barrido → Run workflow** lanza el primer barrido (menos de un minuto).
 3. **Settings → Pages → Source: Deploy from a branch → gh-pages / (root)**.
 4. Abre `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/`. En Chrome: menú → **Instalar app**.
 
@@ -64,7 +64,7 @@ Con Node.js 22, dentro de esta carpeta:
 node scanner/scan.mjs --serve
 ```
 
-Abre `http://localhost:8080`. Solo barre con el ordenador encendido y el móvil solo la ve en el mismo Wi-Fi. En este modo las reglas se guardan en `config.json` y sí se pueden añadir nombres al universo.
+Abre `http://localhost:8080`. Solo barre con el ordenador encendido y el móvil solo la ve en el mismo Wi-Fi. En este modo las reglas se guardan en `config.json`.
 
 ## Para ver la app sin datos reales
 
@@ -96,15 +96,14 @@ npm run ejemplo
 
 ## Estado de las pruebas
 
-El barrido lee de CBOE 548 de los 550 nombres en unos 8 minutos y medio (CBOE admite más o menos una petición por segundo y el barrido se ajusta solo a ese ritmo). Cada barrido deja un resumen en **Actions**: "Leídos N, sin lectura M" y el motivo.
+El barrido de la lista base lee los 32 nombres en unos segundos. Cada barrido deja un resumen en **Actions**: "Leídos N, sin lectura M" y el motivo.
 
 ## Carpetas
 
 - `web/` la app (`engine.js` es el motor: reglas, columnas y orden).
 - `scanner/scan.mjs` el barrido y los avisos.
-- `scanner/universe.json` lista de reserva del universo.
+- `scanner/universe.json` la lista base, por bloques.
 - `config.json` reglas de fábrica. Solo se usa en el modo ordenador.
-- `scanner/rapida.json` la lista rápida, por bloques.
 - `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
 - `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar la otra.
 - `test/` pruebas y generador de datos de ejemplo.

@@ -14,7 +14,6 @@ import {
   labelOf,
   normalizeConfig,
   nyToday,
-  rankUniverse,
   readCboeChain,
   rulesLine,
   spreadLine,
@@ -47,7 +46,7 @@ function refreshExample(scan) {
 }
 
 const state = {
-  tab: "universo",
+  tab: "favoritos",
   scan: null,
   alerts: [],
   config: normalizeConfig(DEFAULT_CONFIG),
@@ -57,7 +56,6 @@ const state = {
   checking: false, // enseñando lo guardado mientras se mira si hay barrido nuevo
   offline: false,
   error: null,
-  query: "",
   detail: null,
   sync: { state: "idle", message: "" },
   gh: loadGh(),
@@ -143,8 +141,7 @@ async function ghJson(file, ref) {
 // del barrido cuando data/version.json dice que ha cambiado.
 
 const DATA_CACHE = "centinela-datos-v1";
-const FULL_FILE = "data/scan.json";
-const FAST_FILE = "data/rapido.json";
+const SCAN_FILE = "data/scan.json";
 
 async function keptJson(name) {
   try {
@@ -156,7 +153,7 @@ async function keptJson(name) {
   }
 }
 
-/** Descarga un archivo del barrido y lo deja guardado para la próxima vez. */
+/** Descarga el barrido y lo deja guardado para la próxima vez. */
 async function fetchAndKeep(name, stamp) {
   const res = await fetch(`${name}?v=${stamp}`, { cache: "no-store" });
   if (!res.ok) throw Object.assign(new Error(String(res.status)), { status: res.status });
@@ -165,29 +162,11 @@ async function fetchAndKeep(name, stamp) {
   try {
     const cache = await caches.open(DATA_CACHE);
     await cache.put(name, new Response(text, { headers: { "Content-Type": "application/json" } }));
+    await cache.delete("data/rapido.json"); // de la versión anterior
   } catch {
     /* sin sitio para guardar: se descargará otra vez la próxima */
   }
   return json;
-}
-
-/** El universo completo con la lista rápida puesta encima, si es más reciente. */
-function mergeScans(full, fast) {
-  if (!full?.symbols?.length && !fast?.symbols?.length) return null;
-  if (!fast?.symbols?.length || (full?.symbols?.length && !(fast.at > full.at))) return { ...full, fullAt: full.at, fastAt: 0 };
-  if (!full?.symbols?.length) return { ...fast, fullAt: 0, fastAt: fast.at };
-  const fresh = new Map(fast.symbols.map((sym) => [sym.s, sym]));
-  const symbols = [...full.symbols.filter((sym) => !fresh.has(sym.s)), ...fast.symbols].sort((a, b) => a.s.localeCompare(b.s));
-  return {
-    ...full,
-    at: fast.at,
-    today: fast.today,
-    push: fast.push,
-    failed: (full.failed ?? []).filter((symbol) => !fresh.has(symbol)),
-    symbols,
-    fullAt: full.at,
-    fastAt: fast.at,
-  };
 }
 
 async function loadPublic() {
@@ -195,51 +174,35 @@ async function loadPublic() {
   if (local) state.config = normalizeConfig(local);
   state.alerts = [];
   state.publishedAt = 0;
-  let [full, fast] = await Promise.all([keptJson(FULL_FILE), keptJson(FAST_FILE)]);
-  const show = () => {
-    state.scan = mergeScans(full, fast);
-    render();
-  };
-  if (full || fast) {
+  let scan = await keptJson(SCAN_FILE);
+  if (scan?.symbols?.length) {
+    state.scan = scan;
     state.loading = false;
     state.checking = true;
-    show();
+    render();
   }
   let offline = false;
   try {
-    let version = null;
+    let stamp = 0;
     try {
-      version = await getJson("data/version.json");
+      stamp = Number((await getJson("data/version.json")).scan) || 0;
     } catch (error) {
       if (error?.message !== "404") throw error; // 404: todavía no hay archivo de versiones
     }
-    const want = [
-      // Sin hora anotada para el universo (despliegue recién estrenado): se baja una vez si no hay copia.
-      [FULL_FILE, version?.scan > 0 ? version.scan : Date.now(), full, (json) => (full = json), version?.scan > 0 ? false : !version || !full],
-      [FAST_FILE, version ? version.rapido : 0, fast, (json) => (fast = json), false],
-    ];
-    await Promise.all(
-      want.map(async ([name, stamp, have, set, always]) => {
-        if (!(stamp > 0) || (!always && (have?.at === stamp || !(version?.[name === FULL_FILE ? "scan" : "rapido"] > 0)))) return;
-        try {
-          set(await fetchAndKeep(name, stamp));
-          show();
-        } catch (error) {
-          if (!error?.status) throw error;
-        }
-      }),
-    );
+    if (!scan?.symbols?.length || (stamp > 0 && scan.at !== stamp)) {
+      try {
+        scan = await fetchAndKeep(SCAN_FILE, stamp || Date.now());
+      } catch (error) {
+        if (!error?.status) throw error;
+      }
+    }
   } catch {
     offline = true;
   }
   state.checking = false;
   state.loading = false;
-  state.scan = mergeScans(full, fast);
-  state.error = state.scan
-    ? null
-    : offline
-      ? "No se pudo leer el barrido. Comprueba la conexión."
-      : "Todavía no hay ningún barrido publicado.";
+  state.scan = scan?.symbols?.length ? scan : null;
+  state.error = state.scan ? null : offline ? "No se pudo leer el barrido. Comprueba la conexión." : "Todavía no hay ningún barrido publicado.";
   state.offline = offline && Boolean(state.scan);
   render();
 }
@@ -615,15 +578,9 @@ const kpiText = (sp) => (sp.balance == null ? "—" : sp.balance.toFixed(2));
 const widthText = (sp) => `$${Number.isInteger(sp.width) ? sp.width.toFixed(0) : sp.width.toFixed(2).replace(/0$/, "")}`;
 const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
 
-function ranked() {
-  const symbols = state.scan?.symbols ?? [];
-  return rankUniverse(symbols, state.config.rules, state.config.order, nyToday());
-}
-
 // ---------- vistas ----------
 
 const ICONS = {
-  universo: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 12l6-6"/></svg>',
   favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.8z"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
@@ -632,11 +589,7 @@ const ICONS = {
 
 function header(eyebrow, title) {
   const scan = state.scan;
-  const times = !scan
-    ? ""
-    : scan.fastAt && scan.fullAt
-      ? `Lista rápida ${when(scan.fastAt)} · universo ${when(scan.fullAt)}`
-      : `Barrido ${when(scan.at)}`;
+  const times = scan ? `Barrido ${when(scan.at)}` : "";
   const status = state.loading
     ? "Leyendo el barrido…"
     : scan
@@ -693,22 +646,6 @@ function readSummary(scan) {
   </div>`;
 }
 
-function funnel(f) {
-  const steps = [
-    ["leídos", f.leidos],
-    ["en el plazo", f.conPlazo],
-    ["con la prob.", f.prob],
-    ...(state.config.rules.otmOn ? [["con el % abajo", f.abajo]] : []),
-    ["con el ancho", f.ancho],
-    ["con el crédito", f.credito],
-    ["con el equilibrio", f.equilibrio],
-  ];
-  return `<div class="funnel small" aria-label="Cuántos nombres superan cada regla">
-    ${steps.map(([label, n]) => `<span class="step"><b class="num">${n}</b> ${label}</span><span class="sep">›</span>`).join("")}
-    <span class="step last"><b class="num">${f.cumplen}</b> cumplen</span>
-  </div>`;
-}
-
 function star(symbol) {
   const on = state.config.favorites.includes(symbol);
   return `<button class="star" data-fav="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar de favoritos" : "Añadir a favoritos"} ${esc(symbol)}">${on ? "★" : "☆"}</button>`;
@@ -739,6 +676,7 @@ function card(sym, res) {
       <div style="min-width:0">
         <p class="sym">${esc(sym.s)} <span class="pill ${res.status}" style="margin-left:6px">${statusLabel(res.status)}</span></p>
         <p class="name small muted">${esc(nameOf(sym))}</p>
+        ${sym.b ? `<p style="margin-top:6px"><span class="pill">${esc(sym.b)}</span></p>` : ""}
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start">
         <div class="price"><p class="num" style="font-weight:500">${money(sym.p)}</p><p class="num small ${up ? "up" : "down"}">${signed(sym.c)}</p></div>
@@ -750,105 +688,71 @@ function card(sym, res) {
   </li>`;
 }
 
-const TABLE_COLS = [
-  ["abajo", "% abajo"],
-  [null, "Cobras"],
-  [null, "% del ancho"],
-  ["prob", "Prob. asig."],
-  ["rentab", "Rentab."],
-  [null, "Pérdida máx."],
-  ["equilibrio", "Equilibrio"],
-];
+const NO_BLOCK = "Sin bloque";
 
-function table(rows) {
-  const order = state.config.order;
-  const head = TABLE_COLS.map(([id, label]) =>
-    id ? `<th><button data-order="${id}" aria-pressed="${order === id}">${label}${order === id ? " ↓" : ""}</button></th>` : `<th>${label}</th>`,
-  ).join("");
-  const body = rows
-    .map(({ sym, res }) => {
-      const sp = res.best;
-      return `<tr data-open="${esc(sym.s)}">
-        <td class="l">${star(sym.s)}</td>
-        <td class="l"><b style="font-weight:500">${esc(sym.s)}</b><span class="name">${esc(nameOf(sym))}</span></td>
-        <td>${money(sym.p)}<br><span class="xs ${sym.c >= 0 ? "up" : "down"}">${signed(sym.c)}</span></td>
-        <td class="l">${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)}<br><span class="xs muted">${esc(sp.expiryLabel)} · ${sp.dte} d</span></td>
-        <td>${pct(sp.otm, 1)}</td>
-        <td>${usd(sp.creditUsd)}</td>
-        <td>${pct(sp.creditPct)}</td>
-        <td>${probText(sp)}</td>
-        <td>${pct(sp.ret)}</td>
-        <td>${usd(sp.lossUsd)}</td>
-        <td>${kpiText(sp)}</td>
-        <td class="l small ${sp.earnInside ? "brass" : "muted"}">${sp.earnInside && sym.er ? esc(labelOf(sym.er.d)) : "—"}</td>
-      </tr>`;
-    })
-    .join("");
-  return `<div class="table-wrap"><table>
-    <thead><tr><th class="l"></th><th class="l">Nombre</th><th>Precio</th><th class="l">Corto/largo</th>${head}<th class="l">Resultados</th></tr></thead>
-    <tbody>${body}</tbody></table></div>`;
-}
-
-function viewUniverso() {
-  const { rows, funnel: f, bySymbol } = ranked();
-  const q = state.query.trim().toUpperCase();
-  // Si nada cumple, se enseñan los que se quedan más cerca, con el motivo.
-  const near = rows.length
-    ? []
-    : (state.scan?.symbols ?? [])
-        .map((sym) => ({ sym, res: bySymbol.get(sym.s) }))
-        .filter((row) => row.res?.best)
-        .sort((a, b) => b.res.stage - a.res.stage || compareSpreads(a.res.best, b.res.best, state.config.order))
-        .slice(0, 10);
-  const shown = q ? rows.filter(({ sym }) => sym.s.includes(q) || (sym.n ?? "").toUpperCase().includes(q)) : rows;
-  const order = ORDERS.find((o) => o.id === state.config.order);
-  const list = shown.length
-    ? `<ul class="cards">${shown.map(({ sym, res }) => card(sym, res)).join("")}</ul>${table(shown)}`
-    : `<div class="empty"><h2>${rows.length ? "Nada con ese nombre" : "Ningún nombre cumple"}</h2>
-        <p class="small muted" style="margin-top:8px">${rows.length ? "Prueba con otro símbolo." : "Mira arriba en qué regla se quedan y aflójala en Reglas."}</p></div>
-        ${near.length ? `<h2 style="margin:20px 0 12px;font-size:1.25rem">Los que se quedan más cerca</h2><ul class="cards near">${near.map(({ sym, res }) => card(sym, res)).join("")}</ul>` : ""}`;
-  return `<div class="universo">
-    ${header("Bull put · universo", "Centinela")}
-    ${state.scan ? funnel(f) : ""}
-    <div class="tools">
-      <div class="chips" role="group" aria-label="Orden">
-        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
-      </div>
-      <input class="search" id="buscar" type="search" placeholder="Buscar nombre" value="${esc(state.query)}" data-search aria-label="Buscar nombre">
-    </div>
-    <p class="small muted" style="margin:-6px 0 12px">${esc(order?.hint ?? "")}</p>
-    ${state.scan ? list : ""}
-    ${foot()}
-  </div>`;
+/** Bloques en el orden de la lista base; los nombres sin bloque van al final. */
+function blockOrder() {
+  const order = [...(state.scan?.blocks ?? [])];
+  for (const sym of state.scan?.symbols ?? []) if (sym.b && !order.includes(sym.b)) order.push(sym.b);
+  return order;
 }
 
 function viewFavoritos() {
   const today = nyToday();
-  const bySymbol = new Map((state.scan?.symbols ?? []).map((sym) => [sym.s, sym]));
+  const symbols = state.scan?.symbols ?? [];
+  const bySymbol = new Map(symbols.map((sym) => [sym.s, sym]));
   const rows = state.config.favorites.map((symbol) => {
     const sym = bySymbol.get(symbol);
     return sym ? { sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) } : { sym: null, symbol };
   });
   const rank = (row) => (!row.sym ? 3 : row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
   rows.sort((a, b) => rank(a) - rank(b) || (a.sym && b.sym && a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
-  const options = (state.scan?.symbols ?? []).map((sym) => `<option value="${esc(sym.s)}">${esc(sym.n ?? "")}</option>`).join("");
-  const cards = rows
-    .map((row) =>
-      row.sym
-        ? card(row.sym, row.res)
-        : `<li class="card"><div class="card-head"><div><p class="sym">${esc(row.symbol)} <span class="pill" style="margin-left:6px">Sin lectura</span></p>
-            <p class="small muted">${isPublic() ? ((state.scan?.failed ?? []).includes(row.symbol) ? "No llegó en el último barrido." : "No está en el universo que se barre.") : state.config.extra.includes(row.symbol) ? "Entra en el próximo barrido." : "No llegó en el último barrido."}</p></div>${star(row.symbol)}</div></li>`,
-    )
+  const passing = rows.filter((row) => row.sym && row.res.status === "entrada").length;
+  const blocks = blockOrder();
+  const groupOf = (row) => (row.sym ? row.sym.b ?? NO_BLOCK : "Fuera de la lista");
+  const lost = (row) =>
+    `<li class="card"><div class="card-head"><div><p class="sym">${esc(row.symbol)} <span class="pill" style="margin-left:6px">Sin lectura</span></p>
+      <p class="small muted">${(state.scan?.failed ?? []).includes(row.symbol) ? "No llegó en el último barrido." : "No está en la lista que se barre."}</p></div>${star(row.symbol)}</div></li>`;
+  const heading = (name, extra) => `<h2 class="group">${esc(name)}<span class="small muted">${extra}</span></h2>`;
+  const groups = [...blocks, NO_BLOCK, "Fuera de la lista"]
+    .map((name) => {
+      const own = rows.filter((row) => groupOf(row) === name);
+      if (!own.length) return "";
+      const ok = own.filter((row) => row.sym && row.res.status === "entrada").length;
+      return `${heading(name, `${ok} de ${own.length} ${own.length === 1 ? "cumple" : "cumplen"}`)}
+        <ul class="cards">${own.map((row) => (row.sym ? card(row.sym, row.res) : lost(row))).join("")}</ul>`;
+    })
     .join("");
+  // El resto de la lista base, para elegir favoritos sin teclear.
+  const rest = symbols.filter((sym) => sym.b && !state.config.favorites.includes(sym.s));
+  const full = state.config.favorites.length >= MAX_FAVORITES;
+  const picker = rest.length
+    ? `<section class="block">
+        <h2>Añadir de la lista</h2>
+        <p class="small muted">Toca un nombre para pasarlo a tus favoritos. La estrella de cada tarjeta lo quita.</p>
+        ${blocks
+          .map((name) => {
+            const own = rest.filter((sym) => sym.b === name);
+            if (!own.length) return "";
+            return `<div class="pick"><p class="flabel xs muted">${esc(name)}</p><div class="chips">
+              ${own.map((sym) => `<button class="chip" data-fav="${esc(sym.s)}" ${full ? "disabled" : ""} aria-label="Añadir ${esc(sym.s)} a favoritos"><b>${esc(sym.s)}</b> ${esc(nameOf(sym))}</button>`).join("")}
+            </div></div>`;
+          })
+          .join("")}
+      </section>`
+    : "";
+  const order = ORDERS.find((o) => o.id === state.config.order);
   return `
     ${header("Bull put · tu lista", "Favoritos")}
-    <form class="add" data-add>
-      <input id="nuevo-favorito" name="symbol" list="universe" placeholder="Añadir nombre (AAPL, SPY…)" autocomplete="off" autocapitalize="characters" aria-label="Añadir nombre a favoritos">
-      <datalist id="universe">${options}</datalist>
-      <button class="btn primary" type="submit">Añadir</button>
-    </form>
-    <p class="small muted" style="margin:8px 0 14px">${state.config.favorites.length} de ${MAX_FAVORITES}. Aquí se queda cada nombre aunque no pase, con el motivo.</p>
-    ${rows.length ? `<ul class="cards">${cards}</ul>` : '<div class="empty"><h2>Tu lista está vacía</h2><p class="small muted" style="margin-top:8px">Añade un nombre arriba o marca la estrella en Universo.</p></div>'}
+    <div class="tools">
+      <div class="chips" role="group" aria-label="Orden">
+        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
+      </div>
+    </div>
+    <p class="small muted" style="margin:-6px 0 4px">${esc(order?.hint ?? "")}</p>
+    <p class="small muted" style="margin:0 0 6px">${rows.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "favorito cumple" : "favoritos cumplen"}. Cada nombre se queda aquí aunque no pase, con el motivo.` : ""}</p>
+    ${rows.length ? groups : '<div class="empty"><h2>Tu lista está vacía</h2><p class="small muted" style="margin-top:8px">Elige nombres abajo.</p></div>'}
+    ${state.scan ? picker : ""}
     ${foot()}`;
 }
 
@@ -884,7 +788,7 @@ function viewReglas() {
     <header class="top">
       <p class="eyebrow">Bull put</p>
       <h1 style="margin-top:4px">Reglas</h1>
-      <p class="small muted" style="margin-top:8px">Filtran el universo al instante en este dispositivo. ${esc(syncLine())}</p>
+      <p class="small muted" style="margin-top:8px">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
     </header>
     <div class="panel">
       ${stepper("rules.minDte", "Vencimiento desde", "No mires puts que caduquen antes.", 5, 60, 1, days)}
@@ -909,7 +813,7 @@ function viewReglas() {
 
     <section class="block">
       <h2>Si lo enciendes</h2>
-      <p class="small muted">Apagado, no cuenta. Encendido, el nombre sale del universo y en Favoritos dice por qué no pasa.</p>
+      <p class="small muted">Apagado, no cuenta. Encendido, el nombre deja de cumplir y Favoritos dice por qué.</p>
       <div class="panel">
         ${gate("event", "Sin resultados en el plazo", "Hasta dos días después del vencimiento.")}
         ${gate(
@@ -1178,7 +1082,6 @@ function viewAvisos() {
           <span class="switch"><i></i></span>
         </button>
       </div>
-      ${stepper("alerts.universeTop", "Nombre nuevo entre los primeros", "Del universo, con tu orden. En 0 no avisa.", 0, 25, 1, (n) => (n === 0 ? "apagado" : `${n} primeros`))}
     </div>
     <p class="small muted" style="margin-top:8px">${esc(syncLine())}</p>
     <section class="block">
@@ -1276,20 +1179,14 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("universo", "Universo")}${item("favoritos", "Favoritos")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("favoritos", "Favoritos")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
-  const keepFocus = document.activeElement?.matches?.("[data-search]");
   const view =
-    state.tab === "favoritos" ? viewFavoritos() : state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewUniverso();
+    state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${sheet()}`;
-  if (keepFocus) {
-    const input = root.querySelector("[data-search]");
-    input?.focus();
-    input?.setSelectionRange(state.query.length, state.query.length);
-  }
 }
 
 // ---------- eventos ----------
@@ -1416,25 +1313,10 @@ root.addEventListener("click", (event) => {
   }
 });
 
-root.addEventListener("input", (event) => {
-  if (event.target.matches("[data-search]")) {
-    state.query = event.target.value;
-    render();
-  }
-});
-
 root.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.target;
-  if (form.matches("[data-add]")) {
-    const symbol = cleanSymbol(new FormData(form).get("symbol") ?? "");
-    if (!symbol) return;
-    const known = (state.scan?.symbols ?? []).some((sym) => sym.s === symbol);
-    changeConfig((config) => {
-      if (!config.favorites.includes(symbol) && config.favorites.length < MAX_FAVORITES) config.favorites.push(symbol);
-      if (!known && !isPublic() && !config.extra.includes(symbol)) config.extra.push(symbol);
-    });
-  } else if (form.matches("[data-bridge]")) {
+  if (form.matches("[data-bridge]")) {
     writeLocal(LS_BRIDGE, String(new FormData(form).get("bridge") ?? "").trim());
     render();
   } else if (form.matches("[data-gh]")) {
@@ -1446,7 +1328,7 @@ root.addEventListener("submit", (event) => {
     };
     writeLocal(LS_GH, state.gh);
     state.showGh = false;
-    state.tab = "universo";
+    state.tab = "favoritos";
     void load();
   }
 });

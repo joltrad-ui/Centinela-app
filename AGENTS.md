@@ -1,6 +1,6 @@
 # Centinela: guía para el agente
 
-Filtro de bull puts sobre un universo de acciones y ETF de EE. UU. Lee también `LEEME.md`.
+Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. Lee también `LEEME.md`.
 
 ## Criterio (no negociable)
 
@@ -26,33 +26,32 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 ## Estructura
 
 - `web/engine.js`: motor puro, compartido por la app y el barrido. Reglas, construcción de spreads, columnas, orden, embudo. Las estrategias se registran en `STRATEGIES`; hoy solo `bullPut`.
-- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cinco pantallas (Universo, Favoritos, Deals, Avisos, Reglas). Instalable (manifest y `sw.js`).
+- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Favoritos, Deals, Avisos, Reglas). La principal es Favoritos, agrupada por bloque. No hay pantalla ni concepto de "universo" en la interfaz. Instalable (manifest y `sw.js`).
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
-- `scanner/universe.json`: lista de reserva (S&P 500, Nasdaq 100, ETF).
+- `scanner/universe.json`: la lista base, genérica: 32 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre. Los favoritos se eligen dentro de ella.
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
-- `scanner/rapida.json`: lista rápida genérica, por bloques. No son los favoritos de nadie.
 - `.github/workflows/publicar.yml`: en cada push a `main` que toque `web/`, publica la app. No barre.
-- `.github/workflows/barrido.yml`: solo por horario o a mano. Lista rápida (`--lista rapida`, a `data/rapido.json`) cada media hora; universo completo (a `data/scan.json`) tres veces al día. Los dos con `--public`.
+- `.github/workflows/barrido.yml`: solo por horario o a mano. Barre la lista base cada media hora en horario de mercado, con `--public`, a `data/scan.json`.
 - `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/`; `datos` = solo `data/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
-- `data/version.json`: hora de `scan.json` y de `rapido.json`. La app guarda los dos en el dispositivo (Cache API) y solo descarga el que ha cambiado; luego pone la lista rápida encima del universo (`mergeScans`).
+- `data/version.json`: hora de `scan.json`. La app guarda el barrido en el dispositivo (Cache API), lo enseña al abrir y solo lo descarga cuando ha cambiado.
 
 ## Cómo probar sin esperar
 
-Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemplo`, y `node scanner/scan.mjs --public --fixtures test/fixtures --out /tmp/x [--lista rapida]`. Un barrido real del universo tarda más de diez minutos. Agrupar los cambios en un solo envío.
+Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemplo`, y `node scanner/scan.mjs --public --fixtures test/fixtures --out /tmp/x`. Agrupar los cambios en un solo envío.
 
 ## Privacidad (el repositorio es público)
 
 - Nada personal en el repositorio, en `data/`, en los mensajes de commit ni en el registro de Actions: ni reglas, ni favoritos, ni avisos, ni nombres añadidos, ni correos.
 - Los commits se firman con una dirección `@users.noreply.github.com`.
 - Reglas y favoritos viven en el dispositivo (`localStorage`) y, para los avisos, en el secreto `CENTINELA_CONFIG`. El estado de los avisos va cifrado en `data/privado.json` con clave derivada de `NTFY_TOPIC` y tamaño fijo.
-- En modo `--public` el universo no incluye favoritos ni nombres añadidos, y `scan.json` va por orden alfabético.
+- En modo `--public` solo se barre la lista base, nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista base no debe convertirse en la lista de favoritos de nadie: si se recorta hasta parecerse a ellos, los delata.
 - Antes de añadir cualquier archivo a `data/` o cualquier línea al registro, comprobar que no depende de la configuración personal.
 
 ## Datos
 
 - CBOE, 15 min de retraso: `https://cdn.cboe.com/api/global/delayed_quotes/options/SIMBOLO.json`. De `data` se usan `current_price`, `price_change_percent`, `iv30`, `last_trade_time`, `security_type` y `options[]` con `option` (símbolo OCC), `bid`, `ask`, `iv`, `delta`, `open_interest`.
 - StockAnalysis: próxima fecha de resultados por símbolo, con caché de 3 días en el estado.
-- `data/scan.json`, por nombre: `{s, n, k, p, c, iv30, er, x}`, donde `x` es una lista de `[vencimiento, iv al dinero, filas]` y cada fila es `[strike, bid, ask, interés abierto, iv, delta]`. Solo puts por debajo del precio.
+- `data/scan.json`: `blocks` (bloques en orden) y, por nombre: `{s, n, k, b, p, c, iv30, er, x}` (`b` es el bloque), donde `x` es una lista de `[vencimiento, iv al dinero, filas]` y cada fila es `[strike, bid, ask, interés abierto, iv, delta]`. Solo puts por debajo del precio.
 
 ## Reglas de cálculo que no se cambian sin preguntar
 
@@ -61,12 +60,12 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 - La prob. de asignación máxima es la regla que elige el corto (10 % de fábrica, 50 = sin límite). El % abajo es columna y regla opcional (`otmOn`). El crédito mínimo va en dólares por contrato (`minCredit`), no en % del ancho: esa regla forzaba una probabilidad de pérdida mínima. Las reglas llevan versión (`v: 2`); las guardadas sin ella se migran en `normalizeRules`.
 - Rentabilidad: crédito / pérdida máxima. Equilibrio: ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Hay una regla de equilibrio mínimo (`minBalance`, 0,5 por defecto, 0 = sin mínimo).
 - El ancho de las reglas es un máximo: para cada corto se consideran todos los largos que dejan ese ancho o menos.
-- Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.
+- Solo avisan los favoritos (el aviso de "nombre nuevo entre los primeros" se retiró con el universo). Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.
 - Si el estado anterior no se puede leer (salvo 404), el barrido falla en vez de sobrescribir.
 
 ## Estado
 
-En marcha en GitHub con un solo repositorio público. El barrido real lee 548 de 550 nombres en unos 8,5 minutos. CBOE contesta 429 por encima de más o menos una petición por segundo; `getJson` lleva un freno compartido que se ajusta solo. Los símbolos con punto (BRK.B) se piden con el punto.
+En marcha en GitHub con un solo repositorio público. El barrido de la lista base tarda segundos. CBOE contesta 429 por encima de más o menos una petición por segundo; `getJson` lleva un freno compartido que se ajusta solo. Los símbolos con punto se piden con el punto.
 
 La app tiene además un modo con repositorio privado y llave (`ghBlock`, `ghJson`), que hoy no se usa.
 

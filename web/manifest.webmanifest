@@ -1,7 +1,7 @@
 {
   "name": "Centinela",
   "short_name": "Centinela",
-  "description": "Filtro de bull puts sobre un universo de acciones y ETF.",
+  "description": "Filtro de bull puts sobre una lista de acciones y ETF.",
   "lang": "es",
   "start_url": "./",
   "scope": "./",

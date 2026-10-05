@@ -1,29 +1,20 @@
 name: Barrido
 
 # Solo por horario o a mano: un push no barre nunca.
-#   Lista rápida (scanner/rapida.json): cada media hora en horario de mercado.
-#   Universo completo: tres veces al día.
+# Barre la lista base (scanner/universe.json) cada media hora en horario de mercado.
 # Repositorio público: todo lo que se escribe aquí o en el registro lo puede leer cualquiera.
 # Las reglas y los favoritos entran por secretos y no se publican.
 
 on:
   schedule:
     # Horas en UTC, de lunes a viernes.
-    - cron: "7,37 13-21 * * 1-5" # lista rápida
-    - cron: "45 14,19 * * 1-5" # universo completo
-    - cron: "15 17 * * 1-5" # universo completo
+    - cron: "7,37 13-21 * * 1-5"
   workflow_dispatch:
-    inputs:
-      lista:
-        description: Qué barrer
-        type: choice
-        options: [rapida, completa]
-        default: rapida
 
 permissions:
   contents: write
 
-# Los barridos van de uno en uno entre sí; publicar la app no espera por ellos.
+# Los barridos van de uno en uno; publicar la app no espera por ellos.
 concurrency:
   group: barrido
   cancel-in-progress: false
@@ -31,24 +22,13 @@ concurrency:
 jobs:
   barrido:
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-
-      - name: Qué toca
-        id: plan
-        run: |
-          lista=completa
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            lista="${{ inputs.lista }}"
-          elif [ "${{ github.event.schedule }}" = "7,37 13-21 * * 1-5" ]; then
-            lista=rapida
-          fi
-          echo "lista=$lista" >> "$GITHUB_OUTPUT"
 
       - name: Barrido anterior
         run: |
@@ -62,7 +42,7 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           CENTINELA_CONFIG: ${{ secrets.CENTINELA_CONFIG }}
           APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: node scanner/scan.mjs --public --out out ${{ steps.plan.outputs.lista == 'rapida' && '--lista rapida' || '' }}
+        run: node scanner/scan.mjs --public --out out
 
       - name: Guardar el barrido
         env:

@@ -216,3 +216,10 @@ nav.dock svg { width: 20px; height: 20px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; }
 }
+
+/* Favoritos por bloque */
+.group { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 22px 0 10px; font-size: 1.25rem; }
+.group span { font-family: var(--sans); font-weight: 400; }
+.pick { margin-top: 12px; }
+.pick .chips { margin-top: 6px; flex-wrap: wrap; }
+.pick .chip b { font-weight: 500; color: var(--fg); margin-right: 4px; }

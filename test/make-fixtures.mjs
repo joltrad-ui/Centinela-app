@@ -35,7 +35,8 @@ const occ = (root, iso, cp, K) =>
   `${root}${iso.slice(2, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}${cp}${String(Math.round(K * 1000)).padStart(8, "0")}`;
 
 const universe = JSON.parse(await readFile(path.join(here, "..", "scanner", "universe.json"), "utf8"));
-const pool = ["AAPL", "NVDA", "MSFT", "SPY", "QQQ", "IWM", "TSLA", "AMD", "COIN", "PLTR", "SMCI", "KO", "JPM", "XOM", ...universe.sp500];
+const pool = universe.bloques.flatMap((block) => block.nombres.map((row) => row.s));
+const kinds = new Map(universe.bloques.flatMap((block) => block.nombres.map((row) => [row.s, row.k])));
 // ONLY=AAPL,SPY limita los ejemplos a esos nombres.
 const only = (process.env.ONLY ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
 const symbols = only.length ? only : [...new Set(pool)].slice(0, count);
@@ -64,10 +65,10 @@ for (const symbol of symbols) {
   }
   const body = {
     timestamp: new Date().toISOString().slice(0, 19).replace("T", " "),
-    data: { options, symbol, security_type: universe.etf[symbol] ? "etf" : "stock", current_price: S, price_change_percent: Math.round((rnd() * 4 - 2) * 100) / 100, close: S, iv30: Math.round(atm * 1000) / 10, last_trade_time: new Date().toISOString().slice(0, 19) },
+    data: { options, symbol, security_type: kinds.get(symbol) === "etf" ? "etf" : "stock", current_price: S, price_change_percent: Math.round((rnd() * 4 - 2) * 100) / 100, close: S, iv30: Math.round(atm * 1000) / 10, last_trade_time: new Date().toISOString().slice(0, 19) },
   };
   await writeFile(path.join(out, `${symbol}.json`), JSON.stringify(body));
-  if (!universe.etf[symbol] && rnd() < 0.35) earnings[symbol] = addDays(today, 3 + Math.floor(rnd() * 40));
+  if (kinds.get(symbol) !== "etf" && rnd() < 0.35) earnings[symbol] = addDays(today, 3 + Math.floor(rnd() * 40));
 }
 earnings.AAPL = addDays(today, 25);
 earnings.MSFT = addDays(today, 24);
