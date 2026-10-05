@@ -2,13 +2,15 @@
   "savedAt": 0,
   "strategy": "bullPut",
   "rules": {
+    "v": 2,
     "minDte": 20,
     "maxDte": 30,
+    "maxProb": 10,
+    "otmOn": false,
     "minOtm": 8,
     "maxOtm": 12,
     "width": 5,
-    "minCreditPct": 10,
-    "maxProb": 50,
+    "minCredit": 20,
     "minBalance": 0.5,
     "gates": {
       "event": false,

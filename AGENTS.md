@@ -30,7 +30,7 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
 - `scanner/universe.json`: lista de reserva (S&P 500, Nasdaq 100, ETF).
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
-- `.github/workflows/barrido.yml`: barrido cada media hora en horario de mercado, con `--public`. Publica `web/` y `data/` juntos en la rama `gh-pages`. Un cambio que solo toca `web/` (salvo `engine.js`) se publica sin volver a barrer.
+- `.github/workflows/barrido.yml`: barrido cada media hora en horario de mercado, con `--public`. Publica `web/` y `data/` juntos en la rama `gh-pages`. Un cambio que solo toca `web/` se publica sin volver a barrer.
 
 ## Privacidad (el repositorio es público)
 
@@ -49,7 +49,8 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 ## Reglas de cálculo que no se cambian sin preguntar
 
 - Crédito a precio natural: bid del corto menos ask del largo.
-- Prob. de asignación: probabilidad de acabar por debajo del corto al vencimiento, con la IV de ese strike (`probBelow`).
+- Prob. de asignación: la que descuenta el mercado, sacada del precio de los strikes vecinos a precio medio y alisada para que no baje al subir el strike (`marketProbs`). Si no se puede medir, la fórmula con la IV del strike (`probBelow`), y el spread lo marca con `probSrc: "formula"`.
+- La prob. de asignación máxima es la regla que elige el corto (10 % de fábrica, 50 = sin límite). El % abajo es columna y regla opcional (`otmOn`). El crédito mínimo va en dólares por contrato (`minCredit`), no en % del ancho: esa regla forzaba una probabilidad de pérdida mínima. Las reglas llevan versión (`v: 2`); las guardadas sin ella se migran en `normalizeRules`.
 - Rentabilidad: crédito / pérdida máxima. Equilibrio: ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Hay una regla de equilibrio mínimo (`minBalance`, 0,5 por defecto, 0 = sin mínimo).
 - El ancho de las reglas es un máximo: para cada corto se consideran todos los largos que dejan ese ancho o menos.
 - Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.

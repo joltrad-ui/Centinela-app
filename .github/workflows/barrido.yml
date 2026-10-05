@@ -39,14 +39,14 @@ jobs:
             git archive FETCH_HEAD data 2>/dev/null | tar -x -C out || true
           fi
 
-      # Un cambio que solo toca la pantalla se publica al momento, con el barrido que ya había.
+      # Un cambio que solo toca la app (pantalla o motor) se publica al momento, con el barrido que ya había.
       - name: ¿Hace falta barrer?
         id: plan
         run: |
           barrer=true
           if [ "${{ github.event_name }}" = "push" ] && [ -f out/data/scan.json ]; then
             if cambios=$(git diff --name-only HEAD~1 HEAD 2>/dev/null); then
-              if ! echo "$cambios" | grep -qE '^(scanner/|web/engine\.js|\.github/)'; then barrer=false; fi
+              if ! echo "$cambios" | grep -qE '^(scanner/|\.github/)'; then barrer=false; fi
             fi
           fi
           echo "barrer=$barrer" >> "$GITHUB_OUTPUT"

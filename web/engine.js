@@ -5,16 +5,22 @@
 // bear call) se añade un constructor de spreads como buildBullPuts y se
 // registra en STRATEGIES; el resto (reglas, orden, avisos) ya es común.
 
-export const RATE = 0.04; // tipo sin riesgo usado en la prob. de asignación
+export const RATE = 0.04; // tipo sin riesgo de la fórmula de reserva de la prob. de asignación
+
+// Versión de las reglas. La 2 fija el riesgo con la prob. de asignación (la misma
+// vara para todos los nombres) en vez de con "% abajo" y "% del ancho".
+export const RULES_V = 2;
 
 export const DEFAULT_RULES = {
+  v: RULES_V,
   minDte: 20,
   maxDte: 30,
+  maxProb: 10, // prob. de asignación máxima: la regla que elige el corto. 50 = sin límite
+  otmOn: false, // limitar además el % abajo
   minOtm: 8, // % abajo, desde
   maxOtm: 12, // % abajo, hasta
   width: 5, // ancho máximo: vale ese y cualquiera menor
-  minCreditPct: 10,
-  maxProb: 50, // 50 = sin límite
+  minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
   minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
   gates: {
     event: false,
@@ -41,7 +47,7 @@ export const DEFAULT_CONFIG = {
 export const ORDERS = [
   { id: "equilibrio", label: "Equilibrio", hint: "Lo que esperas ganar por cada dólar que esperas perder. Sube con la rentabilidad y baja con la probabilidad de asignación." },
   { id: "rentab", label: "Rentabilidad", hint: "Crédito partido por la pérdida máxima." },
-  { id: "prob", label: "Prob. asignación", hint: "La más baja primero." },
+  { id: "prob", label: "Prob. asignación", hint: "La más baja primero. Sale de los precios del mercado." },
   { id: "abajo", label: "% abajo", hint: "El corto más lejos del precio primero." },
   { id: "credito", label: "Crédito", hint: "Lo que más cobra por contrato primero." },
 ];
@@ -87,14 +93,20 @@ export function normalizeRules(input) {
   const maxOtm = Math.max(minOtm, clamp(row.maxOtm, 1, 35, base.maxOtm));
   const lossMin = clamp(g.lossMin, 20, 2000, base.gates.lossMin);
   const lossMax = Math.max(lossMin, clamp(g.lossMax, 20, 5000, base.gates.lossMax));
+  // Reglas guardadas antes de la versión 2: la prob. máxima estaba apagada de fábrica
+  // y el crédito mínimo iba en % del ancho. Pasan a los valores de fábrica nuevos.
+  const old = row.v !== RULES_V;
+  const maxProb = old && !(Number(row.maxProb) < PROB_OFF) ? base.maxProb : clamp(row.maxProb, 1, PROB_OFF, base.maxProb);
   return {
+    v: RULES_V,
     minDte,
     maxDte,
+    maxProb,
+    otmOn: !old && row.otmOn === true,
     minOtm,
     maxOtm,
     width: clamp(row.width, 1, 50, base.width),
-    minCreditPct: clamp(row.minCreditPct, 1, 40, base.minCreditPct),
-    maxProb: clamp(row.maxProb, 2, PROB_OFF, base.maxProb),
+    minCredit: Math.round(clamp(row.minCredit, 0, 500, base.minCredit)),
     minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
     gates: {
       event: g.event === true,
@@ -300,7 +312,47 @@ function longLegs(rows, shortStrike, maxWidth) {
 
 /** Orden en que se comprueban las reglas. La etapa de un spread es cuántas
  *  ha superado seguidas; sirve para el embudo y para elegir "lo más cerca". */
-export const STAGES = ["abajo", "ancho", "credito", "prob", "equilibrio", "interruptores"];
+export const STAGES = ["prob", "abajo", "ancho", "credito", "equilibrio", "interruptores"];
+
+/** Prob. de asignación que descuenta el mercado en cada strike de un vencimiento:
+ *  lo que cambia el precio del put al subir un dólar el strike, medido con los dos
+ *  strikes vecinos y a precio medio. Es la misma cuenta que "crédito / ancho" de un
+ *  spread estrecho. Devuelve un % por fila (o null si no hay precios para medirlo).
+ *  Los precios traen ruido, así que se alisa para que nunca baje al subir el strike. */
+export function marketProbs(rows) {
+  const mid = rows.map((row) => (row[ASK] > 0 && row[BID] >= 0 ? (row[BID] + row[ASK]) / 2 : null));
+  const raw = rows.map((row, i) => {
+    if (mid[i] == null) return null;
+    let lo = i - 1;
+    while (lo >= 0 && mid[lo] == null) lo--;
+    let hi = i + 1;
+    while (hi < rows.length && mid[hi] == null) hi++;
+    const a = hi < rows.length ? hi : i;
+    const b = lo >= 0 ? lo : i;
+    if (a === b) return null;
+    const slope = (mid[a] - mid[b]) / (rows[a][K] - rows[b][K]);
+    return Math.min(1, Math.max(0, slope));
+  });
+  // Ajuste monótono (medias de tramos vecinos que se contradicen).
+  const blocks = [];
+  raw.forEach((value, i) => {
+    if (value == null) return;
+    blocks.push({ sum: value, n: 1, from: i, to: i });
+    while (blocks.length > 1 && blocks.at(-2).sum / blocks.at(-2).n > blocks.at(-1).sum / blocks.at(-1).n) {
+      const last = blocks.pop();
+      const prev = blocks.at(-1);
+      prev.sum += last.sum;
+      prev.n += last.n;
+      prev.to = last.to;
+    }
+  });
+  const out = raw.map(() => null);
+  for (const block of blocks) {
+    const value = (block.sum / block.n) * 100;
+    for (let i = block.from; i <= block.to; i++) if (raw[i] != null) out[i] = value > 0 ? value : null;
+  }
+  return out;
+}
 
 function buildBullPuts(sym, rules, today) {
   const gates = rules.gates;
@@ -308,12 +360,31 @@ function buildBullPuts(sym, rules, today) {
   for (const [expiry, atmIv, rows] of sym.x ?? []) {
     const dte = daysBetween(today, expiry);
     if (dte < rules.minDte || dte > rules.maxDte) continue;
-    for (const short of rows) {
+    const byMarket = marketProbs(rows);
+    // Lo que queda muy lejos de las reglas ni se lista: demasiado riesgo por arriba,
+    // demasiado poco que cobrar por abajo.
+    const probCap = Math.max(rules.maxProb * 2, rules.maxProb + 10);
+    const bidFloor = Math.max(5, rules.minCredit / 2) / 100;
+    for (let index = 0; index < rows.length; index++) {
+      const short = rows[index];
       const ks = short[K];
       const sb = short[BID];
       if (!(ks < sym.p) || !(sb > 0)) continue;
       const otm = ((sym.p - ks) / sym.p) * 100;
-      if (otm < rules.minOtm - 8 || otm > rules.maxOtm + 8) continue;
+      if (rules.otmOn && (otm < rules.minOtm - 8 || otm > rules.maxOtm + 8)) continue;
+      const shortIv = short[IV] > 0 ? short[IV] : null;
+      const shortDelta = short[DELTA] < 0 ? short[DELTA] : null;
+      const probModel = shortIv != null ? probBelow(sym.p, ks, dte, shortIv) : shortDelta != null ? Math.abs(shortDelta) * 100 : null;
+      const probMarket = byMarket[index];
+      const shortProb = probMarket ?? probModel;
+      if (shortProb != null && shortProb > probCap) continue;
+      if (sb < bidFloor - 1e-9) {
+        // No se lista, pero cuenta para el embudo: pasa la probabilidad y se queda en el crédito.
+        const inProb = rules.maxProb >= PROB_OFF || (shortProb != null && shortProb <= rules.maxProb + 1e-9);
+        const inOtm = !rules.otmOn || (otm >= rules.minOtm - 1e-9 && otm <= rules.maxOtm + 1e-9);
+        if (inProb && inOtm) out.tooCheap = true;
+        continue;
+      }
       for (const long of longLegs(rows, ks, rules.width)) {
         const width = r2(ks - long[K]);
         const credit = r2(sb - long[ASK]);
@@ -324,9 +395,9 @@ function buildBullPuts(sym, rules, today) {
         const sa = short[ASK] > 0 ? short[ASK] : null;
         const lb = long[BID] >= 0 ? long[BID] : null;
         const la = long[ASK];
-        const iv = short[IV] > 0 ? short[IV] : null;
-        const delta = short[DELTA] < 0 ? short[DELTA] : null;
-        const prob = iv != null ? probBelow(sym.p, ks, dte, iv) : delta != null ? Math.abs(delta) * 100 : null;
+        const iv = shortIv;
+        const delta = shortDelta;
+        const prob = shortProb;
         const creditPct = (credit / width) * 100;
         const ret = (credit / maxLoss) * 100;
         const balance = balanceOf(ret, prob);
@@ -337,14 +408,14 @@ function buildBullPuts(sym, rules, today) {
         const lossUsd = Math.round(maxLoss * 100);
 
         const fails = [];
-        const fitsOtm = otm >= rules.minOtm - 1e-9 && otm <= rules.maxOtm + 1e-9;
-        const fitsWidth = width <= rules.width + 1e-9;
-        const fitsCredit = creditPct + 1e-9 >= rules.minCreditPct;
         const fitsProb = rules.maxProb >= PROB_OFF || (prob != null && prob <= rules.maxProb + 1e-9);
+        const fitsOtm = !rules.otmOn || (otm >= rules.minOtm - 1e-9 && otm <= rules.maxOtm + 1e-9);
+        const fitsWidth = width <= rules.width + 1e-9;
+        const fitsCredit = Math.round(credit * 100) >= rules.minCredit;
+        if (!fitsProb) fails.push(prob == null ? "sin dato de probabilidad" : "probabilidad alta");
         if (!fitsOtm) fails.push("fuera del punto");
         if (!fitsWidth) fails.push(`ancho de $${fmtWidth(width)}`);
         if (!fitsCredit) fails.push("crédito corto");
-        if (!fitsProb) fails.push(prob == null ? "sin dato de probabilidad" : "probabilidad alta");
         const fitsBalance = !(rules.minBalance > 0) || (balance != null && balance >= rules.minBalance - 1e-9);
         if (!fitsBalance) fails.push("equilibrio bajo");
 
@@ -365,7 +436,7 @@ function buildBullPuts(sym, rules, today) {
         }
         if (gates.room && move && sym.p - ks < move.dollars / 2) gateFails.push("dentro del movimiento");
 
-        const checks = [fitsOtm, fitsWidth, fitsCredit, fitsProb, fitsBalance, gateFails.length === 0];
+        const checks = [fitsProb, fitsOtm, fitsWidth, fitsCredit, fitsBalance, gateFails.length === 0];
         let stage = 0;
         while (stage < checks.length && checks[stage]) stage++;
 
@@ -385,6 +456,8 @@ function buildBullPuts(sym, rules, today) {
           lossUsd,
           ret: r1(ret),
           prob: prob == null ? null : r1(prob),
+          probSrc: prob == null ? null : probMarket != null ? "mercado" : "formula",
+          probModel: probModel == null ? null : r1(probModel),
           balance,
           breakeven: r2(ks - credit),
           shortOi: short[OI] ?? 0,
@@ -471,7 +544,10 @@ export function assessSymbol(sym, rules, order, today = nyToday()) {
   }
   const near = [...spreads].sort((a, b) => b.stage - a.stage || compareSpreads(a, b, order));
   const status = !hasChain ? "sin-cadena" : !inWindow ? "sin-plazo" : "no-pasa";
-  return { status, best: near[0] ?? null, spreads: near, all: spreads, stage: near[0]?.stage ?? 0 };
+  // Hay puts dentro de la probabilidad, pero tan baratos que no llegan al cobro mínimo:
+  // el nombre supera probabilidad, % abajo y ancho, y se queda en el crédito.
+  const stage = Math.max(near[0]?.stage ?? 0, spreads.tooCheap ? STAGES.indexOf("credito") : 0);
+  return { status, best: near[0] ?? null, spreads: near, all: spreads, stage };
 }
 
 export function statusLabel(status) {
@@ -486,16 +562,16 @@ export function statusLabel(status) {
  *  y el embudo: cuántos nombres superan cada regla. */
 export function rankUniverse(symbols, rules, order, today = nyToday()) {
   const rows = [];
-  const funnel = { leidos: symbols.length, conPlazo: 0, abajo: 0, ancho: 0, credito: 0, prob: 0, equilibrio: 0, cumplen: 0 };
+  const funnel = { leidos: symbols.length, conPlazo: 0, prob: 0, abajo: 0, ancho: 0, credito: 0, equilibrio: 0, cumplen: 0 };
   const bySymbol = new Map();
   for (const sym of symbols) {
     const res = assessSymbol(sym, rules, order, today);
     bySymbol.set(sym.s, res);
     if (res.status !== "sin-cadena" && res.status !== "sin-plazo") funnel.conPlazo++;
-    if (res.stage >= 1) funnel.abajo++;
-    if (res.stage >= 2) funnel.ancho++;
-    if (res.stage >= 3) funnel.credito++;
-    if (res.stage >= 4) funnel.prob++;
+    if (res.stage >= 1) funnel.prob++;
+    if (res.stage >= 2) funnel.abajo++;
+    if (res.stage >= 3) funnel.ancho++;
+    if (res.stage >= 4) funnel.credito++;
     if (res.stage >= 5) funnel.equilibrio++;
     if (res.status === "entrada") {
       funnel.cumplen++;
@@ -577,8 +653,12 @@ export function alertText(sp) {
 }
 
 export function rulesLine(rules) {
-  const prob =
-    (rules.maxProb >= PROB_OFF ? "" : ` · prob. ≤${rules.maxProb.toFixed(0)}%`) +
-    (rules.minBalance > 0 ? ` · equilibrio ≥${rules.minBalance.toFixed(2)}` : "");
-  return `ancho ≤$${fmtWidth(rules.width)} · ${rules.minDte}–${rules.maxDte} días · ${rules.minOtm.toFixed(0)}–${rules.maxOtm.toFixed(0)}% abajo · crédito ≥${rules.minCreditPct.toFixed(0)}%${prob}`;
+  const parts = [];
+  if (rules.maxProb < PROB_OFF) parts.push(`prob. ≤${rules.maxProb.toFixed(0)}%`);
+  parts.push(`${rules.minDte}–${rules.maxDte} días`);
+  if (rules.otmOn) parts.push(`${rules.minOtm.toFixed(0)}–${rules.maxOtm.toFixed(0)}% abajo`);
+  parts.push(`ancho ≤$${fmtWidth(rules.width)}`);
+  if (rules.minCredit > 0) parts.push(`cobras ≥$${rules.minCredit}`);
+  if (rules.minBalance > 0) parts.push(`equilibrio ≥${rules.minBalance.toFixed(2)}`);
+  return parts.join(" · ");
 }

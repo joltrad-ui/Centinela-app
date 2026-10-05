@@ -8,7 +8,7 @@ Filtro de bull puts sobre un universo amplio de acciones y ETF de EE. UU. No da 
 - **Favoritos**: tu lista acotada. Cada nombre se queda aunque no pase, con el motivo.
 - **Deals**: todos los bull puts de tus favoritos en una sola lista, con filtros por ancho, vencimiento y % abajo.
 - **Avisos**: cuando un favorito pasa a cumplir, o un nombre nuevo entra entre los primeros del universo. Llegan al móvil con la app gratuita ntfy.
-- **Reglas**: días, % abajo, ancho máximo, crédito mínimo, probabilidad de asignación máxima, equilibrio mínimo e interruptores.
+- **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
 
 Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de resultados, de StockAnalysis.
 
@@ -63,6 +63,10 @@ Abre `http://localhost:8080`. Solo barre con el ordenador encendido y el móvil 
 npm run ejemplo
 ```
 
+## Por qué la regla principal es la probabilidad
+
+"8 % abajo" no es el mismo riesgo en todos los nombres: en un índice tranquilo puede ser un 3 % de probabilidad y en una acción movida un 20 %. Y "crédito ≥ 10 % del ancho" obliga a aceptar un 10 % o más de probabilidad de perder, porque el crédito partido por el ancho es más o menos esa probabilidad. Por eso el riesgo se fija con la probabilidad de asignación máxima, que mide lo mismo en todos los nombres, y el crédito mínimo va en dólares por contrato. El % abajo queda como columna y como regla opcional.
+
 ## Cómo se calcula cada columna
 
 - **Crédito (cobras)**: bid del put corto menos ask del put largo, por 100.
@@ -70,8 +74,8 @@ npm run ejemplo
 - **Ancho**: la regla es un máximo. Vale ese ancho y cualquiera menor que tenga la cadena.
 - **Pérdida máx.**: ancho menos crédito, por 100.
 - **Rentabilidad**: crédito partido por la pérdida máxima.
-- **Prob. de asignación**: probabilidad de que el precio acabe por debajo del corto el día del vencimiento, sacada de la volatilidad implícita de ese strike. No mide la asignación anticipada.
-- **Equilibrio**: lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. En 1 se igualan.
+- **Prob. de asignación**: probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio (la misma cuenta que crédito / ancho en un spread estrecho). Si faltan precios, se usa la fórmula con la volatilidad implícita del strike. No mide la asignación anticipada.
+- **Equilibrio**: lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. En 1 se igualan. Como la probabilidad sale de los mismos precios que el crédito, suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.
 - **Movimiento esperado**: precio × volatilidad implícita al dinero × raíz de (días / 365).
 
 ## Qué no está todavía

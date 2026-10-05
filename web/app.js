@@ -579,10 +579,10 @@ function funnel(f) {
   const steps = [
     ["leídos", f.leidos],
     ["en el plazo", f.conPlazo],
-    ["con el % abajo", f.abajo],
+    ["con la prob.", f.prob],
+    ...(state.config.rules.otmOn ? [["con el % abajo", f.abajo]] : []),
     ["con el ancho", f.ancho],
     ["con el crédito", f.credito],
-    ["con la prob.", f.prob],
     ["con el equilibrio", f.equilibrio],
   ];
   return `<div class="funnel small" aria-label="Cuántos nombres superan cada regla">
@@ -759,7 +759,6 @@ function gate(key, title, hint, inner = "") {
 
 function viewReglas() {
   const r = state.config.rules;
-  const eq = (r.minCreditPct / (100 - r.minCreditPct)) * 100;
   const days = (n) => `${n} d`;
   const p0 = (n) => `${n.toFixed(0)}%`;
   const d0 = (n) => `$${n.toFixed(0)}`;
@@ -772,12 +771,22 @@ function viewReglas() {
     <div class="panel">
       ${stepper("rules.minDte", "Vencimiento desde", "No mires puts que caduquen antes.", 5, 60, 1, days)}
       ${stepper("rules.maxDte", "Vencimiento hasta", "Ni los que caduquen después.", 5, 60, 1, days)}
-      ${stepper("rules.minOtm", "% abajo, desde", "El put corto, como mínimo así de lejos del precio.", 1, 30, 1, p0)}
-      ${stepper("rules.maxOtm", "% abajo, hasta", "Y como máximo así de lejos.", 1, 35, 1, p0)}
+      ${stepper("rules.maxProb", "Prob. de asignación máxima", "Elige el corto: en cada nombre, los puts con esta probabilidad o menos de acabar en dinero.", 1, PROB_OFF, 1, (n) => (n >= PROB_OFF ? "sin límite" : p0(n)))}
       ${stepper("rules.width", "Ancho máximo del spread", "Dólares entre el put que vendes y el que compras. Vale ese ancho y cualquiera menor.", 1, 50, 1, d0)}
-      ${stepper("rules.minCreditPct", "Crédito mínimo", `Parte del ancho que te pagan. ${r.minCreditPct.toFixed(0)}% del ancho es un ${eq.toFixed(0)}% de rentabilidad.`, 1, 40, 1, p0)}
-      ${stepper("rules.maxProb", "Prob. de asignación máxima", "Probabilidad de que el corto acabe en dinero al vencimiento.", 2, PROB_OFF, 1, (n) => (n >= PROB_OFF ? "sin límite" : p0(n)))}
+      ${stepper("rules.minCredit", "Cobras, mínimo", "Crédito por contrato, en dólares. Por debajo, el spread no pasa.", 0, 500, 5, (n) => (n <= 0 ? "sin mínimo" : d0(n)))}
       ${stepper("rules.minBalance", "Equilibrio mínimo", "Lo que esperas ganar por cada dólar que esperas perder. En 1 se igualan.", 0, 1.5, 0.05, (n) => (n <= 0 ? "sin mínimo" : n.toFixed(2)))}
+      <div class="gate">
+        <button role="switch" aria-checked="${r.otmOn}" data-rule-switch="otmOn">
+          <span style="min-width:0"><b>Limitar además el % abajo</b><span class="small muted">Apagado, el % abajo es solo una columna. Encendido, el corto tiene que caer además en este tramo.</span></span>
+          <span class="switch"><i></i></span>
+        </button>
+        ${
+          r.otmOn
+            ? stepper("rules.minOtm", "% abajo, desde", "El put corto, como mínimo así de lejos del precio.", 1, 30, 1, p0) +
+              stepper("rules.maxOtm", "% abajo, hasta", "Y como máximo así de lejos.", 1, 35, 1, p0)
+            : ""
+        }
+      </div>
     </div>
 
     <section class="block">
@@ -813,8 +822,8 @@ function viewReglas() {
             <div><dt>% del ancho</dt><dd>Crédito partido por el ancho.</dd></div>
             <div><dt>Pérdida máx.</dt><dd>Ancho menos crédito, por 100.</dd></div>
             <div><dt>Rentabilidad</dt><dd>Crédito partido por la pérdida máxima.</dd></div>
-            <div><dt>Prob. de asignación</dt><dd>Probabilidad de que el precio acabe por debajo del corto el día del vencimiento, sacada de la volatilidad implícita de ese strike. No mide la asignación anticipada.</dd></div>
-            <div><dt>Equilibrio</dt><dd>Lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. Sube con la rentabilidad y baja con la probabilidad. En 1, lo esperado a ganar iguala lo esperado a perder. Cuenta cada asignación como la pérdida máxima, así que es prudente.</dd></div>
+            <div><dt>Prob. de asignación</dt><dd>Probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio. Es la misma cuenta que el crédito partido por el ancho de un spread estrecho. Si faltan precios para medirla, se usa la fórmula con la volatilidad implícita del strike y la ficha lo dice. No mide la asignación anticipada.</dd></div>
+            <div><dt>Equilibrio</dt><dd>Lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. Sube con la rentabilidad y baja con la probabilidad. En 1, lo esperado a ganar iguala lo esperado a perder. Cuenta cada asignación como la pérdida máxima, así que es prudente. Como la probabilidad sale de los mismos precios que el crédito, suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.</dd></div>
             <div><dt>Movimiento esperado</dt><dd>Precio × volatilidad implícita al dinero × raíz de (días / 365).</dd></div>
           </dl>
         </details>
@@ -917,9 +926,11 @@ function viewDeals() {
     maxWidth: f.maxWidth,
     minOtm: f.minOtm,
   });
-  // Escalones de 2 en 2 dentro de lo que hay en la lista: "desde 8%", "desde 10%"…
+  // Escalones dentro de lo que hay en la lista: "desde 8%", "desde 10%"… De 2 en 2,
+  // o de 4 en 4 si el tramo es largo, para que la fila no se haga interminable.
   const otmSteps = [];
-  if (otmRange) for (let n = Math.ceil((otmRange[0] + 0.01) / 2) * 2; n <= otmRange[1]; n += 2) otmSteps.push(n);
+  const otmBy = otmRange && otmRange[1] - otmRange[0] > 16 ? 4 : 2;
+  if (otmRange) for (let n = Math.ceil((otmRange[0] + 0.01) / otmBy) * otmBy; n <= otmRange[1]; n += otmBy) otmSteps.push(n);
   const today = nyToday();
   const money0 = (n) => `$${Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2).replace(/0$/, "")}`;
   const names = Object.keys(counts);
@@ -1107,7 +1118,7 @@ function sheet() {
           ${stat("Crédito", `${money(sp.credit)} · ${usd(sp.creditUsd)}`)}
           ${stat("Del ancho", pct(sp.creditPct))}
           ${stat("Pérdida máx.", usd(sp.lossUsd))}
-          ${stat("Prob. asignación", probText(sp))}
+          ${stat("Prob. asignación", `${probText(sp)}${sp.probSrc === "formula" ? " · por fórmula" : ""}`)}
           ${stat("Rentabilidad", pct(sp.ret))}
           ${stat("Equilibrio", kpiText(sp))}
           ${stat("Break-even", money(sp.breakeven))}
@@ -1175,7 +1186,7 @@ function setPath(config, path, value) {
 const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-fav],[data-step],[data-gate],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-fav],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.fav) {
@@ -1197,6 +1208,10 @@ root.addEventListener("click", (event) => {
   } else if (el.dataset.gate) {
     changeConfig((config) => {
       config.rules.gates[el.dataset.gate] = !config.rules.gates[el.dataset.gate];
+    });
+  } else if (el.dataset.ruleSwitch) {
+    changeConfig((config) => {
+      config.rules[el.dataset.ruleSwitch] = !config.rules[el.dataset.ruleSwitch];
     });
   } else if (el.dataset.alert) {
     changeConfig((config) => {
