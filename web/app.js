@@ -214,12 +214,13 @@ async function loadPublic() {
       if (error?.message !== "404") throw error; // 404: todavía no hay archivo de versiones
     }
     const want = [
-      [FULL_FILE, version ? version.scan : Date.now(), full, (json) => (full = json), !version],
+      // Sin hora anotada para el universo (despliegue recién estrenado): se baja una vez si no hay copia.
+      [FULL_FILE, version?.scan > 0 ? version.scan : Date.now(), full, (json) => (full = json), version?.scan > 0 ? false : !version || !full],
       [FAST_FILE, version ? version.rapido : 0, fast, (json) => (fast = json), false],
     ];
     await Promise.all(
       want.map(async ([name, stamp, have, set, always]) => {
-        if (!(stamp > 0) || (!always && have?.at === stamp)) return;
+        if (!(stamp > 0) || (!always && (have?.at === stamp || !(version?.[name === FULL_FILE ? "scan" : "rapido"] > 0)))) return;
         try {
           set(await fetchAndKeep(name, stamp));
           show();

@@ -593,6 +593,9 @@ export async function scanOnce({ force = false } = {}) {
     // Hora de cada archivo, para que la app solo descargue el que ha cambiado.
     const version = { scan: 0, rapido: 0, ...(await loadPrev("version.json", {}).catch(() => ({}))) };
     version[FAST ? "rapido" : "scan"] = at;
+    // Si falta la hora del otro archivo (primer barrido tras estrenar esto), se toma del propio archivo.
+    const other = FAST ? "scan" : "rapido";
+    if (!(Number(version[other]) > 0)) version[other] = (await loadPrev(`${other}.json`, null).catch(() => null))?.at ?? 0;
     await writeJson(path.join(DATA, "version.json"), { scan: Number(version.scan) || 0, rapido: Number(version.rapido) || 0 });
     if (PUBLIC) {
       // Público: solo lo genérico en claro; lo de los avisos, cifrado.
