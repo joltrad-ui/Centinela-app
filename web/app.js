@@ -1,6 +1,5 @@
 import {
   DEFAULT_CONFIG,
-  MAX_FAVORITES,
   ORDERS,
   PROB_OFF,
   assessSymbol,
@@ -123,7 +122,7 @@ async function ghRequest(method, body) {
 
 const ghReady = () => Boolean(state.gh.owner && state.gh.repo && state.gh.token);
 
-/** App publicada sin llave: el barrido es público y genérico; reglas y favoritos se quedan en el dispositivo. */
+/** App publicada sin llave: el barrido es público y genérico; las reglas se quedan en el dispositivo. */
 const isPublic = () => state.mode === "nube" && !ghReady();
 
 /** Lee un archivo JSON del repositorio privado. Los barridos están en la rama "data". */
@@ -496,7 +495,7 @@ async function loadCboe() {
   real.busy = true;
   real.error = "";
   real.done = 0;
-  const names = state.config.favorites.slice(0, 12);
+  const names = (state.config.favorites.length ? state.config.favorites : listSymbols().map((sym) => sym.s)).slice(0, 12);
   real.total = names.length;
   realPaint(true);
   const today = nyToday();
@@ -581,7 +580,7 @@ const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
 // ---------- vistas ----------
 
 const ICONS = {
-  favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9L3.5 9.7l5.9-.8z"/></svg>',
+  favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
@@ -609,7 +608,7 @@ function header(eyebrow, title) {
       <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
       <button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>
     </header>
-    ${scan?.example ? '<p class="banner small">Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer tus favoritos.</p>' : ""}
+    ${scan?.example ? '<p class="banner small">Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer la lista.</p>' : ""}
     ${scan?.real ? readSummary(scan) : ""}
     ${real.error ? `<p class="banner err small">${esc(real.error)}</p>` : ""}
     ${state.error && !state.loading ? `<p class="banner err small">${esc(state.error)}</p>` : ""}`;
@@ -646,11 +645,6 @@ function readSummary(scan) {
   </div>`;
 }
 
-function star(symbol) {
-  const on = state.config.favorites.includes(symbol);
-  return `<button class="star" data-fav="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar de favoritos" : "Añadir a favoritos"} ${esc(symbol)}">${on ? "★" : "☆"}</button>`;
-}
-
 function metrics(sp) {
   return `<dl class="metrics">
     <div class="metric"><dt>Prob. asignación</dt><dd>${probText(sp)}</dd></div>
@@ -680,7 +674,6 @@ function card(sym, res) {
       </div>
       <div style="display:flex;gap:6px;align-items:flex-start">
         <div class="price"><p class="num" style="font-weight:500">${money(sym.p)}</p><p class="num small ${up ? "up" : "down"}">${signed(sym.c)}</p></div>
-        ${star(sym.s)}
       </div>
     </div>
     ${sp ? `<p class="line">${esc(spreadLine(sp))}</p>${metrics(sp)}` : noSpread}
@@ -697,62 +690,43 @@ function blockOrder() {
   return order;
 }
 
+/** La lista: los nombres de la lista base, que es lo único que se barre.
+ *  Fuera de la app publicada (ordenador, versión de prueba), todo lo que traiga el barrido. */
+function listSymbols() {
+  const symbols = state.scan?.symbols ?? [];
+  if (symbols.some((sym) => sym.b)) return symbols.filter((sym) => sym.b);
+  return isPublic() ? [] : symbols;
+}
+
 function viewFavoritos() {
   const today = nyToday();
-  const symbols = state.scan?.symbols ?? [];
-  const bySymbol = new Map(symbols.map((sym) => [sym.s, sym]));
-  const rows = state.config.favorites.map((symbol) => {
-    const sym = bySymbol.get(symbol);
-    return sym ? { sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) } : { sym: null, symbol };
-  });
-  const rank = (row) => (!row.sym ? 3 : row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
-  rows.sort((a, b) => rank(a) - rank(b) || (a.sym && b.sym && a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
-  const passing = rows.filter((row) => row.sym && row.res.status === "entrada").length;
-  const blocks = blockOrder();
-  const groupOf = (row) => (row.sym ? row.sym.b ?? NO_BLOCK : "Fuera de la lista");
-  const lost = (row) =>
-    `<li class="card"><div class="card-head"><div><p class="sym">${esc(row.symbol)} <span class="pill" style="margin-left:6px">Sin lectura</span></p>
-      <p class="small muted">${(state.scan?.failed ?? []).includes(row.symbol) ? "No llegó en el último barrido." : "No está en la lista que se barre."}</p></div>${star(row.symbol)}</div></li>`;
-  const heading = (name, extra) => `<h2 class="group">${esc(name)}<span class="small muted">${extra}</span></h2>`;
-  const groups = [...blocks, NO_BLOCK, "Fuera de la lista"]
+  const rows = listSymbols().map((sym) => ({ sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) }));
+  const rank = (row) => (row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
+  rows.sort((a, b) => rank(a) - rank(b) || (a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
+  const passing = rows.filter((row) => row.res.status === "entrada").length;
+  const groups = [...blockOrder(), NO_BLOCK]
     .map((name) => {
-      const own = rows.filter((row) => groupOf(row) === name);
+      const own = rows.filter((row) => (row.sym.b ?? NO_BLOCK) === name);
       if (!own.length) return "";
-      const ok = own.filter((row) => row.sym && row.res.status === "entrada").length;
-      return `${heading(name, `${ok} de ${own.length} ${own.length === 1 ? "cumple" : "cumplen"}`)}
-        <ul class="cards">${own.map((row) => (row.sym ? card(row.sym, row.res) : lost(row))).join("")}</ul>`;
+      const ok = own.filter((row) => row.res.status === "entrada").length;
+      return `<h2 class="group">${esc(name)}<span class="small muted">${ok} de ${own.length} ${own.length === 1 ? "cumple" : "cumplen"}</span></h2>
+        <ul class="cards">${own.map((row) => card(row.sym, row.res)).join("")}</ul>`;
     })
     .join("");
-  // El resto de la lista base, para elegir favoritos sin teclear.
-  const rest = symbols.filter((sym) => sym.b && !state.config.favorites.includes(sym.s));
-  const full = state.config.favorites.length >= MAX_FAVORITES;
-  const picker = rest.length
-    ? `<section class="block">
-        <h2>Añadir de la lista</h2>
-        <p class="small muted">Toca un nombre para pasarlo a tus favoritos. La estrella de cada tarjeta lo quita.</p>
-        ${blocks
-          .map((name) => {
-            const own = rest.filter((sym) => sym.b === name);
-            if (!own.length) return "";
-            return `<div class="pick"><p class="flabel xs muted">${esc(name)}</p><div class="chips">
-              ${own.map((sym) => `<button class="chip" data-fav="${esc(sym.s)}" ${full ? "disabled" : ""} aria-label="Añadir ${esc(sym.s)} a favoritos"><b>${esc(sym.s)}</b> ${esc(nameOf(sym))}</button>`).join("")}
-            </div></div>`;
-          })
-          .join("")}
-      </section>`
-    : "";
   const order = ORDERS.find((o) => o.id === state.config.order);
+  const empty = state.scan
+    ? '<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado. Pulsa Actualizar dentro de un rato.</p></div>'
+    : "";
   return `
-    ${header("Bull put · tu lista", "Favoritos")}
+    ${header("Bull put", "Lista")}
     <div class="tools">
       <div class="chips" role="group" aria-label="Orden">
         ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
       </div>
     </div>
     <p class="small muted" style="margin:-6px 0 4px">${esc(order?.hint ?? "")}</p>
-    <p class="small muted" style="margin:0 0 6px">${rows.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "favorito cumple" : "favoritos cumplen"}. Cada nombre se queda aquí aunque no pase, con el motivo.` : ""}</p>
-    ${rows.length ? groups : '<div class="empty"><h2>Tu lista está vacía</h2><p class="small muted" style="margin-top:8px">Elige nombres abajo.</p></div>'}
-    ${state.scan ? picker : ""}
+    <p class="small muted" style="margin:0 0 6px">${rows.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "nombre cumple" : "nombres cumplen"}. Los que no pasan dicen el motivo.` : ""}</p>
+    ${rows.length ? groups : empty}
     ${foot()}`;
 }
 
@@ -813,7 +787,7 @@ function viewReglas() {
 
     <section class="block">
       <h2>Si lo enciendes</h2>
-      <p class="small muted">Apagado, no cuenta. Encendido, el nombre deja de cumplir y Favoritos dice por qué.</p>
+      <p class="small muted">Apagado, no cuenta. Encendido, el nombre deja de cumplir y la lista dice por qué.</p>
       <div class="panel">
         ${gate("event", "Sin resultados en el plazo", "Hasta dos días después del vencimiento.")}
         ${gate(
@@ -862,8 +836,8 @@ function viewReglas() {
 
 /** Texto para pegar en el secreto CENTINELA_CONFIG de GitHub. */
 function secretText() {
-  const { rules, order, favorites, extra, alerts } = state.config;
-  return JSON.stringify({ rules, order, favorites, extra, alerts });
+  const { rules, order, alerts } = state.config;
+  return JSON.stringify({ rules, order, alerts });
 }
 
 function secretBlock() {
@@ -872,11 +846,11 @@ function secretBlock() {
   const status = !copiedAt
     ? "Todavía no has copiado la configuración desde este dispositivo."
     : stale
-      ? "Has cambiado reglas o favoritos después de la última copia: los avisos siguen con lo anterior."
+      ? "Has cambiado las reglas después de la última copia: los avisos siguen con las anteriores."
       : "Los avisos usan lo que copiaste por última vez desde este dispositivo.";
   return `<section class="block">
     <h2>Avisos al móvil</h2>
-    <p class="small muted">Tus reglas y favoritos se guardan solo en este dispositivo; no se publican. Para que los avisos los sigan, copia la configuración y pégala en GitHub como secreto <b>CENTINELA_CONFIG</b>. Repítelo cuando cambies favoritos o reglas.</p>
+    <p class="small muted">Tus reglas se guardan solo en este dispositivo; no se publican. Para que los avisos las sigan, copia la configuración y pégala en GitHub como secreto <b>CENTINELA_CONFIG</b>. Repítelo cuando cambies las reglas.</p>
     <div class="panel"><div class="form">
       <p class="small${stale ? "" : " muted"}">${status}</p>
       <button class="btn primary" style="margin-top:10px" data-act="copy-secret">Copiar configuración para avisos</button>
@@ -942,7 +916,7 @@ function viewDeals() {
   const symbols = state.scan?.symbols ?? [];
   const f = state.dealFilter;
   const order = state.config.order;
-  const { deals, counts, expiries, widths, otmRange, matched } = favoriteDeals(symbols, state.config.favorites, state.config.rules, order, nyToday(), {
+  const { deals, counts, expiries, widths, otmRange, matched } = favoriteDeals(symbols, listSymbols().map((sym) => sym.s), state.config.rules, order, nyToday(), {
     perName: state.dealsPerName,
     expiries: f.expiries,
     maxWidth: f.maxWidth,
@@ -961,7 +935,7 @@ function viewDeals() {
   const shown = deals.slice(0, state.dealsShown);
   const filtered = f.expiries.length > 0 || f.maxWidth > 0 || f.minOtm > 0;
   const summary = names.length
-    ? `${okTotal} cumplen y ${noTotal} no, en ${names.length} favoritos.${filtered ? ` Con tus filtros quedan ${matched}.` : ""} Ves ${shown.length}${
+    ? `${okTotal} cumplen y ${noTotal} no, en ${names.length} nombres.${filtered ? ` Con tus filtros quedan ${matched}.` : ""} Ves ${shown.length}${
         deals.length < matched ? `, con el tope de ${state.dealsPerName} por nombre` : shown.length < deals.length ? ` de ${deals.length}` : ""
       }.`
     : "";
@@ -1014,12 +988,12 @@ function viewDeals() {
          <thead><tr><th class="l">Nombre</th><th class="l">Vence</th><th class="l">Corto/largo</th><th>Ancho</th>${head}<th class="l">Cumple o por qué no</th></tr></thead>
          <tbody>${body}</tbody></table></div>
        ${deals.length > shown.length ? `<button class="btn" style="margin-top:12px" data-act="more-deals">Ver ${Math.min(60, deals.length - shown.length)} más (quedan ${deals.length - shown.length})</button>` : ""}`
-    : `<div class="empty"><h2>${!state.config.favorites.length ? "Tu lista está vacía" : filtered ? "Nada con esos filtros" : "Sin bull puts cerca de tu punto"}</h2>
-        <p class="small muted" style="margin-top:8px">${!state.config.favorites.length ? "Añade nombres en Favoritos." : filtered ? "Quita algún filtro para ver más." : "Ningún favorito tiene puts en tu plazo y alrededor de tu % abajo."}</p>
+    : `<div class="empty"><h2>${!listSymbols().length ? "Esperando el primer barrido de la lista" : filtered ? "Nada con esos filtros" : "Sin bull puts cerca de tu punto"}</h2>
+        <p class="small muted" style="margin-top:8px">${!listSymbols().length ? "Sale cada media hora en horario de mercado." : filtered ? "Quita algún filtro para ver más." : "Ningún nombre tiene puts en tu plazo y dentro de tus reglas."}</p>
         ${filtered ? '<button class="btn" style="margin-top:12px" data-act="clear-filters">Quitar filtros</button>' : ""}</div>`;
   const chip = (attr, value, label, on) => `<button class="chip quiet" ${attr}="${esc(value)}" aria-pressed="${on}">${esc(label)}</button>`;
   return `<div class="deals">
-    ${header("Bull put · favoritos", "Deals")}
+    ${header("Bull put · lista", "Deals")}
     ${summary ? `<p class="small" style="margin-top:12px">${summary}</p>` : ""}
     <div class="tools">
       <div class="chips" role="group" aria-label="Orden">
@@ -1078,7 +1052,7 @@ function viewAvisos() {
     <div class="panel">
       <div class="gate">
         <button role="switch" aria-checked="${a.favorites}" data-alert="favorites">
-          <span><b>Un favorito pasa a cumplir</b><span class="small muted">Avisa cuando un nombre de tu lista entra en tus reglas.</span></span>
+          <span><b>Un nombre pasa a cumplir</b><span class="small muted">Avisa cuando un nombre de la lista entra en tus reglas.</span></span>
           <span class="switch"><i></i></span>
         </button>
       </div>
@@ -1122,7 +1096,7 @@ function sheet() {
           <h2 style="font-size:2rem">${esc(sym.s)} <span class="pill ${res.status}" style="vertical-align:middle;font-family:var(--sans)">${statusLabel(res.status)}</span></h2>
           <p class="small muted">${esc(nameOf(sym))}</p>
         </div>
-        <div style="display:flex;gap:4px;align-items:center">${star(sym.s)}<button class="btn quiet" data-close>Cerrar</button></div>
+        <div style="display:flex;gap:4px;align-items:center"><button class="btn quiet" data-close>Cerrar</button></div>
       </div>
       <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
         <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
@@ -1179,7 +1153,7 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("favoritos", "Favoritos")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("favoritos", "Lista")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
@@ -1201,16 +1175,10 @@ function setPath(config, path, value) {
 const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-fav],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
-  if (el.dataset.fav) {
-    const symbol = el.dataset.fav;
-    changeConfig((config) => {
-      if (config.favorites.includes(symbol)) config.favorites = config.favorites.filter((item) => item !== symbol);
-      else if (config.favorites.length < MAX_FAVORITES) config.favorites.push(symbol);
-    });
-  } else if (el.dataset.step) {
+  if (el.dataset.step) {
     const path = el.dataset.step;
     const current = path.split(".").reduce((obj, key) => obj[key], state.config);
     const by = Number(el.dataset.by);

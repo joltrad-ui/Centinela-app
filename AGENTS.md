@@ -26,9 +26,9 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 ## Estructura
 
 - `web/engine.js`: motor puro, compartido por la app y el barrido. Reglas, construcción de spreads, columnas, orden, embudo. Las estrategias se registran en `STRATEGIES`; hoy solo `bullPut`.
-- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Favoritos, Deals, Avisos, Reglas). La principal es Favoritos, agrupada por bloque. No hay pantalla ni concepto de "universo" en la interfaz. Instalable (manifest y `sw.js`).
+- `web/app.js`, `web/app.css`, `web/index.html`: app sin framework, cuatro pantallas (Lista, Deals, Avisos, Reglas). La principal es Lista, agrupada por bloque: enseña todos los nombres de la lista base. No hay "universo" ni "favoritos" que elegir: una sola lista. Instalable (manifest y `sw.js`).
 - `scanner/scan.mjs`: lee CBOE, guarda `data/scan.json`, lleva el estado entre barridos y envía avisos por ntfy. `--serve` añade un servidor local con `/api/config`.
-- `scanner/universe.json`: la lista base, genérica: 32 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre. Los favoritos se eligen dentro de ella.
+- `scanner/universe.json`: la lista base, genérica: 32 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre y lo que enseña la app, entera.
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
 - `.github/workflows/publicar.yml`: en cada push a `main` que toque `web/`, publica la app. No barre.
 - `.github/workflows/barrido.yml`: solo por horario o a mano. Barre la lista base cada media hora en horario de mercado, con `--public`, a `data/scan.json`.
@@ -43,8 +43,8 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 
 - Nada personal en el repositorio, en `data/`, en los mensajes de commit ni en el registro de Actions: ni reglas, ni favoritos, ni avisos, ni nombres añadidos, ni correos.
 - Los commits se firman con una dirección `@users.noreply.github.com`.
-- Reglas y favoritos viven en el dispositivo (`localStorage`) y, para los avisos, en el secreto `CENTINELA_CONFIG`. El estado de los avisos va cifrado en `data/privado.json` con clave derivada de `NTFY_TOPIC` y tamaño fijo.
-- En modo `--public` solo se barre la lista base, nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista base no debe convertirse en la lista de favoritos de nadie: si se recorta hasta parecerse a ellos, los delata.
+- Las reglas viven en el dispositivo (`localStorage`) y, para los avisos, en el secreto `CENTINELA_CONFIG`. La lista de nombres es pública (`scanner/universe.json`). El estado de los avisos va cifrado en `data/privado.json` con clave derivada de `NTFY_TOPIC` y tamaño fijo.
+- En modo `--public` solo se barre la lista base, nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista es pública: antes de añadir o quitar nombres a petición del dueño, avisarle de que el cambio se ve en el repositorio y de que una lista recortada a lo que opera lo delata.
 - Antes de añadir cualquier archivo a `data/` o cualquier línea al registro, comprobar que no depende de la configuración personal.
 
 ## Datos
@@ -60,7 +60,7 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 - La prob. de asignación máxima es la regla que elige el corto (10 % de fábrica, 50 = sin límite). El % abajo es columna y regla opcional (`otmOn`). El crédito mínimo va en dólares por contrato (`minCredit`), no en % del ancho: esa regla forzaba una probabilidad de pérdida mínima. Las reglas llevan versión (`v: 2`); las guardadas sin ella se migran en `normalizeRules`.
 - Rentabilidad: crédito / pérdida máxima. Equilibrio: ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Hay una regla de equilibrio mínimo (`minBalance`, 0,5 por defecto, 0 = sin mínimo).
 - El ancho de las reglas es un máximo: para cada corto se consideran todos los largos que dejan ese ancho o menos.
-- Solo avisan los favoritos (el aviso de "nombre nuevo entre los primeros" se retiró con el universo). Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.
+- Avisa cualquier nombre de la lista que pase a cumplir. Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.
 - Si el estado anterior no se puede leer (salvo 404), el barrido falla en vez de sobrescribir.
 
 ## Estado

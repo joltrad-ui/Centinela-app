@@ -4,10 +4,9 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da ór
 
 ## Qué hace
 
-- **Lista base**: 32 nombres con opciones líquidas, repartidos en bloques (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json` y es igual para cualquiera.
-- **Favoritos**: la pantalla principal. Los eliges dentro de la lista base y se ven agrupados por bloque. Cada nombre se queda aunque no pase, con el motivo.
-- **Deals**: todos los bull puts de tus favoritos en una sola lista, con filtros por ancho, vencimiento y % abajo.
-- **Avisos**: cuando un favorito pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
+- **Lista**: la pantalla principal y la única lista que hay. 32 nombres con opciones líquidas, agrupados por bloque (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
+- **Deals**: todos los bull puts de la lista juntos, con filtros por ancho, vencimiento y % abajo.
+- **Avisos**: cuando un nombre de la lista pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
 - **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
 
 Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de resultados, de StockAnalysis.
@@ -29,16 +28,16 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | | Dónde está | ¿Lo ve alguien más? |
 |---|---|---|
 | El código y la pantalla de la app | Repositorio y página | Sí |
-| La lista base y su barrido (precios y cadenas de los 32 nombres) | Repositorio y página, carpeta `data/` | Sí. Es igual para cualquiera y no dice cuáles son los favoritos de nadie |
-| Reglas, orden y favoritos | En tu dispositivo | No |
-| Reglas y favoritos para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
-| Qué favorito cumplía y qué se avisó hoy | `data/privado.json`, cifrado | El archivo se ve, el contenido no. La clave sale del secreto `NTFY_TOPIC` y el tamaño es fijo |
+| La lista y su barrido (precios y cadenas de los 32 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
+| Reglas y orden | En tu dispositivo | No |
+| Reglas para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
+| Qué nombre cumplía y qué se avisó hoy | `data/privado.json`, cifrado | El archivo se ve, el contenido no. La clave sale del secreto `NTFY_TOPIC` y el tamaño es fijo |
 | Los avisos | App ntfy | Solo quien conozca el nombre del canal. Por eso tiene que ser largo y al azar |
 
 Consecuencias de que sea así:
 
-- Los favoritos se eligen dentro de la lista base. Un nombre de fuera no se puede añadir desde la app, porque su sola presencia en un archivo público lo delataría. Para ampliar la lista base se cambia `scanner/universe.json`, y eso sí es público.
-- Las reglas y los favoritos no pasan solos de un dispositivo a otro.
+- La lista es pública: cualquier cambio en `scanner/universe.json` (añadir o quitar un nombre) se ve en el repositorio. Mientras sea una lista amplia y genérica no dice qué opera nadie; si se recorta a lo que uno opera, lo dice.
+- Las reglas no pasan solas de un dispositivo a otro.
 - Los avisos no se anotan en la app; se ven en ntfy.
 - El registro de cada barrido en **Actions** también es público: solo dice cuántos nombres se han leído.
 
@@ -54,7 +53,7 @@ Consecuencias de que sea así:
 1. Instala **ntfy** desde Google Play y suscríbete a un nombre largo y difícil de adivinar (por ejemplo `centinela-` y 20 letras y números al azar). No lo escribas en ningún sitio público.
 2. En el repositorio: **Settings → Secrets and variables → Actions → New repository secret**, nombre `NTFY_TOPIC`, valor ese mismo nombre.
 3. En la app: **Reglas → Avisos al móvil → Copiar configuración para avisos**. Crea otro secreto, nombre `CENTINELA_CONFIG`, y pega lo copiado.
-4. Cada vez que cambies reglas o favoritos y quieras que los avisos lo sigan, repite el paso 3 (el secreto se sobrescribe).
+4. Cada vez que cambies las reglas y quieras que los avisos las sigan, repite el paso 3 (el secreto se sobrescribe).
 
 ## En tu ordenador, sin GitHub
 
