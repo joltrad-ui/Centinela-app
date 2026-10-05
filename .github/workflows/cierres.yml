@@ -1,0 +1,45 @@
+name: Cierres
+
+# Solo por horario o a mano: un push no lo lanza nunca.
+# Una vez al día, con la bolsa ya cerrada, baja los cierres diarios de la lista base
+# (scanner/universe.json) y los deja en historia/. No barre opciones ni toca data/.
+# Repositorio público: el archivo es igual para cualquiera; aquí no entra ningún secreto.
+
+on:
+  schedule:
+    # Hora en UTC, de lunes a viernes: después del cierre de Nueva York todo el año.
+    - cron: "23 22 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cierres
+  cancel-in-progress: false
+
+jobs:
+  cierres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cierres anteriores
+        run: |
+          mkdir -p out
+          if git fetch --depth=1 origin gh-pages 2>/dev/null; then
+            git archive FETCH_HEAD historia 2>/dev/null | tar -x -C out || true
+          fi
+
+      - name: Bajar cierres
+        run: node scanner/cierres.mjs --out out
+
+      - name: Guardar los cierres
+        env:
+          REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: bash scripts/rama.sh historia out/historia

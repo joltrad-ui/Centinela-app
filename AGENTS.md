@@ -32,7 +32,8 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 - `config.json`: reglas de fábrica; solo se usa en el modo ordenador.
 - `.github/workflows/publicar.yml`: en cada push a `main` que toque `web/`, publica la app. No barre.
 - `.github/workflows/barrido.yml`: solo por horario o a mano. Barre la lista base cada media hora en horario de mercado, con `--public`, a `data/scan.json`.
-- `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/`; `datos` = solo `data/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
+- `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/` e `historia/`; `datos` = solo `data/`; `historia` = solo `historia/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
+- `scanner/cierres.mjs` y `.github/workflows/cierres.yml`: una vez al día (22:23 UTC, lunes a viernes) o a mano, nunca por push ni en cada barrido. Baja del histórico de CBOE los cierres de 5 años de la lista base y escribe `historia/cierres.json` (`{at, last, symbols: {SIMBOLO: {d, c}}}`) e `historia/version.json`. Controles: último cierre con 4 sesiones o menos, ningún salto diario mayor del 40 %, se descarta lo anterior a un hueco de más de 10 días y a la fecha de `DESDE` (IBIT). Si un control falla no publica y queda el archivo anterior. No lee secretos ni configuración.
 - `data/version.json`: hora de `scan.json`. La app guarda el barrido en el dispositivo (Cache API), lo enseña al abrir y solo lo descarga cuando ha cambiado.
 
 ## Cómo probar sin esperar
@@ -51,6 +52,7 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 ## Datos
 
 - CBOE, 15 min de retraso: `https://cdn.cboe.com/api/global/delayed_quotes/options/SIMBOLO.json`. De `data` se usan `current_price`, `price_change_percent`, `iv30`, `last_trade_time`, `security_type` y `options[]` con `option` (símbolo OCC), `bid`, `ask`, `iv`, `delta`, `open_interest`.
+- Histórico de CBOE: `https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/SIMBOLO.json` (redirige a `cdn-api.cboe.com`). `data[]` con `date` y `close`, ajustado por splits. Se usa el cierre sin sumar dividendos.
 - StockAnalysis: próxima fecha de resultados por símbolo, con caché de 3 días en el estado.
 - `data/scan.json`: `blocks` (bloques en orden) y, por nombre: `{s, n, k, b, p, c, iv30, er, x}` (`b` es el bloque), donde `x` es una lista de `[vencimiento, iv al dinero, filas]` y cada fila es `[strike, bid, ask, interés abierto, iv, delta]`. Solo puts por debajo del precio.
 
@@ -61,6 +63,7 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 - La prob. de asignación máxima es la regla que elige el corto (10 % de fábrica, 50 = sin límite). El % abajo es columna y regla opcional (`otmOn`). El crédito mínimo va en dólares por contrato (`minCredit`), no en % del ancho: esa regla forzaba una probabilidad de pérdida mínima. Las reglas llevan versión (`v: 2`); las guardadas sin ella se migran en `normalizeRules`.
 - Rentabilidad: crédito / pérdida máxima. Equilibrio: ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Hay una regla de equilibrio mínimo (`minBalance`, 0,5 por defecto, 0 = sin mínimo).
 - El ancho de las reglas es un máximo: para cada corto se consideran todos los largos que dejan ese ancho o menos.
+- Pestaña "Igual riesgo", con historia (`withHistory`): T = sesiones hasta el vencimiento (`sessionsBetween`, con tabla de festivos de EE. UU. hasta 2028: ampliarla antes de que se acabe). Ventanas de T sesiones de los cierres, llevadas al precio de hoy. Prob. histórica = parte que acaba bajo el corto. Pérdida esperada histórica = media de min(max(corto − final, 0), ancho) × 100. Volatilidad reciente = la mayor entre la realizada de 20 y de 60 sesiones, × √252. Pérdida esperada reciente = [L(corto) − L(largo)] × 100 sin tipo de interés. Equilibrio con historia = cobras neto / la mayor de las dos. "Poca historia" = menos de 2 años de cierres. El equilibrio de Deals no usa nada de esto.
 - Avisa cualquier nombre de la lista que pase a cumplir. Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa.
 - Si el estado anterior no se puede leer (salvo 404), el barrido falla en vez de sobrescribir.
 

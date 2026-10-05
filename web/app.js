@@ -72,6 +72,7 @@ const state = {
   dealsPerName: 10, // 0 = todos
   dealsShown: 60,
   dealFilter: { expiries: [], maxWidth: 0, minOtm: 0 },
+  hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
   equal: loadEqual(), // pestaña de prueba "Igual riesgo": solo en el dispositivo
 };
 
@@ -188,6 +189,27 @@ async function fetchAndKeep(name, stamp) {
     /* sin sitio para guardar: se descargará otra vez la próxima */
   }
   return json;
+}
+
+// Cierres diarios para la pestaña "Igual riesgo". Mismo trato que el barrido: se enseña lo
+// guardado y solo se descarga cuando historia/version.json dice que ha cambiado.
+const HIST_FILE = "historia/cierres.json";
+
+async function loadHist() {
+  if (EMBED) return;
+  const show = (hist) => {
+    if (!hist?.symbols) return;
+    state.hist = hist;
+    if (state.tab === "igual") render();
+  };
+  let hist = state.hist ?? (await keptJson(HIST_FILE));
+  show(hist);
+  try {
+    const stamp = Number((await getJson("historia/version.json")).cierres) || 0;
+    if (stamp > 0 && hist?.at !== stamp) show(await fetchAndKeep(HIST_FILE, stamp));
+  } catch {
+    /* todavía no hay cierres publicados, o no hay conexión: se sigue con lo guardado */
+  }
 }
 
 async function loadPublic() {
@@ -1218,7 +1240,14 @@ function equalOpts(symbols) {
 function viewIgual() {
   const symbols = listSymbols();
   const { expiries, opts } = equalOpts(symbols);
-  const { rows, out } = opts.expiry ? equalRiskList(symbols, opts, nyToday()) : { rows: [], out: [] };
+  const hist = state.hist?.symbols ?? null;
+  const { rows, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], out: [] };
+  const withHist = rows.some((row) => row.balanceHist != null);
+  const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 2));
+  const probLine = (row) =>
+    row.histProb == null
+      ? `prob. asig. ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}${hist ? " · sin historia" : ""}`
+      : `prob. mercado ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""} · historia ${dec(row.histProb)} %`;
   const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
   const blockOf = (sym) => sym.b ?? "";
   const list = rows
@@ -1226,8 +1255,8 @@ function viewIgual() {
       (row) => `<li>
         <button class="deal ok" data-open="${esc(row.sym.s)}">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} <span class="muted">· ${dec(row.otm)} % abajo</span>
-            <span class="deal-kpi num">${dec(row.ret)} %</span></span>
-          <span class="deal-sub small muted">prob. asig. ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · pierdes máx. ${usdDec(row.loss)} · rentab. neta ${dec(row.ret)} %${row.earnInside && row.sym.er ? ` · resultados ${esc(labelOf(row.sym.er.d))}` : ""}</span>
+            <span class="deal-kpi num">${withHist ? balText(row) : `${dec(row.ret)} %`}</span></span>
+          <span class="deal-sub small muted">${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · pierdes máx. ${usdDec(row.loss)} · rentab. neta ${dec(row.ret)} %${row.balanceHist != null ? ` · equilibrio con historia ${balText(row)}` : ""}${row.shortHistory && row.histProb != null ? " · poca historia" : ""}${row.earnInside && row.sym.er ? ` · resultados ${esc(labelOf(row.sym.er.d))}` : ""}</span>
         </button>
       </li>`,
     )
@@ -1252,7 +1281,12 @@ function viewIgual() {
         <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
     </div>
     <p class="small muted" style="margin:0 0 8px">Todos a la misma prob. de asignación, mismo ancho y mismo vencimiento. La prob. se saca de los precios, así que a igual prob. lo que se cobra se parece mucho; la diferencia está en el coste de entrar y en la prob. de pérdida máxima.</p>
-    ${empty ? `<div class="empty"><h2>${empty}</h2></div>` : `<ul class="rows">${list}</ul>${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`}
+    <p class="small muted" style="margin:0 0 8px">${
+      withHist
+        ? `Orden: equilibrio con historia = cobras neto entre lo que se espera pagar, tomando lo peor entre 5 años de precios y la volatilidad reciente. 1 = lo cobrado iguala lo que se espera pagar. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
+        : "Orden: rentab. neta. Todavía no hay cierres diarios guardados para comparar con la historia."
+    }</p>
+    ${empty ? `<div class="empty"><h2>${empty}</h2></div>` : `<div class="deal-head small muted"><span>${rows.length} ${rows.length === 1 ? "fila" : "filas"}</span><span>${withHist ? "Equilibrio con historia" : "Rentab. neta"}</span></div><ul class="rows">${list}</ul>${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`}
     ${foot()}`;
 }
 
@@ -1382,7 +1416,7 @@ root.addEventListener("click", (event) => {
     state.detail = null;
     render();
   } else if (el.dataset.act === "reload") {
-    void load();
+    void load().then(loadHist, loadHist);
   } else if (el.dataset.act === "real") {
     void loadReal();
   } else if (el.dataset.act === "example") {
@@ -1419,7 +1453,7 @@ root.addEventListener("submit", (event) => {
     writeLocal(LS_GH, state.gh);
     state.showGh = false;
     state.tab = "favoritos";
-    void load();
+    void load().then(loadHist, loadHist);
   }
 });
 
@@ -1434,4 +1468,4 @@ if (!EMBED && "serviceWorker" in navigator && window.location.protocol !== "file
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
-void load();
+void load().then(loadHist, loadHist);

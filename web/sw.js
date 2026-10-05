@@ -18,8 +18,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // El barrido (data/) lo guarda la propia app, que sabe cuándo ha cambiado.
-  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/data/")) return;
+  // El barrido (data/) y los cierres (historia/) los guarda la propia app, que sabe cuándo han cambiado.
+  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/data/") || url.pathname.includes("/historia/")) return;
   const key = url.origin + url.pathname; // sin el ?t= que evita la caché del navegador
   event.respondWith(
     fetch(req)

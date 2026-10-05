@@ -104,5 +104,6 @@ El barrido de la lista base lee los 32 nombres en unos segundos. Cada barrido de
 - `scanner/universe.json` la lista base, por bloques.
 - `config.json` reglas de fábrica. Solo se usa en el modo ordenador.
 - `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
-- `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar la otra.
+- `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar las otras.
+- `scanner/cierres.mjs` baja una vez al día los cierres diarios de la lista (carpeta `historia/`), para la pestaña de prueba "Igual riesgo". Un push no lo lanza.
 - `test/` pruebas y generador de datos de ejemplo.

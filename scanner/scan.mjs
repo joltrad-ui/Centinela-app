@@ -620,7 +620,7 @@ function serve(port) {
         return send(202, JSON.stringify({ ok: true }));
       }
       const rel = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
-      const base = rel.startsWith("/data/") ? OUT : web;
+      const base = rel.startsWith("/data/") || rel.startsWith("/historia/") ? OUT : web;
       const file = path.normalize(path.join(base, rel));
       if (!file.startsWith(base) || !existsSync(file)) return send(404, "No encontrado", "text/plain; charset=utf-8");
       return send(200, await readFile(file), MIME[path.extname(file)] ?? "application/octet-stream");

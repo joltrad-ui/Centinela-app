@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Publica una parte de la rama gh-pages sin tocar la otra.
+# Publica una parte de la rama gh-pages sin tocar las otras.
 #
 #   REMOTO=<url del repositorio> bash scripts/rama.sh app web        la app: todo menos data/
 #   REMOTO=<url del repositorio> bash scripts/rama.sh datos out/data el barrido: solo data/
+#   REMOTO=<url del repositorio> bash scripts/rama.sh historia out/historia los cierres diarios: solo historia/
 #
 # La rama lleva siempre un único commit, para que el repositorio no engorde con cada
 # barrido. Publicar y barrer pueden coincidir: si el otro ha enviado entre medias, el
@@ -26,16 +27,20 @@ for intento in 1 2 3 4 5 6; do
     git archive FETCH_HEAD | tar -x
   fi
   if [ "$parte" = app ]; then
-    find . -mindepth 1 -maxdepth 1 ! -name .git ! -name data -exec rm -rf {} +
+    find . -mindepth 1 -maxdepth 1 ! -name .git ! -name data ! -name historia -exec rm -rf {} +
     cp -r "$origen"/. .
     touch .nojekyll
+  elif [ "$parte" = historia ]; then
+    rm -rf historia
+    mkdir historia
+    cp -r "$origen"/. historia/
   else
     rm -rf data
     mkdir data
     cp -r "$origen"/. data/
   fi
   git add -A
-  git -c user.name="centinela" -c user.email="centinela@users.noreply.github.com" commit -q -m "$([ "$parte" = app ] && echo App || echo Barrido)"
+  git -c user.name="centinela" -c user.email="centinela@users.noreply.github.com" commit -q -m "$(case "$parte" in app) echo App ;; historia) echo Cierres ;; *) echo Barrido ;; esac)"
   if git push -q --force-with-lease="$rama:$base" "$remoto" "HEAD:$rama" 2>/dev/null; then
     echo "Publicado ($parte) al intento $intento"
     exit 0

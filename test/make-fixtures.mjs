@@ -34,6 +34,25 @@ for (let i = 1; i <= 62; i++) {
 const occ = (root, iso, cp, K) =>
   `${root}${iso.slice(2, 4)}${iso.slice(5, 7)}${iso.slice(8, 10)}${cp}${String(Math.round(K * 1000)).padStart(8, "0")}`;
 
+// Cierres diarios inventados, con el formato del histórico de CBOE: un paseo al azar
+// hacia atrás desde el precio de hoy, con la volatilidad del nombre.
+await mkdir(path.join(out, "_cierres"), { recursive: true });
+const gauss = () => Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
+function closesFor(symbol, S, atm) {
+  const sessions = symbol === "IBIT" ? 400 : 1300; // uno con poca historia, para ver la nota
+  const rows = [];
+  let price = S;
+  for (let i = 0, back = 0; rows.length < sessions; back++) {
+    const date = addDays(today, -back);
+    const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+    if (day === 0 || day === 6) continue;
+    rows.push({ date, open: price, high: price, low: price, close: Math.round(price * 100) / 100, volume: 1000 });
+    price /= Math.exp((atm * 0.85 * gauss()) / Math.sqrt(252) + 0.0002);
+    i++;
+  }
+  return rows.reverse();
+}
+
 const universe = JSON.parse(await readFile(path.join(here, "..", "scanner", "universe.json"), "utf8"));
 const pool = universe.bloques.flatMap((block) => block.nombres.map((row) => row.s));
 const kinds = new Map(universe.bloques.flatMap((block) => block.nombres.map((row) => [row.s, row.k])));
@@ -68,6 +87,7 @@ for (const symbol of symbols) {
     data: { options, symbol, security_type: kinds.get(symbol) === "etf" ? "etf" : "stock", current_price: S, price_change_percent: Math.round((rnd() * 4 - 2) * 100) / 100, close: S, iv30: Math.round(atm * 1000) / 10, last_trade_time: new Date().toISOString().slice(0, 19) },
   };
   await writeFile(path.join(out, `${symbol}.json`), JSON.stringify(body));
+  await writeFile(path.join(out, "_cierres", `${symbol}.json`), JSON.stringify({ timestamp: "00:00:00", data: closesFor(symbol, S, atm) }));
   if (kinds.get(symbol) !== "etf" && rnd() < 0.35) earnings[symbol] = addDays(today, 3 + Math.floor(rnd() * 40));
 }
 earnings.AAPL = addDays(today, 25);

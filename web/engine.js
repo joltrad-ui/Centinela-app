@@ -562,12 +562,107 @@ export function equalRisk(sym, opts, today = nyToday()) {
   };
 }
 
-/** Todas las filas: las que tienen precio por rentabilidad neta, y al final las que no. */
+/** Todas las filas: las que tienen precio, ordenadas (por rentabilidad neta, o por equilibrio con
+ *  historia si se pasan cierres en `opts.hist`), y al final las que no. */
 export function equalRiskList(symbols, opts, today = nyToday()) {
-  const all = symbols.map((sym) => equalRisk(sym, opts, today));
-  const rows = all.filter((row) => row.status === "ok").sort((a, b) => b.ret - a.ret);
+  const hist = opts.hist ?? null;
+  const all = symbols.map((sym) => {
+    const row = equalRisk(sym, opts, today);
+    return hist ? withHistory(row, hist[sym.s], today) : row;
+  });
+  // Con historia manda el equilibrio con historia; las filas que no lo tienen van detrás.
+  const rows = all
+    .filter((row) => row.status === "ok")
+    .sort((a, b) => (b.balanceHist != null) - (a.balanceHist != null) || (a.balanceHist != null ? b.balanceHist - a.balanceHist : 0) || b.ret - a.ret);
   const out = all.filter((row) => row.status !== "ok");
   return { rows, out };
+}
+
+// ---------- Historia del precio (pestaña "Igual riesgo") ----------
+
+/** Días en que la bolsa de EE. UU. no abre (además de sábados y domingos). */
+const US_HOLIDAYS = new Set([
+  "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03", "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07", "2026-11-26", "2026-12-25",
+  "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26", "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06", "2027-11-25", "2027-12-24",
+  "2028-01-17", "2028-02-21", "2028-04-14", "2028-05-29", "2028-06-19", "2028-07-04", "2028-09-04", "2028-11-23", "2028-12-25",
+]);
+
+/** Sesiones de bolsa después de `from` y hasta `to`, este incluido. */
+export function sessionsBetween(from, to) {
+  let count = 0;
+  const end = Date.parse(`${to}T00:00:00Z`);
+  for (let t = Date.parse(`${from}T00:00:00Z`) + 86_400_000; t <= end; t += 86_400_000) {
+    const day = new Date(t).getUTCDay();
+    if (day === 0 || day === 6) continue;
+    if (US_HOLIDAYS.has(new Date(t).toISOString().slice(0, 10))) continue;
+    count++;
+  }
+  return count;
+}
+
+/** Todas las ventanas de `sessions` sesiones de la serie de cierres, llevadas al precio de hoy:
+ *  precio final = precio de hoy × (cierre final / cierre inicial).
+ *  Devuelve la parte que acaba por debajo del corto (%) y la pérdida media por contrato ($). */
+export function historyStats(closes, price, shortStrike, longStrike, sessions) {
+  const windows = closes.length - sessions;
+  if (!(sessions > 0) || windows < 1) return null;
+  const width = shortStrike - longStrike;
+  let below = 0;
+  let loss = 0;
+  for (let i = 0; i < windows; i++) {
+    const final = (price * closes[i + sessions]) / closes[i];
+    if (final < shortStrike) below++;
+    loss += Math.min(Math.max(shortStrike - final, 0), width);
+  }
+  return { windows, prob: (below / windows) * 100, loss: (loss / windows) * 100 };
+}
+
+/** Volatilidad realizada de las últimas `n` sesiones, anualizada con √252 (en tanto por uno). */
+export function realizedVol(closes, n) {
+  if (closes.length < n + 1) return null;
+  const rets = [];
+  for (let i = closes.length - n; i < closes.length; i++) rets.push(Math.log(closes[i] / closes[i - 1]));
+  const mean = rets.reduce((sum, x) => sum + x, 0) / n;
+  const variance = rets.reduce((sum, x) => sum + (x - mean) ** 2, 0) / (n - 1);
+  return Math.sqrt(variance * 252);
+}
+
+/** Pérdida esperada por contrato ($) con una volatilidad dada: [L(corto) − L(largo)] × 100,
+ *  con L(K) = K·N(−d2) − S·N(−d1), sin tipo de interés y T en años. */
+export function expectedLoss(price, shortStrike, longStrike, sigma, years) {
+  if (!(sigma > 0) || !(years > 0)) return null;
+  const sd = sigma * Math.sqrt(years);
+  const L = (strike) => {
+    const d1 = (Math.log(price / strike) + (sigma * sigma * years) / 2) / sd;
+    const d2 = d1 - sd;
+    return strike * normCdf(-d2) - price * normCdf(-d1);
+  };
+  return (L(shortStrike) - L(longStrike)) * 100;
+}
+
+/** Añade a una fila de "Igual riesgo" la comparación con la historia del precio.
+ *  `series` = { d: primera fecha, c: [cierres] } de ese nombre. */
+export function withHistory(row, series, today = nyToday()) {
+  const closes = series?.c;
+  if (row.status !== "ok" || !Array.isArray(closes) || closes.length < 2) return row;
+  const sessions = sessionsBetween(today, row.expiry);
+  const stats = historyStats(closes, row.sym.p, row.shortStrike, row.longStrike, sessions);
+  const v20 = realizedVol(closes, 20);
+  const v60 = realizedVol(closes, 60);
+  const vol = v20 == null && v60 == null ? null : Math.max(v20 ?? 0, v60 ?? 0);
+  const recent = vol == null ? null : expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol, sessions / 252);
+  const twoYearsAgo = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
+  const out = { ...row, sessions, shortHistory: !(series.d <= twoYearsAgo) };
+  if (!stats || recent == null) return out;
+  const worst = Math.max(stats.loss, recent);
+  return {
+    ...out,
+    histProb: r1(stats.prob),
+    histLoss: r2(stats.loss),
+    vol: r1(vol * 100),
+    recentLoss: r2(recent),
+    balanceHist: worst > 0 ? r2(row.net / worst) : null,
+  };
 }
 
 /** Equilibrio: ganancia esperada partida por pérdida esperada.

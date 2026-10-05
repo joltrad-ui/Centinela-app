@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+
+import { checkSeries, toSeries } from "../scanner/cierres.mjs";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -237,4 +239,84 @@ test("igual riesgo: orden por rentabilidad neta, sin precio al final; fecha com�
   const list = commonExpiries([sym, rich, none], normalizeRules({ minDte: 10, maxDte: 60 }), today);
   assert.equal(defaultExpiry(list), "2026-10-30");
   assert.equal(list.length, 2);
+});
+
+test("sesiones: lunes a viernes menos festivos de la bolsa", () => {
+  assert.equal(sessionsBetween("2026-10-05", "2026-10-30"), 19);
+  assert.equal(sessionsBetween("2026-11-25", "2026-11-27"), 1); // el 26 es Acción de Gracias
+  assert.equal(sessionsBetween("2026-10-09", "2026-10-12"), 1); // fin de semana por medio
+  assert.equal(sessionsBetween("2026-10-05", "2026-10-05"), 0);
+});
+
+test("historia: ventanas llevadas al precio de hoy, prob. y pérdida media", () => {
+  const stats = historyStats([100, 90, 100, 110, 99], 100, 95, 90, 1);
+  assert.equal(stats.windows, 4);
+  assert.equal(stats.prob, 50); // dos de las cuatro acaban en 90, por debajo de 95
+  assert.equal(stats.loss, 250); // (5 + 0 + 0 + 5) / 4 × 100, con el tope del ancho
+  const deep = historyStats([100, 50], 100, 95, 90, 1);
+  assert.equal(deep.loss, 500); // nunca más que el ancho
+  assert.equal(historyStats([100, 90], 100, 95, 90, 5), null); // menos cierres que sesiones
+});
+
+test("volatilidad realizada anualizada con raíz de 252", () => {
+  const a = Math.log(1.1);
+  assert.ok(Math.abs(realizedVol([100, 110, 100], 2) - a * Math.sqrt(504)) < 1e-9);
+  assert.equal(realizedVol([100, 101], 20), null);
+  assert.equal(realizedVol([100, 100, 100, 100], 3), 0);
+});
+
+test("pérdida esperada reciente: coincide con sumar todos los finales posibles", () => {
+  const S = 100, Ks = 90, Kl = 85, sigma = 0.3, T = 20 / 252;
+  let sum = 0;
+  const dz = 0.0005;
+  for (let z = -9; z <= 9; z += dz) {
+    const final = S * Math.exp((-sigma * sigma * T) / 2 + sigma * Math.sqrt(T) * z);
+    sum += Math.min(Math.max(Ks - final, 0), Ks - Kl) * Math.exp((-z * z) / 2) * dz;
+  }
+  const exact = (sum / Math.sqrt(2 * Math.PI)) * 100;
+  const got = expectedLoss(S, Ks, Kl, sigma, T);
+  assert.ok(Math.abs(got - exact) < 0.05, `${got} frente a ${exact}`);
+  assert.ok(expectedLoss(S, Ks, Kl, 0.6, T) > got); // más volatilidad, más pérdida esperada
+  assert.equal(expectedLoss(S, Ks, Kl, 0, T), null);
+});
+
+test("igual riesgo con historia: equilibrio, orden y poca historia", () => {
+  const probs = marketProbs(sym.x[0][2]);
+  const opts = { prob: Math.ceil(probs[2] * 10) / 10, width: 5, expiry: "2026-10-30", fee: 1.4 };
+  const walk = (n, step) => Array.from({ length: n }, (_, i) => 100 * (1 + step * (i % 2)));
+  const calm = { d: "2021-10-05", c: walk(1300, 0.02) };
+  const wild = { d: "2025-06-02", c: walk(300, 0.2) };
+  const row = withHistory(equalRisk(sym, opts, today), calm, today);
+  assert.equal(row.sessions, 19);
+  assert.equal(row.histProb, 0); // con ±2 % nunca acaba por debajo de 90
+  assert.equal(row.histLoss, 0);
+  assert.equal(row.shortHistory, false);
+  assert.ok(row.recentLoss > 1 && row.recentLoss < 500);
+  assert.ok(Math.abs(row.balanceHist / (row.net / row.recentLoss) - 1) < 0.01); // manda la mayor de las dos pérdidas
+  const other = { ...sym, s: "WILD" };
+  const { rows } = equalRiskList([other, sym], { ...opts, hist: { XYZ: calm, WILD: wild } }, today);
+  assert.deepEqual(rows.map((r) => r.sym.s), ["XYZ", "WILD"]); // mismo cobro; la historia movida queda detrás
+  assert.equal(rows[1].shortHistory, true);
+  assert.ok(rows[1].histProb > 0 && rows[1].balanceHist < rows[0].balanceHist);
+  const none = equalRiskList([sym], { ...opts, hist: {} }, today).rows[0];
+  assert.equal(none.balanceHist, undefined); // sin cierres de ese nombre, la fila sale igual que en el paso 1
+});
+
+test("cierres: últimos 5 años, corte en el hueco y en el inicio real del nombre", () => {
+  const row = (date, close) => ({ date, open: close, high: close, low: close, close, volume: 1 });
+  const body = { data: [row("2019-01-02", 50), row("2023-03-01", 24), row("2023-03-02", 25), row("2026-09-30", 60.004), row("2026-10-01", 61), row("2026-10-02", 62), row("2026-10-02", 62.5), row("2030-01-01", 1), row("x", 3), row("2026-10-01", 0)] };
+  const series = toSeries("XYZ", body, today);
+  assert.deepEqual(series.c, [60, 61, 62.5]); // lo anterior al hueco de 2023 a 2026 no se usa; el repetido, el último
+  assert.equal(series.d, "2026-09-30");
+  assert.equal(series.cut, true);
+  assert.equal(checkSeries(series, today), "");
+  const ibit = toSeries("IBIT", { data: [row("2024-01-09", 24), row("2024-01-10", 24), row("2024-01-11", 26), row("2024-01-12", 27)] }, today);
+  assert.equal(ibit.d, "2024-01-11"); // antes de esa fecha la sigla era de otro producto
+});
+
+test("cierres: controles de salto, de atraso y de serie vacía", () => {
+  assert.match(checkSeries({ c: [100, 45, 46], last: "2026-10-02" }, today), /salto/);
+  assert.match(checkSeries({ c: [100, 101], last: "2026-09-25" }, today), /atrasado/);
+  assert.equal(checkSeries({ c: [100, 101], last: "2026-09-29" }, today), ""); // 4 sesiones: todavía vale
+  assert.match(checkSeries({ c: [], last: null }, today), /sin cierres/);
 });
