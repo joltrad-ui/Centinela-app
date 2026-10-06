@@ -240,3 +240,21 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
 .tag-earn { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; border-radius: 999px; background: var(--down-dim); color: var(--down); font-weight: 500; }
 /* Solo con un cálculo: marca ámbar */
 .tag-warn { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; border-radius: 999px; background: var(--brass-dim); color: var(--brass); font-weight: 500; }
+
+/* Ficha: rango de 52 semanas y volatilidades de un vistazo */
+.glance { display: grid; gap: 10px; margin-top: 12px; }
+.glance-block { background: var(--surface); box-shadow: var(--border); border-radius: 14px; padding: 10px 12px; }
+.glance-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.75rem; color: var(--muted); }
+.glance-head b { color: var(--fg); font-weight: 500; }
+.range-bar { position: relative; height: 8px; border-radius: 999px; margin: 12px 7px 8px; background: linear-gradient(90deg, var(--down) 0%, var(--brass) 50%, var(--up) 100%); opacity: 0.9; }
+.range-bar i { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--fg); border: 3px solid var(--bg); box-shadow: 0 0 0 1px var(--fg); }
+.glance-ends { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); }
+.glance-ends b { color: var(--fg); font-weight: 500; }
+.vol-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 3.2em; align-items: center; gap: 8px; margin-top: 7px; font-size: 0.8125rem; }
+.vol-label { color: var(--muted); white-space: nowrap; }
+.vol-row b { text-align: right; font-weight: 500; }
+.vol-track { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.vol-track i { display: block; height: 100%; border-radius: 999px; }
+.vol-track .implied { background: var(--muted); }
+.vol-track .recent { background: var(--brass); }
+.vol-track .long { background: var(--up); }

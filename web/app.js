@@ -1241,10 +1241,34 @@ function sheet() {
 
   const year = yearRange(state.hist?.symbols?.[sym.s]?.c, sym.p);
   const vols = volatilities(state.hist?.symbols?.[sym.s]?.c);
-  const volLine =
-    vols?.recentPct != null && vols.longPct != null
-      ? `<p class="small muted">Volatilidad de los cierres: ahora ${num(vols.recentPct, 0)} % · en ${spanText(state.hist.symbols[sym.s].c.length / 252)} ${num(vols.longPct, 0)} %</p>`
+  // De un vistazo: dónde está el precio dentro de su rango de 52 semanas y cuánto se mueve (tres volatilidades en la misma escala).
+  const spread = year && year.max > year.min ? year.max - year.min : 0;
+  const at = spread ? Math.min(100, Math.max(0, ((sym.p - year.min) / spread) * 100)) : null;
+  const rangeBlock =
+    year && at != null
+      ? `<div class="glance-block">
+        <div class="glance-head"><span>${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}</span><b class="num">${num(at, 0)} % del rango</b></div>
+        <div class="range-bar" role="img" aria-label="El precio está al ${num(at, 0)} % entre el mínimo y el máximo"><i style="left:${at.toFixed(1)}%"></i></div>
+        <div class="glance-ends"><span class="num"><b>${money(year.min)}</b> mín.</span><span class="num">máx. <b>${money(year.max)}</b></span></div>
+      </div>`
       : "";
+  const volRows = [];
+  if (sym.iv30 != null) volRows.push(["Implícita 30 d", sym.iv30, "implied"]);
+  if (vols?.recentPct != null && vols.longPct != null) {
+    volRows.push(["Ahora", vols.recentPct, "recent"]);
+    volRows.push([spanText(state.hist.symbols[sym.s].c.length / 252), vols.longPct, "long"]);
+  }
+  const volMax = Math.max(1, ...volRows.map((row) => row[1])) * 1.1;
+  const ratio = vols?.recentPct != null && vols.longPct > 0 ? vols.recentPct / vols.longPct : null;
+  const volNote = ratio == null ? "" : ratio < 0.75 ? "Ahora se mueve bastante menos que de costumbre: el cálculo reciente es el optimista." : ratio > 1.33 ? "Ahora se mueve bastante más que de costumbre." : "";
+  const volBlock = volRows.length
+    ? `<div class="glance-block">
+        <div class="glance-head"><span>Volatilidad: cuánto se mueve al año</span></div>
+        ${volRows.map(([label, value, kind]) => `<div class="vol-row"><span class="vol-label">${esc(label)}</span><span class="vol-track"><i class="${kind}" style="width:${((value / volMax) * 100).toFixed(1)}%"></i></span><b class="num">${num(value, 0)} %</b></div>`).join("")}
+        ${volNote ? `<p class="xs brass" style="margin-top:6px">${volNote}</p>` : ""}
+      </div>`
+    : "";
+  const glance = rangeBlock || volBlock ? `<div class="glance">${rangeBlock}${volBlock}</div>` : "";
   const byOrder = (a, b) => compareSpreads(a, b, state.config.order);
   const okIdeas = res.all.filter((idea) => idea.ok).sort(byOrder);
   const otherIdeas = res.all.filter((idea) => !idea.ok).sort((a, b) => b.stage - a.stage || byOrder(a, b));
@@ -1267,9 +1291,7 @@ function sheet() {
       </div>
       <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
         <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
-      ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${num(sym.iv30, 0)} %</p>` : ""}
-      ${volLine}
-      ${year ? `<p class="small muted">${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}, a cierre: mín. ${money(year.min)} · máx. ${money(year.max)}</p>` : ""}
+      ${glance}
       ${chosenBlock}
       ${
         res.all.length
@@ -1296,7 +1318,7 @@ const usdDec = (n) => `$${dec(n, 2)}`;
 const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
 const signedUsd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${dollars(Math.abs(n))}`;
 /** "5 años" con la historia completa; si hay menos, lo que hay. */
-const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years), 0)} años` : "lo guardado");
+const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years * 10) / 10, 1)} años` : "lo guardado");
 
 function equalOpts(symbols) {
   const rules = state.config.rules;
