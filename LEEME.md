@@ -4,7 +4,8 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da ór
 
 ## Qué hace
 
-- **Lista**: la pantalla principal y la única lista que hay. 32 nombres con opciones líquidas, agrupados por bloque (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
+- **Hoy**: la pantalla que se abre al entrar. Un mapa de nombres por vencimientos, con un nivel de 0 a 4 por casilla (cuánto tiene a favor el bull put de igual riesgo de esa casilla); una nube para comparar los de un vencimiento; la ficha del deal con los cuatro puntos que dan el nivel; y **Mis deals**, donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
+- **Lista**: la lista base y la única que hay. 32 nombres con opciones líquidas, agrupados por bloque (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
 - **Deals**: todos los bull puts de la lista juntos, con filtros por ancho, vencimiento y % abajo.
 - **Avisos**: cuando un nombre de la lista pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
 - **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
@@ -30,6 +31,7 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | El código y la pantalla de la app | Repositorio y página | Sí |
 | La lista y su barrido (precios y cadenas de los 32 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
 | Reglas y orden | En tu dispositivo | No |
+| Mis deals y los bloques que marcas como ya abiertos | En tu dispositivo | No. No se suben a ningún sitio; si borras los datos del navegador, se pierden |
 | Reglas para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
 | Qué nombre cumplía y qué se avisó hoy | `data/privado.json`, cifrado | El archivo se ve, el contenido no. La clave sale del secreto `NTFY_TOPIC` y el tamaño es fijo |
 | Los avisos | App ntfy | Solo quien conozca el nombre del canal. Por eso tiene que ser largo y al azar |

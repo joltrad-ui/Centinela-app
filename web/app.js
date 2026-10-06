@@ -31,6 +31,7 @@ import {
   withHistory,
   yearRange,
 } from "./engine.js";
+import { createHoy } from "./hoy.js";
 
 const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
@@ -65,7 +66,7 @@ const EQ_PROB_MAX = 15;
 const EQ_OK = { prob: (v) => Number.isInteger(v) && v >= EQ_PROB_MIN && v <= EQ_PROB_MAX, width: (v) => EQ_WIDTHS.includes(v) };
 
 const state = {
-  tab: "favoritos",
+  tab: "hoy", // la pestaña nueva es la de entrada; las de siempre siguen en la barra
   scan: null,
   alerts: [],
   config: normalizeConfig(DEFAULT_CONFIG),
@@ -233,7 +234,7 @@ async function loadHist() {
   const show = (hist) => {
     if (!hist?.symbols) return;
     state.hist = hist;
-    if (state.tab === "igual") render();
+    if (state.tab === "igual" || state.tab === "hoy") render();
   };
   let hist = state.hist ?? (await keptJson(HIST_FILE));
   show(hist);
@@ -658,6 +659,7 @@ const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
 // ---------- vistas ----------
 
 const ICONS = {
+  hoy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="4" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="4" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="4" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="15.5" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="4" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="15.5" width="4.5" height="4.5" rx="1"/></svg>',
   favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
@@ -1501,22 +1503,25 @@ function viewIgual() {
     ${foot()}`;
 }
 
+// La pestaña "Hoy" (mapa, nube, ficha del deal y Mis deals) vive en hoy.js.
+const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
+
 function dock() {
   const seen = Number(readLocal(LS_SEEN) ?? 0);
   const unseen = state.alerts.filter((alert) => alert.at > seen).length;
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "igual" ? '<span class="tag">prueba</span>' : ""}${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("favoritos", "Lista")}${item("deals", "Deals")}${item("igual", "Igual")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("favoritos", "Lista")}${item("deals", "Deals")}${item("igual", "Igual")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "deals" ? viewDeals() : state.tab === "igual" ? viewIgual() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
+    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? viewDeals() : state.tab === "igual" ? viewIgual() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
-  root.innerHTML = `<main class="wrap">${view}</main>${dock()}${sheet()}`;
+  root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}${sheet()}`;
   // Al pulsar dentro de la ficha (otro bull put, otro orden) se queda donde estaba.
   const after = root.querySelector(".sheet");
   if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
@@ -1564,9 +1569,13 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
+  if (el.dataset.hoy) {
+    hoy.click(el);
+    return;
+  }
   if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp) {
     const eq = state.equal;
     if (el.dataset.eqProb) eq.prob = Number(el.dataset.eqProb);
@@ -1704,7 +1713,9 @@ root.addEventListener("click", (event) => {
 root.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.target;
-  if (form.matches("[data-bridge]")) {
+  if (form.matches("[data-hoy-form]")) {
+    hoy.submit(form);
+  } else if (form.matches("[data-bridge]")) {
     writeLocal(LS_BRIDGE, String(new FormData(form).get("bridge") ?? "").trim());
     render();
   } else if (form.matches("[data-gh]")) {
@@ -1722,6 +1733,13 @@ root.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+  // Los puntos de la nube son botones dibujados: Intro o espacio los abre.
+  if ((event.key === "Enter" || event.key === " ") && event.target instanceof Element && event.target.matches("g[data-hoy]")) {
+    event.preventDefault();
+    hoy.click(event.target);
+    return;
+  }
+  if (event.key === "Escape" && !state.detail && hoy.escape()) return;
   if (event.key === "Escape" && state.detail) {
     state.detail = null;
     render();

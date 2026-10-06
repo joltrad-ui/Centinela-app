@@ -1012,3 +1012,146 @@ export function rulesLine(rules) {
   if (rules.minBalance > 0) parts.push(`equilibrio ≥${num(rules.minBalance, 2)}`);
   return parts.join(" · ");
 }
+
+// ---------- Pestaña "Hoy": niveles, mapa y seguimiento ----------
+//
+// Una misma vara para cualquier bull put de la lista: el nivel, de 0 a 4. No añade cuentas nuevas:
+// se apoya en las de "Igual riesgo" (`equalRisk`, `withHistory`, `gateReason`).
+//
+// Nivel 0: la rentab. esperada no es positiva (o no hay cierres para calcularla).
+// Si es positiva, 1 más un punto por cada comprobación:
+//   - los dos cálculos (historia y volatilidad reciente) salen en positivo,
+//   - el coste de ida y vuelta no pasa de `LEVEL_COST_PCT` % de lo cobrado,
+//   - no repite un bloque que ya está abierto.
+// Es un nivel y no una nota con pesos a propósito: una nota dejaría que un coste bajo tapara una
+// rentab. esperada negativa, y la precisión de las cuentas no da para más de unos pocos escalones.
+
+/** Coste de ida y vuelta máximo, en % de lo cobrado neto, para que un deal sume el punto de coste. */
+export const LEVEL_COST_PCT = 40;
+
+/** La misma fila de "Igual riesgo" si entrara a precio medio en vez de a precio natural.
+ *  Es una hipótesis (nadie garantiza el precio medio): sirve para ver dónde hay valor dentro de la horquilla.
+ *  Devuelve null si no hay precio medio o no deja crédito. */
+export function atMid(row, fee = 0) {
+  if (!row || row.status !== "ok" || row.midCredit == null || !(row.midCredit > 0)) return null;
+  const net = row.midCredit * 100 - fee;
+  const loss = row.width * 100 - net;
+  if (!(net > 0) || !(loss > 0)) return null;
+  const out = { ...row, mid: true, credit: row.midCredit, net: r2(net), loss: r2(loss), ret: r1((net / loss) * 100), breakeven: r2(row.shortStrike - net / 100) };
+  if (row.expected == null) return out;
+  const marginHist = net - row.histLoss;
+  const marginRecent = net - row.recentLoss;
+  return {
+    ...out,
+    marginHist: r2(marginHist),
+    marginRecent: r2(marginRecent),
+    onlyOne: marginHist * marginRecent < 0,
+    retExp: r1(((net - row.expected) / loss) * 100),
+    balanceHist: row.expected > 0.005 ? r1(net / row.expected) : 999,
+  };
+}
+
+/** Las comprobaciones de un deal y su nivel (0 a 4). `held` = bloques que ya están abiertos. */
+export function dealChecks(row, opts = {}) {
+  const held = Array.isArray(opts.held) ? opts.held : [];
+  const costPct = opts.costPct ?? LEVEL_COST_PCT;
+  const scored = row.retExp != null;
+  const positive = scored && row.retExp > 0;
+  const both = scored && row.marginHist > 0 && row.marginRecent > 0;
+  const costShare = row.roundTrip != null && row.net > 0 ? (row.roundTrip / row.net) * 100 : null;
+  const cheap = costShare != null && costShare <= costPct + 1e-9;
+  const fresh = !held.includes(row.sym?.b ?? "");
+  return {
+    scored,
+    positive,
+    both,
+    cheap,
+    fresh,
+    costShare: costShare == null ? null : Math.round(costShare),
+    level: positive ? 1 + (both ? 1 : 0) + (cheap ? 1 : 0) + (fresh ? 1 : 0) : 0,
+  };
+}
+
+/** Una casilla del mapa: un nombre en un vencimiento.
+ *  state: "level" (comparable, con su nivel), "gated" (con precio pero apartada por una puerta) u
+ *  "out" (sin fila). `opts.price`: "nat" (precio natural, el de siempre) o "mid" (hipótesis a precio medio:
+ *  la horquilla ya no aparta, porque es justo lo que se quiere mirar; la prob. sin medir sí). */
+export function levelCell(sym, opts, today = nyToday()) {
+  let row = equalRisk(sym, opts, today);
+  if (row.status !== "ok") return { sym, state: "out", why: row.why };
+  if (opts.hist) row = withHistory(row, opts.hist[sym.s], today);
+  const gate = gateReason(row, opts.gapPct);
+  if (opts.price === "mid") {
+    if (row.probSrc === "formula") return { sym, state: "gated", gate, row, checks: dealChecks(row, opts) };
+    const mid = atMid(row, opts.fee);
+    if (!mid) return { sym, state: "out", why: "Sin precio medio" };
+    const checks = dealChecks(mid, opts);
+    return { sym, state: "level", row: mid, checks, level: checks.level, gateNat: gate };
+  }
+  const checks = dealChecks(row, opts);
+  if (gate) return { sym, state: "gated", gate, row, checks };
+  return { sym, state: "level", row, checks, level: checks.level };
+}
+
+/** El mapa: nombres (filas) por vencimientos (columnas), cada casilla con su nivel.
+ *  Los nombres van ordenados por su mejor nivel; a igualdad, por la suma de niveles y por orden alfabético.
+ *  `summary` cuenta casillas comparables, las que están por encima de 0 y las de nivel 3 o más. */
+export function levelGrid(symbols, opts, today = nyToday()) {
+  const expiries = opts.expiries ?? [];
+  const names = symbols.map((sym) => {
+    const cells = expiries.map((expiry) => levelCell(sym, { ...opts, expiry }, today));
+    const levels = cells.filter((cell) => cell.state === "level").map((cell) => cell.level);
+    return { sym, cells, best: levels.length ? Math.max(...levels) : -1, sum: levels.reduce((a, b) => a + b, 0), priced: cells.filter((cell) => cell.state !== "out").length };
+  });
+  names.sort((a, b) => b.best - a.best || b.sum - a.sum || b.priced - a.priced || a.sym.s.localeCompare(b.sym.s));
+  const all = names.flatMap((name) => name.cells);
+  const scored = all.filter((cell) => cell.state === "level");
+  return {
+    expiries: expiries.map((expiry) => ({ expiry, label: labelOf(expiry) })),
+    names,
+    summary: {
+      comparable: scored.length,
+      gated: all.filter((cell) => cell.state === "gated").length,
+      positive: scored.filter((cell) => cell.level >= 1).length,
+      top: scored.filter((cell) => cell.level >= 3).length,
+      firm: scored.filter((cell) => cell.level >= 1 && cell.checks.both).length, // por encima de 0 y con los dos cálculos en positivo
+      withHistory: scored.some((cell) => cell.checks.scored),
+    },
+  };
+}
+
+/** Los vencimientos del mapa: los del plazo de las reglas que tiene al menos la mitad de los nombres
+ *  (los semanales y mensuales comunes), como mucho `max`, por fecha. Si sobran, se quedan los que tienen más nombres. */
+export function mapExpiries(symbols, rules, today = nyToday(), max = 5) {
+  const list = commonExpiries(symbols, rules, today);
+  if (!list.length) return [];
+  const most = Math.max(...list.map((item) => item.names));
+  const common = list.filter((item) => item.names * 2 >= most);
+  const kept = common.length > max ? [...common].sort((a, b) => b.names - a.names || (a.expiry < b.expiry ? -1 : 1)).slice(0, max) : common;
+  return kept.map((item) => item.expiry).sort();
+}
+
+/** Estado de un deal apuntado en "Mis deals" con el precio de ahora.
+ *  state: "vencido" (pasó el vencimiento), "debajo" (el precio está bajo el corto),
+ *  "cerca" (a menos de `nearPct` % del corto) o "lejos". `above` = % que el precio queda por encima del corto. */
+export function dealStatus(deal, price, today = nyToday(), nearPct = 3) {
+  const dte = daysBetween(today, deal.expiry);
+  if (!(price > 0)) return { dte, price: null, above: null, state: dte < 0 ? "vencido" : "sin-precio" };
+  const above = r1(((price - deal.short) / price) * 100);
+  const state = dte < 0 ? "vencido" : price < deal.short ? "debajo" : above < nearPct ? "cerca" : "lejos";
+  return { dte, price, above, state };
+}
+
+/** Lo que pasó con los deals cerrados, por el nivel que tenían al abrirlos: cuántos, cuántos acabaron
+ *  en positivo, el resultado total y el medio, en dólares. Es lo que dirá con el tiempo si el nivel sirve. */
+export function levelRecord(deals) {
+  const closed = (deals ?? []).filter((deal) => deal && deal.closedAt && typeof deal.result === "number" && Number.isFinite(deal.result));
+  const out = [];
+  for (let level = 4; level >= 0; level--) {
+    const own = closed.filter((deal) => deal.level === level);
+    if (!own.length) continue;
+    const total = own.reduce((sum, deal) => sum + deal.result, 0);
+    out.push({ level, n: own.length, won: own.filter((deal) => deal.result > 0).length, total: r2(total), avg: r2(total / own.length) });
+  }
+  return out;
+}

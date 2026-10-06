@@ -1,6 +1,6 @@
 // Primero la red; si no hay conexión, la última copia guardada.
-const CACHE = "centinela-v2";
-const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "manifest.webmanifest", "icons/icon-192.png"];
+const CACHE = "centinela-v3";
+const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "hoy.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

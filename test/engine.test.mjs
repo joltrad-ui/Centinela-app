@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -601,4 +601,131 @@ test("reglas: la horquilla máxima de Igual riesgo, 35 % de fábrica y entre 10 
   const loose = equalRiskList([sym], { ...tightOpts(1.4), gapPct: 35 }, today);
   assert.equal(strict.gated.length, 1);
   assert.equal(loose.rows.length, 1);
+});
+
+// ---------- Pestaña "Hoy": niveles, mapa y seguimiento ----------
+
+// Historia tranquila (nunca toca el corto) y otra que cada 100 sesiones pasa 30 un 20 % más abajo.
+const calmHist = { d: "2021-01-04", c: Array.from({ length: 1300 }, (_, i) => 100 * (1 + 0.001 * (i % 2))) };
+const roughHist = (() => {
+  const c = [];
+  for (let b = 0; b < 12; b++) for (let i = 0; i < 100; i++) c.push(i < 70 ? 100 * (1 + 0.001 * (i % 2)) : 80);
+  for (let i = 0; i < 100; i++) c.push(100 * (1 + 0.001 * (i % 2)));
+  return { d: "2021-01-04", c };
+})();
+
+test("hoy: a precio medio cambian el cobro y lo que queda, no lo que se espera pagar", () => {
+  const row = withHistory(equalRisk(tight(), tightOpts(1.4), today), calmHist, today);
+  const mid = atMid(row, 1.4);
+  assert.equal(mid.mid, true);
+  assert.equal(mid.net, 68.6); // 0,70 de crédito medio × 100 − 1,40
+  assert.equal(mid.loss, 431.4);
+  assert.equal(mid.expected, row.expected); // la pérdida esperada no depende del precio de entrada
+  assert.equal(mid.marginHist, Math.round((68.6 - row.histLoss) * 100) / 100);
+  assert.equal(mid.retExp, Math.round(((68.6 - row.expected) / 431.4) * 1000) / 10);
+  assert.ok(mid.retExp > row.retExp); // se cobra más, queda más
+  assert.equal(mid.roundTrip, row.roundTrip); // salir cuesta lo mismo
+  assert.equal(atMid({ status: "ok", midCredit: null }), null);
+  assert.equal(atMid({ status: "ok", midCredit: 0.01, width: 5 }, 5), null); // la comisión se come el crédito
+  assert.equal(atMid({ status: "sin-precio" }), null);
+});
+
+test("hoy: el nivel es 0 sin rentab. esperada positiva y suma un punto por comprobación", () => {
+  const base = { sym: { b: "Energía" }, retExp: 2, marginHist: 5, marginRecent: 8, net: 20, roundTrip: 6 };
+  assert.equal(LEVEL_COST_PCT, 40);
+  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, cheap: true, fresh: true, costShare: 30, level: 4 });
+  assert.equal(dealChecks(base, { held: ["Energía"] }).level, 3); // repite bloque
+  assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 3); // solo un cálculo
+  assert.equal(dealChecks({ ...base, roundTrip: 9 }).level, 3); // coste del 45 %
+  assert.equal(dealChecks({ ...base, roundTrip: 8 }).cheap, true); // justo el 40 % entra
+  assert.equal(dealChecks({ ...base, roundTrip: 9 }, { costPct: 50 }).level, 4); // el tope se puede mover
+  assert.equal(dealChecks({ ...base, marginHist: -1, roundTrip: 9 }, { held: ["Energía"] }).level, 1); // solo el requisito
+  // sin el requisito no hay nivel, aunque pase todo lo demás
+  const neg = dealChecks({ ...base, retExp: -0.1 });
+  assert.equal(neg.level, 0);
+  assert.equal(neg.cheap && neg.fresh && neg.both, true);
+  assert.equal(dealChecks({ ...base, retExp: 0 }).level, 0);
+  // sin cierres no se puede puntuar
+  const blind = dealChecks({ sym: { b: "Energía" }, net: 20, roundTrip: 6 });
+  assert.equal(blind.scored, false);
+  assert.equal(blind.level, 0);
+  assert.equal(dealChecks({ ...base, roundTrip: null }).cheap, false); // sin precio medio no se sabe el coste
+});
+
+test("hoy: una casilla es comparable, apartada o sin fila; a precio medio la horquilla no aparta", () => {
+  const opts = { ...tightOpts(1.4), hist: { TGT: calmHist, XYZ: calmHist }, held: [] };
+  const good = levelCell({ ...tight(), b: "Energía" }, opts, today);
+  assert.equal(good.state, "level");
+  assert.equal(good.level, 4); // positiva con los dos cálculos, coste del 10 % y bloque nuevo
+  assert.equal(levelCell({ ...tight(), b: "Energía" }, { ...opts, held: ["Energía"] }, today).level, 3);
+  // con la historia mala, solo sale con el cálculo reciente
+  const split = levelCell({ ...tight(), b: "Energía" }, { ...opts, hist: { TGT: roughHist } }, today);
+  assert.equal(split.checks.both, false);
+  assert.equal(split.row.onlyOne, true);
+  // horquilla ancha: apartada a precio natural, puntuada a precio medio
+  const wide = levelCell({ ...sym, b: "Energía" }, { ...opts, gapPct: 25 }, today);
+  assert.equal(wide.state, "gated");
+  assert.match(wide.gate, /horquilla ancha/);
+  const wideMid = levelCell({ ...sym, b: "Energía" }, { ...opts, gapPct: 25, price: "mid" }, today);
+  assert.equal(wideMid.state, "level");
+  assert.equal(wideMid.row.mid, true);
+  assert.match(wideMid.gateNat, /horquilla ancha/); // se recuerda que a precio visible estaba apartada
+  assert.ok(wideMid.row.net > wide.row.net);
+  // sin ese vencimiento no hay casilla
+  const none = levelCell(tight(), { ...opts, expiry: "2026-11-27" }, today);
+  assert.equal(none.state, "out");
+  assert.equal(none.why, "Sin ese vencimiento");
+  // sin cierres hay fila pero no nivel
+  const blind = levelCell(tight(), { ...opts, hist: {} }, today);
+  assert.equal(blind.state, "level");
+  assert.equal(blind.level, 0);
+  assert.equal(blind.checks.scored, false);
+});
+
+test("hoy: el mapa ordena los nombres por su mejor nivel y cuenta las casillas", () => {
+  const two = (s, b, hist) => ({ ...tight(s), b, x: [...tight().x, ["2026-11-06", 0.4, tight().x[0][2]]] });
+  const symbols = [two("BBB", "Bolsa EE. UU."), two("AAA", "Energía"), { ...tight("CCC"), b: "Metales" }];
+  const opts = { ...tightOpts(1.4), expiries: ["2026-10-30", "2026-11-06"], hist: { AAA: calmHist, BBB: calmHist, CCC: roughHist }, held: ["Bolsa EE. UU."] };
+  const grid = levelGrid(symbols, opts, today);
+  assert.deepEqual(grid.expiries.map((e) => e.expiry), ["2026-10-30", "2026-11-06"]);
+  assert.deepEqual(grid.names.map((n) => n.sym.s), ["AAA", "BBB", "CCC"]); // 4, 3 (repite bloque) y el de historia mala
+  assert.deepEqual(grid.names[0].cells.map((c) => c.level), [4, 4]);
+  assert.deepEqual(grid.names[1].cells.map((c) => c.level), [3, 3]);
+  assert.equal(grid.names[2].cells[1].state, "out"); // CCC no tiene el segundo vencimiento
+  // CCC: positiva solo con el cálculo reciente, barata y de bloque nuevo: 3. Empata en nivel con BBB y va detrás por la suma.
+  assert.equal(grid.names[2].cells[0].level, 3);
+  assert.equal(grid.names[2].cells[0].checks.both, false);
+  assert.equal(grid.summary.comparable, 5);
+  assert.equal(grid.summary.top, 5);
+  assert.equal(grid.summary.withHistory, true);
+  assert.equal(grid.summary.positive, 5);
+  assert.equal(grid.summary.firm, 4); // AAA y BBB, dos vencimientos cada una; CCC no
+  assert.deepEqual(levelGrid([], opts, today).names, []);
+});
+
+test("hoy: vencimientos del mapa, los comunes del plazo y como mucho cinco", () => {
+  const chain = tight().x[0][2];
+  const dates = ["2026-10-23", "2026-10-30", "2026-11-06", "2026-11-13", "2026-11-20", "2026-11-27"];
+  const all = (s) => ({ ...tight(s), x: dates.map((d) => [d, 0.4, chain]) });
+  const odd = { ...tight("ODD"), x: [["2026-10-28", 0.4, chain]] }; // un vencimiento que solo tiene un nombre
+  const rules = normalizeRules({ v: 2, minDte: 15, maxDte: 60 });
+  assert.deepEqual(mapExpiries([all("A"), all("B"), all("C"), odd], rules, today), ["2026-10-23", "2026-10-30", "2026-11-06", "2026-11-13", "2026-11-20"]);
+  assert.deepEqual(mapExpiries([all("A"), all("B")], normalizeRules({ v: 2, minDte: 20, maxDte: 30 }), today), ["2026-10-30"]);
+  assert.deepEqual(mapExpiries([], rules, today), []);
+});
+
+test("mis deals: estado con el precio de ahora y registro por nivel", () => {
+  const deal = { s: "XLE", expiry: "2026-11-20", short: 57, long: 54 };
+  assert.deepEqual(dealStatus(deal, 64, today), { dte: 46, price: 64, above: 10.9, state: "lejos" });
+  assert.equal(dealStatus(deal, 58.5, today).state, "cerca"); // a un 2,6 % del corto
+  assert.equal(dealStatus(deal, 56, today).state, "debajo");
+  assert.equal(dealStatus(deal, 64, "2026-11-21").state, "vencido");
+  assert.equal(dealStatus(deal, null, today).state, "sin-precio");
+  const closed = (level, result) => ({ level, result, closedAt: 1 });
+  const record = levelRecord([closed(4, 15), closed(4, 17), closed(4, -120), closed(2, 10), { level: 4, result: 9 }, { level: 3, closedAt: 1 }]);
+  assert.deepEqual(record, [
+    { level: 4, n: 3, won: 2, total: -88, avg: -29.33 },
+    { level: 2, n: 1, won: 1, total: 10, avg: 10 },
+  ]); // los abiertos y los que no tienen resultado no cuentan
+  assert.deepEqual(levelRecord(null), []);
 });
