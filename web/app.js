@@ -913,7 +913,7 @@ function viewReglas() {
       <h2>Pestaña Igual riesgo (prueba)</h2>
       <p class="small muted">Solo cuenta ahí; Lista y Deals no cambian.</p>
       <div class="panel">
-        ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste de ida y vuelta.", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
+        ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste total (entrar y salir).", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
         ${stepper("rules.equalGapPct", "Horquilla máxima", "Las dos horquillas, sobre el crédito a precio medio. Por encima, la fila se aparta.", 10, 100, 5, p0)}
       </div>
     </section>
@@ -1374,7 +1374,7 @@ function viewIgual() {
   const withHist = rows.some((row) => row.retExp != null);
   const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1));
   const expText = (row) => (row.retExp == null ? `${dec(row.ret)} %` : `${row.retExp > 0 ? "+" : ""}${dec(row.retExp)} %`);
-  const costText = (row) => (row.roundTrip == null ? "ida y vuelta sin precio medio" : `ida y vuelta ${usdDec(row.roundTrip)}`);
+  const costText = (row) => (row.roundTrip == null ? "coste total sin precio medio" : `coste total ${usdDec(row.roundTrip)}`);
   const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
   const blockOf = (sym) => sym.b ?? "";
   const widthNote = (row) => (Math.abs(row.width - opts.width) > 1e-6 ? ` <span class="muted">· ancho ${shortMoney(row.width)}</span>` : "");
@@ -1417,7 +1417,7 @@ function viewIgual() {
     const probCell = cell(row.histProb == null ? "Prob. asignación" : "Prob. mercado", `${dec(row.prob)} %${formula}`);
     const longCell = cell("Prob. pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`);
     const lossCell = cell("Pierdes máx.", usdDec(row.loss));
-    const tripCell = cell("Ida y vuelta", row.roundTrip == null ? "sin precio medio" : usdDec(row.roundTrip));
+    const tripCell = cell("Coste total", row.roundTrip == null ? "sin precio medio" : usdDec(row.roundTrip));
     // Sin cierres para este nombre no hay barra: "cobras neto" baja a las casillas (la rentab. neta ya va arriba).
     const cells =
       row.expected == null
