@@ -295,3 +295,10 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
 .eq-help p { margin: 0 0 8px; }
 .eq-legs { display: block; margin: 1px 0 0 14px; }
 .eq-row .deal-kpi { font-size: 1.0625rem; }
+.eq-stakes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.eq-stake { display: grid; gap: 0; }
+.eq-stake b { font-size: 1.1875rem; font-weight: 600; }
+.eq-stake b.up { color: var(--up); }
+.eq-stake b.down { color: var(--down); }
+.eq-balance { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 10px; }
+.eq-balance b { font-weight: 500; font-size: 0.9375rem; }

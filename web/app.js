@@ -1409,6 +1409,7 @@ function viewIgual() {
             <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
             <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
             <span class="eq-calcs">${calc("recent", "Con lo reciente", row.recentLoss, row.marginRecent)}${calc("mean", "Se espera pagar", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${calc("hist", "Con historia", row.histLoss, row.marginHist)}</span>
+            <span class="eq-balance small"><span class="muted">Equilibrio (cobras ÷ se espera pagar)</span><b class="num">${balText(row)}</b></span>
           </span>`;
   };
   const cell = (label, value) => `<span class="eq-cell"><span class="eq-lab">${label}</span><b class="num">${value}</b></span>`;
@@ -1416,21 +1417,20 @@ function viewIgual() {
     const formula = row.probSrc === "formula" ? " (fórmula)" : "";
     const probCell = cell(row.histProb == null ? "Prob. asignación" : "Prob. mercado", `${dec(row.prob)} %${formula}`);
     const longCell = cell("Prob. pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`);
-    const lossCell = cell("Pierdes máx.", usdDec(row.loss));
     const tripCell = cell("Coste total", row.roundTrip == null ? "sin precio medio" : usdDec(row.roundTrip));
-    // Sin cierres para este nombre no hay barra: "cobras neto" baja a las casillas (la rentab. neta ya va arriba).
-    const cells =
-      row.expected == null
-        ? [probCell, longCell, cell("Cobras neto", usdDec(row.net)), lossCell, tripCell, ...(hist ? [cell("Historia", "sin cierres")] : [])]
-        : [probCell, cell("Prob. historia", `${dec(row.histProb)} %`), longCell, lossCell, tripCell, cell("Equilibrio", balText(row))];
+    // Sin cierres para este nombre no hay barra ni prob. de historia.
+    const cells = row.expected == null ? [probCell, longCell, tripCell] : [probCell, cell("Prob. historia", `${dec(row.histProb)} %`), longCell, tripCell];
     return `<span class="eq-grid">${cells.join("")}</span>`;
   };
+  const stakes = (row) =>
+    `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
   const kpiTone = (row) => (row.retExp == null ? "" : row.retExp > 0 ? " plus" : " minus");
   const item = (row) => `<li>
         <button class="deal ok eq-row" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))}</span>
             <span class="eq-legs">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span></span>
             <span class="deal-kpi num${kpiTone(row)}">${expText(row)}</span></span>
+          ${stakes(row)}
           ${pills(row)}
           ${grid(row)}
           ${row.onlyOne || row.distinct ? `<span class="deal-sub small muted">${esc(volText(row).replace(/^a/, "A"))}</span>` : ""}
