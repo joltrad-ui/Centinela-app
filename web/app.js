@@ -118,7 +118,6 @@ function loadEqual() {
     prob: num(saved.prob, "prob"),
     width: num(saved.width, "width"),
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
-    compact: saved.compact === true, // vista compacta de la pestaña Igual
   };
 }
 
@@ -1363,7 +1362,6 @@ function equalOpts(symbols) {
       expiry,
       fee: rules.equalFee,
       gapPct: rules.equalGapPct,
-      compact: eq.compact === true,
     },
   };
 }
@@ -1396,58 +1394,11 @@ function viewIgual() {
     const all = `${earnTag(row)}${fedTag(row)}${notes.join("")}`;
     return all ? `<span class="eq-tags small">${all}</span>` : "";
   };
-  // Barra: lo verde es lo que cobras; las marcas, lo que se espera pagar con cada cálculo. Una marca fuera de lo verde
-  // = con ese cálculo se paga más de lo que se cobra. Debajo, los tres números y lo que queda (cobras − pagas).
-  const payBar = (row) => {
-    if (row.expected == null) return "";
-    const max = Math.max(row.net, row.histLoss, row.recentLoss, 0.01) * 1.06;
-    const frac = (value) => Math.max(0, Math.min(1, value / max));
-    const at = (value) => `${(frac(value) * 100).toFixed(1)}%`;
-    // Etiqueta de lo que cobras, pegada al final de lo verde (a la izquierda si lo verde es muy corto).
-    const tagStyle = frac(row.net) < 0.3 ? "left:0" : `left:${at(row.net)};transform:translateX(-100%)`;
-    const calc = (cls, label, paid, left) =>
-      `<span class="eq-calc"><span class="eq-lab"><i class="eq-key ${cls}" aria-hidden="true"></i>${label}</span><b class="num">${dollars(paid)}</b><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
-    if (state.equal.compact) {
-      // Mismos datos que la vista completa, en menos líneas: el equilibrio va en la línea de "Cobras neto",
-      // en el lado que deja libre la etiqueta, y cada cálculo ocupa dos líneas en vez de tres.
-      const side = frac(row.net) < 0.7 ? "right:0" : "left:0";
-      const small = (cls, label, paid, left) =>
-        `<span class="eq-calc"><span class="eq-pair"><i class="eq-key ${cls}" aria-hidden="true"></i><span class="eq-lab">${label}</span> <b class="num">${dollars(paid)}</b></span><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
-      return `<span class="eq-pay compact">
-            <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
-            <span class="eq-eq" style="${side}"><span class="eq-lab">Equilibrio</span> <b class="num">${balText(row)}</b></span>
-            <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
-            <span class="eq-calcs">${small("recent", "reciente", row.recentLoss, row.marginRecent)}${small("mean", "se espera", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${small("hist", "historia", row.histLoss, row.marginHist)}</span>
-          </span>`;
-    }
-    return `<span class="eq-pay">
-            <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
-            <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
-            <span class="eq-calcs">${calc("recent", "Con lo reciente", row.recentLoss, row.marginRecent)}${calc("mean", "Se espera pagar", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${calc("hist", "Con historia", row.histLoss, row.marginHist)}</span>
-            <span class="eq-balance small"><span class="muted">Equilibrio (cobras ÷ se espera pagar)</span><b class="num">${balText(row)}</b></span>
-          </span>`;
-  };
-  const cell = (label, value) => `<span class="eq-cell"><span class="eq-lab">${label}</span><b class="num">${value}</b></span>`;
-  const grid = (row) => {
-    const formula = row.probSrc === "formula" ? " (fórmula)" : "";
-    const probCell = cell("Prob. asignación", `${dec(row.prob)} %${formula}`);
-    const longCell = cell("Prob. pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`);
-    // Sin cierres para este nombre no hay barra ni prob. de historia.
-    const cells = row.expected == null ? [probCell, longCell] : [probCell, cell("Prob. asig. historia", `${dec(row.histProb)} %`), longCell];
-    return `<span class="eq-grid">${cells.join("")}</span>`;
-  };
-  // Las tres volatilidades (% al año), con el mismo formato que las probabilidades.
-  const volGrid = (row) => {
-    const cells = [];
-    if (row.sym.iv30 != null) cells.push(cell("Vol. implícita 30 d", `${num(row.sym.iv30, 0)} %`));
-    if (row.vol != null) cells.push(cell("Vol. ahora", `${num(row.vol, 0)} %`));
-    if (row.vol5 != null) cells.push(cell(`Vol. ${spanText(row.years)}`, `${num(row.vol5, 0)} %`));
-    return cells.length ? `<span class="eq-grid eq-vols">${cells.join("")}</span>` : "";
-  };
-  // Vista compacta: probabilidades y volatilidades en dos líneas (etiqueta y valor seguidos).
-  const mini = (row) => {
-    const pair = (label, value) => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num">${value}</b></span>`;
-    const line = (head, cells) => (cells.length ? `<span class="eq-line"><span class="eq-lab">${head}</span>${cells.join("")}</span>` : "");
+  // Datos de la fila en líneas (cabecera corta + tres valores): probabilidades, volatilidades y, con cierres,
+  // lo que se espera pagar con cada cálculo, lo que queda (cobras neto − pagas) y el equilibrio.
+  const lines = (row) => {
+    const pair = (label, value, tone = "") => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num${tone}">${value}</b></span>`;
+    const line = (head, cells, cls = "") => (cells.length ? `<span class="eq-line${cls}"><span class="eq-lab">${head}</span>${cells.join("")}</span>` : "");
     const probs = [pair("asignación", `${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
     if (row.histProb != null) probs.push(pair("historia", `${dec(row.histProb)} %`));
     probs.push(pair("pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`));
@@ -1455,7 +1406,16 @@ function viewIgual() {
     if (row.sym.iv30 != null) vols.push(pair("impl. 30 d", `${num(row.sym.iv30, 0)} %`));
     if (row.vol != null) vols.push(pair("ahora", `${num(row.vol, 0)} %`));
     if (row.vol5 != null) vols.push(pair(spanText(row.years), `${num(row.vol5, 0)} %`));
-    return `<span class="eq-mini">${line("Prob.", probs)}${line("Vol.", vols)}</span>`;
+    let pay = "";
+    if (row.expected != null) {
+      const left = (value) => pair("", signedUsd(value), value < 0 ? " eq-minus" : " eq-plus");
+      const mean = Math.round((row.net - row.expected) * 100) / 100;
+      pay =
+        line("Pagas", [pair("reciente", dollars(row.recentLoss)), pair("se espera", dollars(row.expected)), pair("historia", dollars(row.histLoss))], " gap") +
+        line("Queda", [left(row.marginRecent), left(mean), left(row.marginHist)]) +
+        line("Equil.", [pair("", balText(row))]);
+    }
+    return `<span class="eq-mini">${line("Prob.", probs)}${line("Vol.", vols)}${pay}</span>`;
   };
   const stakes = (row) =>
     `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usdDec(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
@@ -1467,8 +1427,7 @@ function viewIgual() {
             <span class="deal-kpi num${kpiTone(row)}">${expText(row)}<small>${row.retExp == null ? "Rentab. neta" : "Rentab. esperada"}</small></span></span>
           ${stakes(row)}
           ${pills(row)}
-          ${state.equal.compact ? mini(row) : grid(row) + volGrid(row)}
-          ${payBar(row)}
+          ${lines(row)}
         </button>
       </li>`;
   const list = rows.map(item).join("");
@@ -1505,7 +1464,6 @@ function viewIgual() {
       ${opts.prob < 5 ? '<p class="small muted" style="margin:0 0 6px">Por debajo del 5 % hay muy pocos casos en la historia y los precios son de céntimos: la comparación es poco fiable.</p>' : ""}
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
-      <div class="frow" role="group" aria-label="Vista"><span class="small muted">Vista</span>${chip("act", "eq-view-full", "Completa", !opts.compact)}${chip("act", "eq-view-compact", "Compacta", opts.compact)}</div>
       <button class="rules-line small" data-tab="reglas">Comisión por spread al abrir ${usdDec(opts.fee)} · horquilla máxima ${opts.gapPct} % · se cambian en Reglas</button>
     </div>
     <button class="rules-line small" style="margin:0 0 10px" data-act="eq-help" aria-expanded="${state.eqHelp ? "true" : "false"}">Cómo se ordena y cómo se lee ${state.eqHelp ? "▴" : "▾"}</button>
@@ -1518,7 +1476,7 @@ function viewIgual() {
           ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
           : "Orden: rentab. neta. Todavía no hay cierres diarios guardados para comparar con la historia."
       }</p>
-      ${withHist ? "<p>La barra: lo verde es lo que cobras neto. Las marcas son lo que se espera pagar: la ámbar con la volatilidad reciente, la blanca con los 5 años de precios y el círculo, la media de las dos, que es lo que se espera pagar. Una marca fuera de lo verde quiere decir que con ese cálculo se paga más de lo que se cobra. «Queda» = cobras neto − lo que se espera pagar.</p>" : ""}
+      ${withHist ? "<p>«Pagas» es lo que se espera pagar de media, con tres cálculos: «reciente» (la volatilidad de las últimas semanas), «historia» (5 años de precios) y «se espera» (la media de las dos, la que ordena). «Queda» = cobras neto − pagas. «Equil.» (equilibrio) = cobras neto ÷ se espera.</p>" : ""}
     </div>`
         : ""
     }
@@ -1659,10 +1617,6 @@ root.addEventListener("click", (event) => {
     const list = state.dealFilter.expiries;
     state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
     state.dealsShown = 60;
-    render();
-  } else if (el.dataset.act === "eq-view-full" || el.dataset.act === "eq-view-compact") {
-    state.equal.compact = el.dataset.act === "eq-view-compact";
-    writeLocal(LS_EQUAL, state.equal);
     render();
   } else if (el.dataset.act === "eq-help") {
     state.eqHelp = !state.eqHelp;
