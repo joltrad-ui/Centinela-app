@@ -118,6 +118,7 @@ function loadEqual() {
     prob: num(saved.prob, "prob"),
     width: num(saved.width, "width"),
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
+    compact: saved.compact === true, // vista compacta de la pestaña Igual
   };
 }
 
@@ -1362,6 +1363,7 @@ function equalOpts(symbols) {
       expiry,
       fee: rules.equalFee,
       gapPct: rules.equalGapPct,
+      compact: eq.compact === true,
     },
   };
 }
@@ -1405,6 +1407,14 @@ function viewIgual() {
     const tagStyle = frac(row.net) < 0.3 ? "left:0" : `left:${at(row.net)};transform:translateX(-100%)`;
     const calc = (cls, label, paid, left) =>
       `<span class="eq-calc"><span class="eq-lab"><i class="eq-key ${cls}" aria-hidden="true"></i>${label}</span><b class="num">${dollars(paid)}</b><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
+    if (state.equal.compact) {
+      const left = Math.round((row.net - row.expected) * 100) / 100;
+      return `<span class="eq-pay compact">
+            <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
+            <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
+            <span class="eq-one small"><span class="muted">Se espera pagar</span> <b class="num">${dollars(row.expected)}</b> <span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span><span class="muted"> · equilibrio</span> <b class="num">${balText(row)}</b></span>
+          </span>`;
+    }
     return `<span class="eq-pay">
             <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
             <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
@@ -1439,8 +1449,7 @@ function viewIgual() {
             <span class="deal-kpi num${kpiTone(row)}">${expText(row)}<small>${row.retExp == null ? "Rentab. neta" : "Rentab. esperada"}</small></span></span>
           ${stakes(row)}
           ${pills(row)}
-          ${grid(row)}
-          ${volGrid(row)}
+          ${state.equal.compact ? "" : grid(row) + volGrid(row)}
           ${payBar(row)}
         </button>
       </li>`;
@@ -1478,6 +1487,7 @@ function viewIgual() {
       ${opts.prob < 5 ? '<p class="small muted" style="margin:0 0 6px">Por debajo del 5 % hay muy pocos casos en la historia y los precios son de céntimos: la comparación es poco fiable.</p>' : ""}
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
+      <div class="frow" role="group" aria-label="Vista"><span class="small muted">Vista</span>${chip("act", "eq-view-full", "Completa", !opts.compact)}${chip("act", "eq-view-compact", "Compacta", opts.compact)}</div>
       <button class="rules-line small" data-tab="reglas">Comisión por spread al abrir ${usdDec(opts.fee)} · horquilla máxima ${opts.gapPct} % · se cambian en Reglas</button>
     </div>
     <button class="rules-line small" style="margin:0 0 10px" data-act="eq-help" aria-expanded="${state.eqHelp ? "true" : "false"}">Cómo se ordena y cómo se lee ${state.eqHelp ? "▴" : "▾"}</button>
@@ -1631,6 +1641,10 @@ root.addEventListener("click", (event) => {
     const list = state.dealFilter.expiries;
     state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
     state.dealsShown = 60;
+    render();
+  } else if (el.dataset.act === "eq-view-full" || el.dataset.act === "eq-view-compact") {
+    state.equal.compact = el.dataset.act === "eq-view-compact";
+    writeLocal(LS_EQUAL, state.equal);
     render();
   } else if (el.dataset.act === "eq-help") {
     state.eqHelp = !state.eqHelp;
