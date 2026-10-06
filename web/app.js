@@ -1406,7 +1406,7 @@ function viewIgual() {
     const calc = (cls, label, paid, left) =>
       `<span class="eq-calc"><span class="eq-lab"><i class="eq-key ${cls}" aria-hidden="true"></i>${label}</span><b class="num">${dollars(paid)}</b><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
     return `<span class="eq-pay">
-            <span class="eq-got" style="${tagStyle}">Cobras ${usdDec(row.net)}</span>
+            <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
             <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
             <span class="eq-calcs">${calc("recent", "Con lo reciente", row.recentLoss, row.marginRecent)}${calc("mean", "Se espera pagar", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${calc("hist", "Con historia", row.histLoss, row.marginHist)}</span>
           </span>`;
@@ -1432,9 +1432,9 @@ function viewIgual() {
             <span class="eq-legs">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span></span>
             <span class="deal-kpi num${kpiTone(row)}">${expText(row)}</span></span>
           ${pills(row)}
-          ${payBar(row)}
           ${grid(row)}
           ${row.onlyOne || row.distinct ? `<span class="deal-sub small muted">${esc(volText(row).replace(/^a/, "A"))}</span>` : ""}
+          ${payBar(row)}
         </button>
       </li>`;
   const list = rows.map(item).join("");

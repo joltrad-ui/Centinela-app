@@ -267,8 +267,9 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
 .eq-tags > span { margin: 0; }
 .tag-note { display: inline-block; padding: 1px 8px; border-radius: 999px; box-shadow: var(--border); color: var(--muted); }
 .tag-note.brass { color: var(--brass); }
-.eq-pay { display: block; margin-top: 10px; position: relative; padding-top: 16px; }
-.eq-got { position: absolute; top: 0; font-size: 0.75rem; font-weight: 500; color: var(--up); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eq-pay { display: block; margin-top: 12px; position: relative; padding-top: 34px; border-top: 1px dashed var(--line); }
+.eq-got { position: absolute; top: 12px; font-size: 0.8125rem; color: var(--up); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.eq-got b { font-size: 1.0625rem; font-weight: 600; }
 .eq-pay-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.75rem; color: var(--muted); }
 .eq-pay-head b { color: var(--fg); font-weight: 500; font-size: 0.9375rem; }
 .eq-track { display: block; position: relative; height: 4px; border-radius: 999px; background: var(--surface-2); margin: 6px 6px 12px; }
@@ -286,7 +287,7 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
 .eq-key.mean { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--fg); background: transparent; }
 .eq-plus { color: var(--up); }
 .eq-minus { color: var(--down); }
-.eq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 6px; margin-top: 11px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.eq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px 6px; margin-top: 11px; }
 .eq-row .deal-sub { margin-top: 9px; }
 .eq-cell { display: grid; gap: 0; min-width: 0; }
 .eq-cell b { font-weight: 500; font-size: 0.875rem; }
