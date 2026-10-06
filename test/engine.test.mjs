@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
-import { checkSeries, toSeries } from "../scanner/cierres.mjs";
+import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -319,4 +319,29 @@ test("cierres: controles de salto, de atraso y de serie vacía", () => {
   assert.match(checkSeries({ c: [100, 101], last: "2026-09-25" }, today), /atrasado/);
   assert.equal(checkSeries({ c: [100, 101], last: "2026-09-29" }, today), ""); // 4 sesiones: todavía vale
   assert.match(checkSeries({ c: [], last: null }, today), /sin cierres/);
+});
+
+test("cierres: un split sin ajustar en un tramo se recompone a la escala de hoy", () => {
+  // Como XLE: parte antigua a la mitad, un tramo sin ajustar y, tras el split, el precio de hoy.
+  const { closes, fixes } = repairSplits([40, 41, 82, 84, 43, 44], ["d1", "d2", "d3", "d4", "d5", "d6"]);
+  assert.deepEqual(closes, [40, 41, 41, 42, 43, 44]);
+  assert.deepEqual(fixes, ["×2 el d3", "÷2 el d5"]);
+  // El split coincide con un día movido: 0,5 × (1 − 6 %) sigue siendo un split.
+  assert.deepEqual(repairSplits([100, 47]).closes, [50, 47]);
+  // Un salto grande que no es múltiplo (−45 %, ×1,6) no se toca: lo para el control.
+  assert.deepEqual(repairSplits([100, 55]).closes, [100, 55]);
+  assert.deepEqual(repairSplits([100, 160]).fixes, []);
+  // Los movimientos normales no se tocan.
+  assert.deepEqual(repairSplits([100, 130, 80]).closes, [100, 130, 80]);
+});
+
+test("cierres: la serie recompuesta pasa el control y la rota no", () => {
+  const row = (date, close) => ({ date, open: close, high: close, low: close, close, volume: 1 });
+  const body = { data: [row("2026-09-28", 40.99), row("2026-09-29", 81.99), row("2026-09-30", 83), row("2026-10-01", 41.2), row("2026-10-02", 41.5)] };
+  const series = toSeries("XYZ", body, today);
+  assert.deepEqual(series.c, [40.99, 41, 41.5, 41.2, 41.5]);
+  assert.equal(series.fixes.length, 2);
+  assert.equal(checkSeries(series, today), "");
+  const broken = toSeries("XYZ", { data: [row("2026-10-01", 100), row("2026-10-02", 55)] }, today);
+  assert.match(checkSeries(broken, today), /salto/);
 });

@@ -5,7 +5,8 @@
 //   node scanner/cierres.mjs --out out                      descarga real
 //   node scanner/cierres.mjs --fixtures test/fixtures --out out-ejemplo   con cierres inventados
 //
-// Si un control falla, termina con error y no escribe nada: se conserva el archivo anterior.
+// Un split que la fuente dejó sin ajustar se recompone (repairSplits). Si después un control
+// falla, termina con error y no escribe nada: se conserva el archivo anterior.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -24,6 +25,7 @@ const UA = "Mozilla/5.0 (compatible; centinela)";
 const YEARS = 5;
 const MAX_JUMP = 0.4; // un salto diario mayor huele a split sin ajustar o a otro producto con la misma sigla
 const MAX_STALE = 4; // sesiones que puede llevar sin actualizarse el último cierre
+const SPLIT_TOLERANCE = 0.08; // margen para reconocer un salto como split: el múltiplo exacto más lo que se movió ese día
 const MAX_GAP_DAYS = 10; // hueco de calendario a partir del cual la historia anterior no se usa
 // Nombres cuya sigla tuvo antes otro producto: su historia empieza aquí.
 const DESDE = { IBIT: "2024-01-11" };
@@ -77,8 +79,29 @@ export function toSeries(symbol, body, today) {
       break;
     }
   }
-  const closes = dates.map((date) => Math.round(byDate.get(date) * 100) / 100);
-  return { d: dates[0] ?? null, last: dates.at(-1) ?? null, c: closes, cut, dates };
+  const { closes, fixes } = repairSplits(dates.map((date) => byDate.get(date)), dates);
+  return { d: dates[0] ?? null, last: dates.at(-1) ?? null, c: closes.map((close) => Math.round(close * 100) / 100), cut, dates, fixes };
+}
+
+/** Recompone la serie cuando la fuente ha dejado un split sin ajustar en un tramo.
+ *  Un salto diario mayor del 40 % que es casi un múltiplo exacto (el doble, la mitad, el triple…)
+ *  se trata como split: los cierres anteriores se llevan a la escala de los posteriores, que es
+ *  la del precio de hoy. Un salto grande que no es múltiplo se deja: lo parará el control. */
+export function repairSplits(input, dates = []) {
+  const closes = [...input];
+  const fixes = [];
+  for (let i = 1; i < closes.length; i++) {
+    const ratio = closes[i] / closes[i - 1];
+    if (!(Math.abs(ratio - 1) > MAX_JUMP)) continue;
+    const up = ratio > 1;
+    const n = Math.round(up ? ratio : 1 / ratio);
+    if (n < 2 || n > 20) continue;
+    const factor = up ? n : 1 / n;
+    if (Math.abs(ratio / factor - 1) > SPLIT_TOLERANCE) continue;
+    for (let j = 0; j < i; j++) closes[j] *= factor;
+    fixes.push(`${up ? `×${n}` : `÷${n}`} el ${dates[i] ?? "?"}`);
+  }
+  return { closes, fixes };
 }
 
 /** Motivo por el que una serie no vale, o "" si vale. */
@@ -108,6 +131,7 @@ async function main() {
   const symbols = {};
   const missing = [];
   const bad = [];
+  const repaired = [];
   let shortened = 0;
   let last = "";
   for (const symbol of names) {
@@ -123,6 +147,7 @@ async function main() {
       bad.push(`${symbol}: ${why}`);
       continue;
     }
+    if (series.fixes.length) repaired.push(`${symbol} ${series.fixes.join(" y ")}`);
     if (series.cut) shortened++;
     if (series.last > last) last = series.last;
     symbols[symbol] = { d: series.d, c: series.c };
@@ -146,7 +171,7 @@ async function main() {
   }
   await writeFile(file, JSON.stringify({ v: 1, at, last, example: Boolean(FIXTURES), symbols }));
   await writeFile(path.join(OUT, "version.json"), JSON.stringify({ cierres: at }));
-  const summary = `Con historia ${got}, sin historia ${missing.length}${missing.length ? ` (${missing.join(", ")})` : ""}, recortados por hueco ${shortened}, último cierre ${last}`;
+  const summary = `Con historia ${got}, sin historia ${missing.length}${missing.length ? ` (${missing.join(", ")})` : ""}, recortados por hueco ${shortened}, recompuestos por split ${repaired.length}${repaired.length ? ` (${repaired.join("; ")})` : ""}, último cierre ${last}`;
   log(summary);
   note("notice", summary);
 }

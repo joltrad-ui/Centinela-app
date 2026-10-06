@@ -33,7 +33,7 @@ El barrido real necesita salida a internet hacia: `cdn.cboe.com`, `cdn-api.cboe.
 - `.github/workflows/publicar.yml`: en cada push a `main` que toque `web/`, publica la app. No barre.
 - `.github/workflows/barrido.yml`: solo por horario o a mano. Barre la lista base cada media hora en horario de mercado, con `--public`, a `data/scan.json`.
 - `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/` e `historia/`; `datos` = solo `data/`; `historia` = solo `historia/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
-- `scanner/cierres.mjs` y `.github/workflows/cierres.yml`: una vez al día (22:23 UTC, lunes a viernes) o a mano, nunca por push ni en cada barrido. Baja del histórico de CBOE los cierres de 5 años de la lista base y escribe `historia/cierres.json` (`{at, last, symbols: {SIMBOLO: {d, c}}}`) e `historia/version.json`. Controles: último cierre con 4 sesiones o menos, ningún salto diario mayor del 40 %, se descarta lo anterior a un hueco de más de 10 días y a la fecha de `DESDE` (IBIT). Si un control falla no publica y queda el archivo anterior. No lee secretos ni configuración.
+- `scanner/cierres.mjs` y `.github/workflows/cierres.yml`: una vez al día (22:23 UTC, lunes a viernes) o a mano, nunca por push ni en cada barrido. Baja del histórico de CBOE los cierres de 5 años de la lista base y escribe `historia/cierres.json` (`{at, last, symbols: {SIMBOLO: {d, c}}}`) e `historia/version.json`. Antes de los controles recompone los splits que la fuente deja sin ajustar en un tramo (`repairSplits`: un salto mayor del 40 % que es un múltiplo casi exacto, ±8 %, reescala los cierres anteriores a la escala de hoy; pasó con XLE y XLU). Controles: último cierre con 4 sesiones o menos, ningún salto diario mayor del 40 %, se descarta lo anterior a un hueco de más de 10 días y a la fecha de `DESDE` (IBIT). Si un control falla no publica y queda el archivo anterior. No lee secretos ni configuración.
 - `data/version.json`: hora de `scan.json`. La app guarda el barrido en el dispositivo (Cache API), lo enseña al abrir y solo lo descarga cuando ha cambiado.
 
 ## Cómo probar sin esperar
@@ -52,7 +52,7 @@ Con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemp
 ## Datos
 
 - CBOE, 15 min de retraso: `https://cdn.cboe.com/api/global/delayed_quotes/options/SIMBOLO.json`. De `data` se usan `current_price`, `price_change_percent`, `iv30`, `last_trade_time`, `security_type` y `options[]` con `option` (símbolo OCC), `bid`, `ask`, `iv`, `delta`, `open_interest`.
-- Histórico de CBOE: `https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/SIMBOLO.json` (redirige a `cdn-api.cboe.com`). `data[]` con `date` y `close`, ajustado por splits. Se usa el cierre sin sumar dividendos.
+- Histórico de CBOE: `https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/SIMBOLO.json` (redirige a `cdn-api.cboe.com`). `data[]` con `date` y `close`, ajustado por splits salvo algún tramo reciente (ver `repairSplits`). Se usa el cierre sin sumar dividendos.
 - StockAnalysis: próxima fecha de resultados por símbolo, con caché de 3 días en el estado.
 - `data/scan.json`: `blocks` (bloques en orden) y, por nombre: `{s, n, k, b, p, c, iv30, er, x}` (`b` es el bloque), donde `x` es una lista de `[vencimiento, iv al dinero, filas]` y cada fila es `[strike, bid, ask, interés abierto, iv, delta]`. Solo puts por debajo del precio.
 
