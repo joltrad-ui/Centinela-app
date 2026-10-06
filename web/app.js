@@ -16,6 +16,7 @@ import {
   labelOf,
   liquidityNotes,
   normalizeConfig,
+  num,
   nyToday,
   readCboeChain,
   rulesLine,
@@ -617,16 +618,17 @@ function useExample() {
 
 const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const priceFmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const money = (n) => `$${priceFmt.format(n)}`;
-const usd = (n) => `$${new Intl.NumberFormat("en-US").format(Math.round(n))}`;
-const pct = (n, d = 0) => `${n.toFixed(d)}%`;
-const signed = (n) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
+// Números a la española en toda la app: coma decimal y "%" separado (ver `num` en el motor).
+const money = (n) => `$${num(n, 2)}`;
+const usd = (n) => `$${num(Math.round(n), 0)}`;
+const pct = (n, d = 0) => `${num(n, d)} %`;
+const signed = (n) => `${n > 0 ? "+" : ""}${num(n, 2)} %`;
+const shortMoney = (n) => `$${Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "")}`;
 const whenFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (ms) => whenFmt.format(new Date(ms));
 const nameOf = (sym) => (sym.n && sym.n !== sym.s ? sym.n : "");
-const kpiText = (sp) => (sp.balance == null ? "—" : sp.balance.toFixed(2));
-const widthText = (sp) => `$${Number.isInteger(sp.width) ? sp.width.toFixed(0) : sp.width.toFixed(2).replace(/0$/, "")}`;
+const kpiText = (sp) => (sp.balance == null ? "—" : num(sp.balance, 2));
+const widthText = (sp) => shortMoney(sp.width);
 const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
 
 // ---------- vistas ----------
@@ -832,8 +834,8 @@ function gate(key, title, hint, inner = "") {
 function viewReglas() {
   const r = state.config.rules;
   const days = (n) => `${n} d`;
-  const p0 = (n) => `${n.toFixed(0)}%`;
-  const d0 = (n) => `$${n.toFixed(0)}`;
+  const p0 = (n) => `${num(n, 0)} %`;
+  const d0 = (n) => `$${num(n, 0)}`;
   return `<div class="narrow">
     <header class="top">
       <p class="eyebrow">Bull put</p>
@@ -846,7 +848,7 @@ function viewReglas() {
       ${stepper("rules.maxProb", "Prob. de asignación máxima", "Elige el corto: en cada nombre, los puts con esta probabilidad o menos de acabar en dinero.", 1, PROB_OFF, 1, (n) => (n >= PROB_OFF ? "sin límite" : p0(n)))}
       ${stepper("rules.width", "Ancho máximo del spread", "Dólares entre el put que vendes y el que compras. Vale ese ancho y cualquiera menor.", 1, 50, 1, d0)}
       ${stepper("rules.minCredit", "Cobras, mínimo", "Crédito por contrato, en dólares. Por debajo, el spread no pasa.", 0, 500, 5, (n) => (n <= 0 ? "sin mínimo" : d0(n)))}
-      ${stepper("rules.minBalance", "Equilibrio mínimo", "Lo que esperas ganar por cada dólar que esperas perder. En 1 se igualan.", 0, 1.5, 0.05, (n) => (n <= 0 ? "sin mínimo" : n.toFixed(2)))}
+      ${stepper("rules.minBalance", "Equilibrio mínimo", "Lo que esperas ganar por cada dólar que esperas perder. En 1 se igualan.", 0, 1.5, 0.05, (n) => (n <= 0 ? "sin mínimo" : num(n, 2)))}
       <div class="gate">
         <button role="switch" aria-checked="${r.otmOn}" data-rule-switch="otmOn">
           <span style="min-width:0"><b>Limitar además el % abajo</b><span class="small muted">Apagado, el % abajo es solo una columna. Encendido, el corto tiene que caer además en este tramo.</span></span>
@@ -870,7 +872,7 @@ function viewReglas() {
           "liquid",
           "Corto con mercado",
           "Interés abierto en el corto y horquilla que no se coma el crédito.",
-          stepper("rules.gates.oiMin", "Interés abierto mínimo", "Contratos abiertos en el put corto.", 0, 5000, 50, (n) => n.toFixed(0)) +
+          stepper("rules.gates.oiMin", "Interés abierto mínimo", "Contratos abiertos en el put corto.", 0, 5000, 50, (n) => num(n, 0)) +
             stepper("rules.gates.spreadPct", "Horquilla máxima", "Suma de las dos horquillas, sobre el crédito a precio medio.", 5, 100, 5, p0),
         )}
         ${gate(
@@ -1004,7 +1006,7 @@ function viewDeals() {
   const otmBy = otmRange && otmRange[1] - otmRange[0] > 16 ? 4 : 2;
   if (otmRange) for (let n = Math.ceil((otmRange[0] + 0.01) / otmBy) * otmBy; n <= otmRange[1]; n += otmBy) otmSteps.push(n);
   const today = nyToday();
-  const money0 = (n) => `$${Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2).replace(/0$/, "")}`;
+  const money0 = shortMoney;
   const names = Object.keys(counts);
   const okTotal = names.reduce((sum, name) => sum + counts[name].ok, 0);
   const noTotal = names.reduce((sum, name) => sum + counts[name].no, 0);
@@ -1092,7 +1094,7 @@ function viewDeals() {
       ${
         otmSteps.length
           ? `<div class="frow" role="group" aria-label="Porcentaje abajo"><span class="flabel xs muted">% abajo</span>
-        ${chip("data-f-otm", "0", "Todos", !(f.minOtm > 0))}${otmSteps.map((n) => chip("data-f-otm", String(n), `desde ${n}%`, f.minOtm === n)).join("")}</div>`
+        ${chip("data-f-otm", "0", "Todos", !(f.minOtm > 0))}${otmSteps.map((n) => chip("data-f-otm", String(n), `desde ${n} %`, f.minOtm === n)).join("")}</div>`
           : ""
       }
       <div class="frow" role="group" aria-label="Cuántos por nombre"><span class="flabel xs muted">Tope</span>
@@ -1240,7 +1242,7 @@ function sheet() {
       </div>
       <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
         <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
-      ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${sym.iv30.toFixed(0)}%</p>` : ""}
+      ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${num(sym.iv30, 0)} %</p>` : ""}
       ${year ? `<p class="small muted">${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}, a cierre: mín. ${money(year.min)} · máx. ${money(year.max)}</p>` : ""}
       ${chosenBlock}
       ${
@@ -1262,7 +1264,7 @@ function sheet() {
 // ---------- Igual riesgo (pestaña de prueba) ----------
 
 const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
-const dec = (n, d = 1) => n.toFixed(d).replace(".", ",");
+const dec = (n, d = 1) => num(n, d);
 const usdDec = (n) => `$${dec(n, 2)}`;
 
 function equalOpts(symbols) {

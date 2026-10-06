@@ -57,6 +57,13 @@ export const MAX_FAVORITES = 40;
 
 // ---------- utilidades ----------
 
+/** Número a la española: coma decimal; punto de millares solo a partir de cinco cifras. */
+export function num(n, decimals = 0) {
+  const text = Math.abs(n).toFixed(decimals);
+  const [int, frac] = text.split(".");
+  const grouped = int.length > 4 ? int.replace(/\B(?=(\d{3})+(?!\d))/g, ".") : int;
+  return `${n < 0 && Number(text) !== 0 ? "−" : ""}${grouped}${frac ? `,${frac}` : ""}`;
+}
 const r1 = (n) => Math.round(n * 10) / 10;
 const r2 = (n) => Math.round(n * 100) / 100;
 
@@ -521,7 +528,7 @@ export function equalRisk(sym, opts, today = nyToday()) {
   const short = rows[shortIndex];
   const shortProb = probOf(shortIndex);
   if (shortProb.value < target - 3 - 1e-9) {
-    return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${r1(shortProb.value)} %`.replace(".", ",") };
+    return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${num(shortProb.value, 1)} %` };
   }
   return spreadRow(sym, expiry, short[K], short[K] - width, fee, today);
 }
@@ -725,7 +732,7 @@ export function balanceOf(ret, prob) {
 }
 
 function fmtWidth(n) {
-  return Number.isInteger(n) ? n.toFixed(0) : n.toFixed(2).replace(/0$/, "");
+  return Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "");
 }
 
 export const STRATEGIES = {
@@ -874,25 +881,25 @@ export function favoriteDeals(symbols, favorites, rules, order, today = nyToday(
 // ---------- textos ----------
 
 export function spreadLine(sp) {
-  return `${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} · ${sp.expiryLabel} · ${sp.otm.toFixed(1)}% abajo · ${sp.creditPct.toFixed(0)}% del ancho`;
+  return `${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} · ${sp.expiryLabel} · ${num(sp.otm, 1)} % abajo · ${num(sp.creditPct, 0)} % del ancho`;
 }
 
 export function fmtStrike(n) {
-  return Number.isInteger(n) ? n.toFixed(0) : String(n);
+  return Number.isInteger(n) ? String(n) : String(n).replace(".", ",");
 }
 
 export function alertText(sp) {
-  const prob = sp.prob == null ? "" : ` · prob. ${sp.prob.toFixed(0)}%`;
-  return `${spreadLine(sp)}${prob} · rentab. ${sp.ret.toFixed(0)}%`;
+  const prob = sp.prob == null ? "" : ` · prob. ${num(sp.prob, 0)} %`;
+  return `${spreadLine(sp)}${prob} · rentab. ${num(sp.ret, 0)} %`;
 }
 
 export function rulesLine(rules) {
   const parts = [];
-  if (rules.maxProb < PROB_OFF) parts.push(`prob. ≤${rules.maxProb.toFixed(0)}%`);
+  if (rules.maxProb < PROB_OFF) parts.push(`prob. ≤${num(rules.maxProb, 0)} %`);
   parts.push(`${rules.minDte}–${rules.maxDte} días`);
-  if (rules.otmOn) parts.push(`${rules.minOtm.toFixed(0)}–${rules.maxOtm.toFixed(0)}% abajo`);
+  if (rules.otmOn) parts.push(`${num(rules.minOtm, 0)}–${num(rules.maxOtm, 0)} % abajo`);
   parts.push(`ancho ≤$${fmtWidth(rules.width)}`);
   if (rules.minCredit > 0) parts.push(`cobras ≥$${rules.minCredit}`);
-  if (rules.minBalance > 0) parts.push(`equilibrio ≥${rules.minBalance.toFixed(2)}`);
+  if (rules.minBalance > 0) parts.push(`equilibrio ≥${num(rules.minBalance, 2)}`);
   return parts.join(" · ");
 }

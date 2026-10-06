@@ -6,6 +6,7 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. Lee tambi
 
 - Es una herramienta de filtrado. No da órdenes, consejos ni recomendaciones, ni en la interfaz ni en los avisos.
 - Todo el texto visible va en español y con su vocabulario: "% abajo", "ancho", "crédito", "% del ancho", "corto / largo", "cobras", "pérdida máx.", "rentabilidad", "prob. de asignación", "favoritos", "interruptores". No introducir jerga nueva (delta 16, POP, IVR…) sin que la pida.
+- Números a la española en toda la app y en los avisos: coma decimal, "%" separado por un espacio y punto de millares solo desde cinco cifras (`num` en el motor). No usar `toFixed` ni `Intl` con `en-US` para texto visible.
 - Simple: lo que necesita, ni más ni menos. Antes de añadir una columna, un filtro o una pantalla, preguntar.
 - Hoy solo bull put. Más adelante: iron condor y estrategias bajistas.
 - Orden por defecto: equilibrio entre baja probabilidad de asignación y buena rentabilidad.

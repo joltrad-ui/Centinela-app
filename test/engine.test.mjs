@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { alertText, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 
@@ -372,4 +372,16 @@ test("ficha: avisos de liquidez y rango de 52 semanas", () => {
   assert.deepEqual(yearRange(closes, 130), { min: 80, max: 500, sessions: 253 }); // las 252 últimas y el precio de hoy
   assert.equal(yearRange([90, 100, 95], 130).max, 130);
   assert.equal(yearRange(null, 100), null);
+});
+
+test("números a la española en los textos", () => {
+  assert.equal(num(1142.85, 2), "1142,85"); // cuatro cifras, sin punto de millares
+  assert.equal(num(12500, 0), "12.500");
+  assert.equal(num(-0.48, 2), "−0,48");
+  assert.equal(num(-0.001, 2), "0,00");
+  assert.equal(num(5, 1), "5,0");
+  const sp = assessSymbol(sym, R(), "equilibrio", today).best;
+  assert.equal(spreadLine(sp), "90/85 · 30 oct · 10,0 % abajo · 12 % del ancho");
+  assert.match(alertText(sp), / · rentab\. 14 %$/);
+  assert.equal(rulesLine(normalizeRules({ v: 2, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20, minBalance: 0.5 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · equilibrio ≥0,50");
 });
