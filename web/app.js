@@ -1428,7 +1428,7 @@ function viewIgual() {
         <button class="deal ok eq-row" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))}</span>
             <span class="eq-legs">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span></span>
-            <span class="deal-kpi num${kpiTone(row)}">${expText(row)}</span></span>
+            <span class="deal-kpi num${kpiTone(row)}">${expText(row)}<small>${row.retExp == null ? "Rentab. neta" : "Rentab. esperada"}</small></span></span>
           ${stakes(row)}
           ${pills(row)}
           ${grid(row)}
