@@ -267,15 +267,16 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
 .eq-tags > span { margin: 0; }
 .tag-note { display: inline-block; padding: 1px 8px; border-radius: 999px; box-shadow: var(--border); color: var(--muted); }
 .tag-note.brass { color: var(--brass); }
-.eq-pay { display: block; margin-top: 11px; }
+.eq-pay { display: block; margin-top: 10px; position: relative; padding-top: 16px; }
+.eq-got { position: absolute; top: 0; font-size: 0.75rem; font-weight: 500; color: var(--up); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .eq-pay-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.75rem; color: var(--muted); }
 .eq-pay-head b { color: var(--fg); font-weight: 500; font-size: 0.9375rem; }
-.eq-track { display: block; position: relative; height: 8px; border-radius: 999px; background: var(--surface-2); margin: 10px 6px 11px; }
-.eq-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--up); opacity: 0.6; }
-.eq-mark { position: absolute; top: -4px; width: 3px; height: 16px; margin-left: -1.5px; border-radius: 2px; }
+.eq-track { display: block; position: relative; height: 4px; border-radius: 999px; background: var(--surface-2); margin: 6px 6px 12px; }
+.eq-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--up); }
+.eq-mark { position: absolute; top: -5px; width: 3px; height: 14px; margin-left: -1.5px; border-radius: 2px; }
 .eq-mark.recent { background: var(--brass); }
 .eq-mark.hist { background: var(--fg); }
-.eq-mark.mean { top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--surface); border: 2px solid var(--fg); }
+.eq-mark.mean { top: 50%; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; background: var(--surface); border: 2px solid var(--fg); }
 .eq-calcs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .eq-calc { display: grid; gap: 1px; font-size: 0.75rem; color: var(--muted); min-width: 0; }
 .eq-calc b { color: var(--fg); font-weight: 500; font-size: 0.875rem; }

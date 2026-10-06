@@ -1386,11 +1386,11 @@ function viewIgual() {
   // Marcas de la fila, en píldoras: rojas (resultados, Fed), ámbar (solo con un cálculo) y discretas (el resto).
   const pills = (row) => {
     const notes = [];
-    if (row.onlyOne) notes.push('<span class="tag-warn">solo con un cálculo</span>');
     // "Solo con un cálculo" es más fuerte que "estimaciones muy distintas": si se dan las dos, solo la primera.
     if (row.distinct && !row.onlyOne) notes.push('<span class="tag-note">estimaciones muy distintas</span>');
     if (row.shortHistory && row.histProb != null) notes.push('<span class="tag-note">poca historia</span>');
     for (const note of row.trend ?? []) notes.push(`<span class="tag-note brass">${esc(note)}</span>`);
+    if (row.onlyOne) notes.push('<span class="tag-warn">solo con un cálculo</span>');
     const all = `${earnTag(row)}${fedTag(row)}${notes.join("")}`;
     return all ? `<span class="eq-tags small">${all}</span>` : "";
   };
@@ -1399,13 +1399,16 @@ function viewIgual() {
   const payBar = (row) => {
     if (row.expected == null) return "";
     const max = Math.max(row.net, row.histLoss, row.recentLoss, 0.01) * 1.06;
-    const at = (value) => `${(Math.max(0, Math.min(1, value / max)) * 100).toFixed(1)}%`;
+    const frac = (value) => Math.max(0, Math.min(1, value / max));
+    const at = (value) => `${(frac(value) * 100).toFixed(1)}%`;
+    // Etiqueta de lo que cobras, pegada al final de lo verde (a la izquierda si lo verde es muy corto).
+    const tagStyle = frac(row.net) < 0.3 ? "left:0" : `left:${at(row.net)};transform:translateX(-100%)`;
     const calc = (cls, label, paid, left) =>
       `<span class="eq-calc"><span class="eq-lab"><i class="eq-key ${cls}" aria-hidden="true"></i>${label}</span><b class="num">${dollars(paid)}</b><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
     return `<span class="eq-pay">
-            <span class="eq-pay-head"><span>Cobras neto <b class="num">${usdDec(row.net)}</b></span><span>se espera pagar <b class="num">${dollars(row.expected)}</b></span></span>
+            <span class="eq-got" style="${tagStyle}">Cobras ${usdDec(row.net)}</span>
             <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
-            <span class="eq-calcs">${calc("recent", "Con lo reciente", row.recentLoss, row.marginRecent)}${calc("mean", "Media", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${calc("hist", "Con historia", row.histLoss, row.marginHist)}</span>
+            <span class="eq-calcs">${calc("recent", "Con lo reciente", row.recentLoss, row.marginRecent)}${calc("mean", "Se espera pagar", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${calc("hist", "Con historia", row.histLoss, row.marginHist)}</span>
           </span>`;
   };
   const cell = (label, value) => `<span class="eq-cell"><span class="eq-lab">${label}</span><b class="num">${value}</b></span>`;
@@ -1480,7 +1483,7 @@ function viewIgual() {
           ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
           : "Orden: rentab. neta. Todavía no hay cierres diarios guardados para comparar con la historia."
       }</p>
-      ${withHist ? "<p>La barra: lo verde es lo que cobras neto. Las marcas son lo que se espera pagar: la ámbar con la volatilidad reciente, la blanca con los 5 años de precios y el círculo, la media de las dos. Una marca fuera de lo verde quiere decir que con ese cálculo se paga más de lo que se cobra. «Queda» = cobras neto − lo que se espera pagar.</p>" : ""}
+      ${withHist ? "<p>La barra: lo verde es lo que cobras neto. Las marcas son lo que se espera pagar: la ámbar con la volatilidad reciente, la blanca con los 5 años de precios y el círculo, la media de las dos, que es lo que se espera pagar. Una marca fuera de lo verde quiere decir que con ese cálculo se paga más de lo que se cobra. «Queda» = cobras neto − lo que se espera pagar.</p>" : ""}
     </div>`
         : ""
     }
