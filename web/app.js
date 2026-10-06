@@ -50,7 +50,9 @@ function refreshExample(scan) {
 
 const EQ_PROBS = [5, 8, 10];
 const EQ_WIDTHS = [1, 2, 3, 5, 10];
-const EQ_OK = { prob: (v) => EQ_PROBS.includes(v), width: (v) => EQ_WIDTHS.includes(v) };
+const EQ_PROB_MIN = 1;
+const EQ_PROB_MAX = 15;
+const EQ_OK = { prob: (v) => Number.isInteger(v) && v >= EQ_PROB_MIN && v <= EQ_PROB_MAX, width: (v) => EQ_WIDTHS.includes(v) };
 
 const state = {
   tab: "favoritos",
@@ -1229,7 +1231,7 @@ function equalOpts(symbols) {
   return {
     expiries,
     opts: {
-      prob: eq.prob ?? nearest(EQ_PROBS, rules.maxProb >= PROB_OFF ? 10 : rules.maxProb),
+      prob: eq.prob ?? (rules.maxProb >= PROB_OFF ? 10 : Math.min(EQ_PROB_MAX, Math.max(EQ_PROB_MIN, Math.round(rules.maxProb)))),
       width: eq.width ?? nearest(EQ_WIDTHS, rules.width),
       expiry,
       fee: eq.fee,
@@ -1275,6 +1277,9 @@ function viewIgual() {
     ${header("Prueba", "Igual riesgo")}
     <div class="filters">
       <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted">Prob. objetivo</span>${EQ_PROBS.map((n) => chip("eq-prob", n, `${n} %`, opts.prob === n)).join("")}</div>
+      <div class="frow" role="group" aria-label="Prob. objetivo, de ${EQ_PROB_MIN} % a ${EQ_PROB_MAX} %"><span class="small muted">${EQ_PROB_MIN} %</span>
+        <input type="range" class="range" id="eq-range" min="${EQ_PROB_MIN}" max="${EQ_PROB_MAX}" step="1" value="${opts.prob}" aria-label="Prob. objetivo">
+        <span class="small muted">${EQ_PROB_MAX} %</span><b class="num" id="eq-range-val" style="min-width:3.2em;text-align:right">${opts.prob} %</b></div>
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
       <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
@@ -1316,6 +1321,21 @@ function setPath(config, path, value) {
 }
 
 const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", "rules.gates.lossMax": "rules.gates.lossMin" };
+
+// Deslizador de la prob. objetivo: mientras se arrastra solo cambia el número; al soltar, se aplica.
+root.addEventListener("input", (event) => {
+  if (event.target.id !== "eq-range") return;
+  const label = root.querySelector("#eq-range-val");
+  if (label) label.textContent = `${event.target.value} %`;
+});
+root.addEventListener("change", (event) => {
+  if (event.target.id !== "eq-range") return;
+  const value = Number(event.target.value);
+  if (!EQ_OK.prob(value)) return;
+  state.equal.prob = value;
+  writeLocal(LS_EQUAL, state.equal);
+  render();
+});
 
 root.addEventListener("click", (event) => {
   const el = event.target.closest("[data-eq-prob],[data-eq-width],[data-eq-exp],[data-eq-fee],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
