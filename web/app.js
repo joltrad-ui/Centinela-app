@@ -1415,7 +1415,7 @@ function viewIgual() {
       // Plegado: lo que interesa de un vistazo (lo que se espera pagar, lo que queda y el equilibrio). Desplegado: los tres cálculos.
       const head = `<span class="eq-more" role="button" tabindex="0" data-act="eq-more" data-sym="${esc(row.sym.s)}" aria-expanded="${open}">
           <span class="eq-lab">Se espera pagar</span> <b class="num">${dollars(row.expected)}</b>
-          <span class="eq-lab">· queda</span> <b class="num ${mean < 0 ? "eq-minus" : "eq-plus"}">${signedUsd(mean)}</b>
+          <span class="eq-lab">· queda</span> <b class="num">${signedUsd(mean)}</b>
           <span class="eq-lab">· equil.</span> <b class="num">${balText(row)}</b>
           <span class="eq-chev" aria-hidden="true">${open ? "▴" : "▾"}</span></span>`;
       pay = `<span class="eq-pay-box">${head}${
