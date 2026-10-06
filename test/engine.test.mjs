@@ -176,6 +176,12 @@ test("deals de todos los favoritos, juntos y ordenados", () => {
   const far = favoriteDeals([sym, other], ["XYZ", "ABC"], rules, "rentab", today, { minOtm: 11 });
   assert.ok(far.deals.length > 0 && far.deals.length < all.deals.length && far.deals.every((row) => row.sp.otm >= 11));
   assert.ok(all.otmRange[0] < 11 && all.otmRange[1] >= 11);
+  // filtro por prob. de asignación: "hasta 9" deja solo los de 9 % o menos, y los que no tienen prob. no entran
+  const probs = all.deals.map((row) => row.sp.prob).filter((p) => p != null).sort((a, b) => a - b);
+  const cap = probs[Math.floor(probs.length / 2)];
+  const calm = favoriteDeals([sym, other], ["XYZ", "ABC"], rules, "rentab", today, { maxProb: cap });
+  assert.ok(calm.deals.length > 0 && calm.deals.length < all.deals.length && calm.deals.every((row) => row.sp.prob != null && row.sp.prob <= cap));
+  assert.equal(favoriteDeals([sym, other], ["XYZ", "ABC"], rules, "rentab", today, { maxProb: 0 }).deals.length, all.deals.length);
   const one = favoriteDeals([sym, other], ["XYZ", "ABC"], rules, "rentab", today, { status: "ok", perName: 1 });
   assert.equal(one.deals.length, 2);
   assert.equal(one.matched, ok.deals.length);

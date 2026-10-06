@@ -82,7 +82,7 @@ const state = {
   copied: "",
   dealsPerName: 10, // 0 = todos
   dealsShown: 60,
-  dealFilter: { expiries: [], maxWidth: 0, minOtm: 0 },
+  dealFilter: { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 },
   hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
   equal: loadEqual(), // pestaña de prueba "Igual riesgo": solo en el dispositivo
 };
@@ -987,6 +987,11 @@ function orderText(sp, order) {
   return kpiText(sp);
 }
 
+// Deslizadores de los filtros de Deals: ancho máximo ($1 a $8) y prob. de asignación máxima (1 a 15 %).
+const DW_MIN = 1;
+const DW_MAX = 8;
+const DP_MIN = 1;
+const DP_MAX = 15;
 const PER_NAME = [
   [3, "3 por nombre"],
   [10, "10 por nombre"],
@@ -1001,6 +1006,7 @@ function viewDeals() {
     expiries: f.expiries,
     maxWidth: f.maxWidth,
     minOtm: f.minOtm,
+    maxProb: f.maxProb,
   });
   // Escalones dentro de lo que hay en la lista: "desde 8%", "desde 10%"… De 2 en 2,
   // o de 4 en 4 si el tramo es largo, para que la fila no se haga interminable.
@@ -1013,7 +1019,7 @@ function viewDeals() {
   const okTotal = names.reduce((sum, name) => sum + counts[name].ok, 0);
   const noTotal = names.reduce((sum, name) => sum + counts[name].no, 0);
   const shown = deals.slice(0, state.dealsShown);
-  const filtered = f.expiries.length > 0 || f.maxWidth > 0 || f.minOtm > 0;
+  const filtered = f.expiries.length > 0 || f.maxWidth > 0 || f.minOtm > 0 || f.maxProb > 0;
   const summary = names.length
     ? `${okTotal} cumplen y ${noTotal} no, en ${names.length} nombres.${filtered ? ` Con tus filtros quedan ${matched}.` : ""} Ves ${shown.length}${
         deals.length < matched ? `, con el tope de ${state.dealsPerName} por nombre` : shown.length < deals.length ? ` de ${deals.length}` : ""
@@ -1083,10 +1089,16 @@ function viewDeals() {
     <div class="filters" aria-label="Filtros">
       ${
         widths.length
-          ? `<div class="frow" role="group" aria-label="Ancho del spread"><span class="flabel xs muted">Ancho</span>
-        ${chip("data-f-width", "0", "Todos", !(f.maxWidth > 0))}${widths.slice(0, -1).map((w) => chip("data-f-width", String(w), `hasta ${money0(w)}`, f.maxWidth === w)).join("")}</div>`
+          ? `<div class="frow" role="group" aria-label="Ancho máximo del spread"><span class="flabel xs muted">Ancho</span>
+        ${chip("data-f-width", "0", "Todos", !(f.maxWidth > 0))}
+        <input type="range" class="range" id="f-width-range" min="${DW_MIN}" max="${DW_MAX}" step="1" value="${f.maxWidth > 0 ? Math.min(DW_MAX, Math.max(DW_MIN, Math.round(f.maxWidth))) : DW_MAX}" style="min-width:90px" aria-label="Ancho máximo, de ${DW_MIN} a ${DW_MAX} dólares">
+        <b class="num small" id="f-width-val" style="flex:none;min-width:5.2em;text-align:right">${f.maxWidth > 0 ? `hasta ${money0(f.maxWidth)}` : "Todos"}</b></div>`
           : ""
       }
+      <div class="frow" role="group" aria-label="Prob. de asignación máxima"><span class="flabel xs muted">Prob.</span>
+        ${chip("data-f-prob", "0", "Todos", !(f.maxProb > 0))}
+        <input type="range" class="range" id="f-prob-range" min="${DP_MIN}" max="${DP_MAX}" step="1" value="${f.maxProb > 0 ? f.maxProb : DP_MAX}" style="min-width:90px" aria-label="Prob. de asignación máxima, de ${DP_MIN} % a ${DP_MAX} %">
+        <b class="num small" id="f-prob-val" style="flex:none;min-width:5.2em;text-align:right">${f.maxProb > 0 ? `hasta ${f.maxProb} %` : "Todos"}</b></div>
       ${
         expiries.length
           ? `<div class="frow" role="group" aria-label="Vencimiento"><span class="flabel xs muted">Vence</span>
@@ -1411,11 +1423,26 @@ const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", 
 
 // Deslizador de la prob. objetivo: mientras se arrastra solo cambia el número; al soltar, se aplica.
 root.addEventListener("input", (event) => {
-  if (event.target.id !== "eq-range") return;
+  const id = event.target.id;
+  if (id === "f-width-range" || id === "f-prob-range") {
+    const label = root.querySelector(id === "f-width-range" ? "#f-width-val" : "#f-prob-val");
+    if (label) label.textContent = id === "f-width-range" ? `hasta $${event.target.value}` : `hasta ${event.target.value} %`;
+    return;
+  }
+  if (id !== "eq-range") return;
   const label = root.querySelector("#eq-range-val");
   if (label) label.textContent = `${event.target.value} %`;
 });
 root.addEventListener("change", (event) => {
+  const id = event.target.id;
+  if (id === "f-width-range" || id === "f-prob-range") {
+    const value = Number(event.target.value);
+    if (id === "f-width-range") state.dealFilter.maxWidth = value >= DW_MIN && value <= DW_MAX ? value : 0;
+    else state.dealFilter.maxProb = value >= DP_MIN && value <= DP_MAX ? value : 0;
+    state.dealsShown = 60;
+    render();
+    return;
+  }
   if (event.target.id !== "eq-range") return;
   const value = Number(event.target.value);
   if (!EQ_OK.prob(value)) return;
@@ -1476,6 +1503,10 @@ root.addEventListener("click", (event) => {
     state.dealFilter.maxWidth = Number(el.dataset.fWidth) || 0;
     state.dealsShown = 60;
     render();
+  } else if (el.dataset.fProb != null) {
+    state.dealFilter.maxProb = Number(el.dataset.fProb) || 0;
+    state.dealsShown = 60;
+    render();
   } else if (el.dataset.fOtm != null) {
     state.dealFilter.minOtm = Number(el.dataset.fOtm) || 0;
     state.dealsShown = 60;
@@ -1487,7 +1518,7 @@ root.addEventListener("click", (event) => {
     state.dealsShown = 60;
     render();
   } else if (el.dataset.act === "clear-filters") {
-    state.dealFilter = { expiries: [], maxWidth: 0, minOtm: 0 };
+    state.dealFilter = { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 };
     state.dealsShown = 60;
     render();
   } else if (el.dataset.act === "copy-secret") {

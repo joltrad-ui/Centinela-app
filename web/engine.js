@@ -883,11 +883,12 @@ export function rankUniverse(symbols, rules, order, today = nyToday()) {
  *  opts.names / opts.expiries: si traen algo, solo esos nombres o vencimientos
  *  opts.maxWidth: si es > 0, solo spreads de ese ancho o menos
  *  opts.minOtm: si es > 0, solo spreads con el corto al menos ese % abajo
+ *  opts.maxProb: si es > 0, solo spreads con prob. de asignación de ese % o menos (sin prob. no entran)
  *  opts.perName: si es > 0, solo los N primeros de cada nombre
  *  counts da, por nombre, cuántos cumplen y cuántos no (sin filtros) y cuántos
  *  quedan con los filtros de estado, vencimiento y ancho (shown). */
 export function favoriteDeals(symbols, favorites, rules, order, today = nyToday(), opts = {}) {
-  const { perName = 0, status = "todos", names = [], expiries = [], maxWidth = 0, minOtm = 0 } = opts;
+  const { perName = 0, status = "todos", names = [], expiries = [], maxWidth = 0, minOtm = 0, maxProb = 0 } = opts;
   const widths = new Set();
   let otmMin = Infinity;
   let otmMax = -Infinity;
@@ -916,6 +917,7 @@ export function favoriteDeals(symbols, favorites, rules, order, today = nyToday(
       .filter((sp) => !expiries.length || expiries.includes(sp.expiry))
       .filter((sp) => !(maxWidth > 0) || sp.width <= maxWidth + 1e-9)
       .filter((sp) => !(minOtm > 0) || sp.otm >= minOtm - 1e-9)
+      .filter((sp) => !(maxProb > 0) || (sp.prob != null && sp.prob <= maxProb + 1e-9))
       .sort(byRank);
     counts[name].shown = list.length; // con los filtros de estado, vencimiento y ancho
     if (names.length && !names.includes(name)) continue;
