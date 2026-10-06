@@ -1408,11 +1408,16 @@ function viewIgual() {
     const calc = (cls, label, paid, left) =>
       `<span class="eq-calc"><span class="eq-lab"><i class="eq-key ${cls}" aria-hidden="true"></i>${label}</span><b class="num">${dollars(paid)}</b><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
     if (state.equal.compact) {
-      const left = Math.round((row.net - row.expected) * 100) / 100;
+      // Mismos datos que la vista completa, en menos líneas: el equilibrio va en la línea de "Cobras neto",
+      // en el lado que deja libre la etiqueta, y cada cálculo ocupa dos líneas en vez de tres.
+      const side = frac(row.net) < 0.7 ? "right:0" : "left:0";
+      const small = (cls, label, paid, left) =>
+        `<span class="eq-calc"><span class="eq-pair"><i class="eq-key ${cls}" aria-hidden="true"></i><span class="eq-lab">${label}</span> <b class="num">${dollars(paid)}</b></span><span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span></span>`;
       return `<span class="eq-pay compact">
             <span class="eq-got" style="${tagStyle}">Cobras neto <b>${usdDec(row.net)}</b></span>
+            <span class="eq-eq" style="${side}"><span class="eq-lab">Equilibrio</span> <b class="num">${balText(row)}</b></span>
             <span class="eq-track" aria-hidden="true"><i class="eq-fill" style="width:${at(row.net)}"></i><i class="eq-mark recent" style="left:${at(row.recentLoss)}"></i><i class="eq-mark hist" style="left:${at(row.histLoss)}"></i><i class="eq-mark mean" style="left:${at(row.expected)}"></i></span>
-            <span class="eq-one small"><span class="muted">Se espera pagar</span> <b class="num">${dollars(row.expected)}</b> <span class="num ${left < 0 ? "eq-minus" : "eq-plus"}">queda ${signedUsd(left)}</span><span class="muted"> · equilibrio</span> <b class="num">${balText(row)}</b></span>
+            <span class="eq-calcs">${small("recent", "reciente", row.recentLoss, row.marginRecent)}${small("mean", "se espera", row.expected, Math.round((row.net - row.expected) * 100) / 100)}${small("hist", "historia", row.histLoss, row.marginHist)}</span>
           </span>`;
     }
     return `<span class="eq-pay">
@@ -1439,6 +1444,19 @@ function viewIgual() {
     if (row.vol5 != null) cells.push(cell(`Vol. ${spanText(row.years)}`, `${num(row.vol5, 0)} %`));
     return cells.length ? `<span class="eq-grid eq-vols">${cells.join("")}</span>` : "";
   };
+  // Vista compacta: probabilidades y volatilidades en dos líneas (etiqueta y valor seguidos).
+  const mini = (row) => {
+    const pair = (label, value) => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num">${value}</b></span>`;
+    const line = (head, cells) => (cells.length ? `<span class="eq-line"><span class="eq-lab">${head}</span>${cells.join("")}</span>` : "");
+    const probs = [pair("asignación", `${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
+    if (row.histProb != null) probs.push(pair("historia", `${dec(row.histProb)} %`));
+    probs.push(pair("pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`));
+    const vols = [];
+    if (row.sym.iv30 != null) vols.push(pair("impl. 30 d", `${num(row.sym.iv30, 0)} %`));
+    if (row.vol != null) vols.push(pair("ahora", `${num(row.vol, 0)} %`));
+    if (row.vol5 != null) vols.push(pair(spanText(row.years), `${num(row.vol5, 0)} %`));
+    return `<span class="eq-mini">${line("Prob.", probs)}${line("Vol.", vols)}</span>`;
+  };
   const stakes = (row) =>
     `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usdDec(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
   const kpiTone = (row) => (row.retExp == null ? "" : row.retExp > 0 ? " plus" : " minus");
@@ -1449,7 +1467,7 @@ function viewIgual() {
             <span class="deal-kpi num${kpiTone(row)}">${expText(row)}<small>${row.retExp == null ? "Rentab. neta" : "Rentab. esperada"}</small></span></span>
           ${stakes(row)}
           ${pills(row)}
-          ${state.equal.compact ? "" : grid(row) + volGrid(row)}
+          ${state.equal.compact ? mini(row) : grid(row) + volGrid(row)}
           ${payBar(row)}
         </button>
       </li>`;
