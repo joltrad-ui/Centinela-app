@@ -87,6 +87,7 @@ const state = {
   dealsShown: 60,
   dealFilter: { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 },
   hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
+  eqOpen: new Set(), // filas de Igual riesgo con los tres cálculos desplegados (solo en memoria)
   equal: loadEqual(), // pestaña de prueba "Igual riesgo": solo en el dispositivo
 };
 
@@ -1410,10 +1411,19 @@ function viewIgual() {
     if (row.expected != null) {
       const left = (value) => pair("", signedUsd(value), value < 0 ? " eq-minus" : " eq-plus");
       const mean = Math.round((row.net - row.expected) * 100) / 100;
-      pay =
-        line("Pagas", [pair("reciente", dollars(row.recentLoss)), pair("se espera", dollars(row.expected)), pair("historia", dollars(row.histLoss))], " gap") +
-        line("Queda", [left(row.marginRecent), left(mean), left(row.marginHist)]) +
-        line("Equil.", [pair("", balText(row))]);
+      const open = state.eqOpen.has(row.sym.s);
+      // Plegado: lo que interesa de un vistazo (lo que se espera pagar, lo que queda y el equilibrio). Desplegado: los tres cálculos.
+      const head = `<span class="eq-more" role="button" tabindex="0" data-act="eq-more" data-sym="${esc(row.sym.s)}" aria-expanded="${open}">
+          <span class="eq-lab">Se espera pagar</span> <b class="num">${dollars(row.expected)}</b>
+          <span class="eq-lab">· queda</span> <b class="num ${mean < 0 ? "eq-minus" : "eq-plus"}">${signedUsd(mean)}</b>
+          <span class="eq-lab">· equil.</span> <b class="num">${balText(row)}</b>
+          <span class="eq-chev" aria-hidden="true">${open ? "▴" : "▾"}</span></span>`;
+      pay = `<span class="eq-pay-box">${head}${
+        open
+          ? line("Pagas", [pair("reciente", dollars(row.recentLoss)), pair("se espera", dollars(row.expected)), pair("historia", dollars(row.histLoss))], " first") +
+            line("Queda", [left(row.marginRecent), left(mean), left(row.marginHist)])
+          : ""
+      }</span>`;
     }
     return `<span class="eq-mini">${line("Prob.", probs)}${line("Vol.", vols)}${pay}</span>`;
   };
@@ -1617,6 +1627,11 @@ root.addEventListener("click", (event) => {
     const list = state.dealFilter.expiries;
     state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
     state.dealsShown = 60;
+    render();
+  } else if (el.dataset.act === "eq-more") {
+    const name = el.dataset.sym;
+    if (state.eqOpen.has(name)) state.eqOpen.delete(name);
+    else state.eqOpen.add(name);
     render();
   } else if (el.dataset.act === "eq-help") {
     state.eqHelp = !state.eqHelp;

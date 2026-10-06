@@ -297,3 +297,10 @@ nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; 
   .eq-pair .eq-lab { display: block; font-size: 0.6875rem; }
   .eq-pair .eq-lab:empty { display: none; }
 }
+.eq-pay-box { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.eq-more { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; cursor: pointer; font-size: 0.8125rem; }
+.eq-more b { font-weight: 500; color: var(--fg); }
+.eq-more b.eq-plus { color: var(--up); }
+.eq-more b.eq-minus { color: var(--down); }
+.eq-chev { margin-left: auto; color: var(--muted); padding: 2px 4px; }
+.eq-line.first { margin-top: 5px; }
