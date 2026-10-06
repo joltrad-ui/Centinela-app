@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { alertText, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
+import { keepPrevious } from "../scanner/scan.mjs";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -244,10 +245,10 @@ test("igual riesgo: orden por rentabilidad neta sin cierres, sin precio al final
   const opts = tightOpts();
   const rich = tight("RICH", null, 1.3);
   const none = { ...tight("NONE"), x: [["2026-11-27", 0.4, tight().x[0][2]]] };
-  const { rows, out, gated, earn } = equalRiskList([tight(), none, rich], opts, today);
+  const { rows, out, gated } = equalRiskList([tight(), none, rich], opts, today);
   assert.deepEqual(rows.map((row) => row.sym.s), ["RICH", "TGT"]);
   assert.deepEqual(out.map((row) => row.sym.s), ["NONE"]);
-  assert.equal(gated.length + earn.length, 0);
+  assert.equal(gated.length, 0);
   const list = commonExpiries([sym, rich, none], normalizeRules({ minDte: 10, maxDte: 60 }), today);
   assert.equal(defaultExpiry(list), "2026-10-30");
   assert.equal(list.length, 2);
@@ -304,18 +305,18 @@ test("igual riesgo: las puertas apartan lo que no se puede comparar, en su orden
   assert.equal(costly.gated[0].gate, "no cubre el coste de salir");
 });
 
-test("igual riesgo: con resultados en el plazo van a su propio grupo", () => {
-  const withEarn = tight("ERN", { d: "2026-10-28", x: "fecha estimada" });
-  const { rows, earn, gated } = equalRiskList([tight(), withEarn], tightOpts(1.4), today);
-  assert.deepEqual(rows.map((row) => row.sym.s), ["TGT"]);
-  assert.deepEqual(earn.map((row) => row.sym.s), ["ERN"]);
-  assert.equal(earn[0].earnInside, true);
-  assert.equal(earn[0].net, rows[0].net); // con sus números, igual que el resto
+test("igual riesgo: los resultados en el plazo marcan la fila, no la apartan", () => {
+  const withEarn = tight("ERN", { d: "2026-10-28", x: "fecha estimada" }, 1.3);
+  const { rows, gated } = equalRiskList([tight(), withEarn], tightOpts(1.4), today);
+  assert.deepEqual(rows.map((row) => row.sym.s), ["ERN", "TGT"]); // en la misma lista y en el mismo orden (cobra más)
+  assert.equal(rows[0].earnInside, true);
+  assert.equal(rows[1].earnInside, false);
   assert.equal(gated.length, 0);
-  // una puerta fallida manda sobre los resultados: el precio no es fiable
+  // con una puerta fallida, la fila va a las apartadas y conserva la marca de resultados
   const both = equalRiskList([{ ...sym }], tightOpts(1.4), today);
-  assert.equal(both.earn.length, 0);
+  assert.equal(both.rows.length, 0);
   assert.equal(both.gated.length, 1);
+  assert.equal(both.gated[0].earnInside, true);
 });
 
 test("precios del barrido de fuera del horario de mercado, con 15 minutos de retraso", () => {
@@ -486,4 +487,17 @@ test("números a la española en los textos", () => {
   assert.equal(spreadLine(sp), "90/85 · 30 oct · 10,0 % abajo · 12 % del ancho");
   assert.match(alertText(sp), / · rentab\. 14 %$/);
   assert.equal(rulesLine(normalizeRules({ v: 2, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20, minBalance: 0.5 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · equilibrio ≥0,50");
+});
+
+test("barrido: con el mercado cerrado se conserva el último barrido de mercado abierto", () => {
+  const open = Date.parse("2026-10-05T18:00:00Z"); // 14:00 en Nueva York
+  const closed = Date.parse("2026-10-05T21:40:00Z"); // 17:40
+  const morning = Date.parse("2026-10-06T13:07:00Z"); // 9:07, antes de abrir
+  assert.equal(keepPrevious(open, closed), true);
+  assert.equal(keepPrevious(open, morning), true); // al día siguiente, antes de abrir, también
+  assert.equal(keepPrevious(open, Date.parse("2026-10-06T15:00:00Z")), false); // abierto: se barre
+  assert.equal(keepPrevious(closed, morning), false); // el guardado ya es de mercado cerrado: no es mejor
+  assert.equal(keepPrevious(undefined, closed), false); // sin barrido anterior se barre
+  assert.equal(keepPrevious(open, closed, { replace: true }), false); // a mano, con "reemplazar"
+  assert.equal(keepPrevious(open, Date.parse("2026-10-03T16:00:00Z")), true); // fin de semana
 });

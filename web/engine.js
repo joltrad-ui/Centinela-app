@@ -649,10 +649,11 @@ export function gateReason(row) {
 /** Orden de "Igual riesgo": rentab. esperada (de mayor a menor); detrás, las filas sin cierres, por rentab. neta. */
 const byExpected = (a, b) => (b.retExp != null) - (a.retExp != null) || (a.retExp != null ? b.retExp - a.retExp : 0) || b.ret - a.ret;
 
-/** La lista de "Igual riesgo", en cuatro partes:
- *  - rows: filas comparables, ordenadas (por rentab. esperada si se pasan cierres en `opts.hist`)
- *  - earn: comparables pero con resultados dentro del plazo (la historia casi no tiene saltos de resultados)
- *  - gated: con precio pero apartadas por una puerta (`gate` lleva el motivo); mandan antes que los resultados
+/** La lista de "Igual riesgo", en tres partes:
+ *  - rows: filas comparables, ordenadas (por rentab. esperada si se pasan cierres en `opts.hist`).
+ *    Las que tienen resultados dentro del plazo van aquí, con `earnInside` para que la vista las marque:
+ *    los resultados avisan, no apartan.
+ *  - gated: con precio pero apartadas por una puerta (`gate` lleva el motivo)
  *  - out: sin fila (sin vencimiento, strike, ancho o precio) */
 export function equalRiskList(symbols, opts, today = nyToday()) {
   const hist = opts.hist ?? null;
@@ -661,11 +662,10 @@ export function equalRiskList(symbols, opts, today = nyToday()) {
     return hist ? withHistory(row, hist[sym.s], today) : row;
   });
   const priced = all.filter((row) => row.status === "ok").map((row) => ({ ...row, gate: gateReason(row) }));
-  const rows = priced.filter((row) => !row.gate && !row.earnInside).sort(byExpected);
-  const earn = priced.filter((row) => !row.gate && row.earnInside).sort(byExpected);
+  const rows = priced.filter((row) => !row.gate).sort(byExpected);
   const gated = priced.filter((row) => row.gate).sort(byExpected);
   const out = all.filter((row) => row.status !== "ok");
-  return { rows, earn, gated, out };
+  return { rows, gated, out };
 }
 
 /** ¿Los precios de un barrido son de fuera del horario de mercado? Cuenta el retraso de 15 minutos de

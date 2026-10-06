@@ -10,6 +10,11 @@ on:
     # Horas en UTC, de lunes a viernes.
     - cron: "7,37 13-21 * * 1-5"
   workflow_dispatch:
+    inputs:
+      reemplazar:
+        description: "Barrer aunque el mercado esté cerrado y sustituir el último barrido de mercado abierto"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -38,13 +43,16 @@ jobs:
           fi
 
       - name: Barrer
+        id: barrer
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           CENTINELA_CONFIG: ${{ secrets.CENTINELA_CONFIG }}
           APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
-        run: node scanner/scan.mjs --public --out out
+        run: node scanner/scan.mjs --public --out out ${{ inputs.reemplazar && '--reemplazar' || '' }}
 
+      # Con el mercado cerrado no se barre y no hay nada nuevo que guardar.
       - name: Guardar el barrido
+        if: steps.barrer.outputs.saltado != '1'
         env:
           REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
         run: bash scripts/rama.sh datos out/data

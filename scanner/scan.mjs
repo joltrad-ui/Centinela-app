@@ -13,7 +13,7 @@
 // se publica es genérico: los mismos nombres y datos para cualquiera.
 
 import { readFile, writeFile, mkdir, rename, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
 import http from "node:http";
 import os from "node:os";
@@ -25,6 +25,7 @@ import {
   daysBetween,
   normalizeConfig,
   nyToday,
+  pricesOutsideMarket,
   rankUniverse,
   readCboeChain,
   cboeUrl,
@@ -405,11 +406,28 @@ async function pushAlerts(alerts) {
 
 let scanning = null;
 
-export async function scanOnce({ force = false } = {}) {
+/** ¿Se deja el barrido que hay? Sí si este saldría con el mercado cerrado (los precios de fuera de horario
+ *  son peores: horquillas más anchas) y el guardado es de mercado abierto. Sin barrido anterior, o a mano
+ *  con `replace`, siempre se barre. */
+export function keepPrevious(prevAt, now = Date.now(), { replace = false } = {}) {
+  if (replace || !(prevAt > 0)) return false;
+  return pricesOutsideMarket(now) && !pricesOutsideMarket(prevAt);
+}
+
+export async function scanOnce({ force = false, replace = false } = {}) {
   if (scanning) return scanning;
   scanning = (async () => {
     const started = Date.now();
     await mkdir(DATA, { recursive: true });
+    if (!FIXTURES) {
+      const saved = await loadPrev("scan.json", null).catch(() => null);
+      if (keepPrevious(saved?.at, started, { replace })) {
+        log("Mercado cerrado: se conserva el último barrido de mercado abierto");
+        if (process.env.GITHUB_ACTIONS) console.log("::notice title=Barrido::Mercado cerrado: se conserva el último barrido de mercado abierto");
+        if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "saltado=1\n");
+        return { skipped: true, symbols: 0, failures: 0, passing: 0, alerts: 0 };
+      }
+    }
     const today = nyToday();
     const { config, personal } = await loadConfig();
     const state = { ...emptyState(), ...(await loadPrev("state.json", emptyState())) };
@@ -616,7 +634,7 @@ function serve(port) {
         return send(200, JSON.stringify({ ok: true, savedAt: config.savedAt }));
       }
       if (url.pathname === "/api/scan" && req.method === "POST") {
-        scanOnce({ force: true }).catch((error) => log("Barrido fallido:", error.message));
+        scanOnce({ force: true, replace: true }).catch((error) => log("Barrido fallido:", error.message));
         return send(202, JSON.stringify({ ok: true }));
       }
       const rel = decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname);
@@ -658,7 +676,7 @@ async function main() {
     return;
   }
   try {
-    await scanOnce();
+    await scanOnce({ replace: Boolean(args.reemplazar) });
   } catch (error) {
     console.error(error.message);
     process.exit(1);

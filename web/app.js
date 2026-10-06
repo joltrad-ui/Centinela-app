@@ -1291,8 +1291,8 @@ function viewIgual() {
   const symbols = listSymbols();
   const { expiries, opts } = equalOpts(symbols);
   const hist = state.hist?.symbols ?? null;
-  const { rows, earn, gated, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], earn: [], gated: [], out: [] };
-  const withHist = [...rows, ...earn].some((row) => row.retExp != null);
+  const { rows, gated, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], gated: [], out: [] };
+  const withHist = rows.some((row) => row.retExp != null);
   const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1));
   const expText = (row) => (row.retExp == null ? `${dec(row.ret)} %` : `${row.retExp > 0 ? "+" : ""}${dec(row.retExp)} %`);
   const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
@@ -1308,28 +1308,28 @@ function viewIgual() {
     const notes = [];
     if (row.shortHistory && row.histProb != null) notes.push("poca historia");
     if (row.distinct) notes.push("estimaciones muy distintas");
-    if (row.earnInside && row.sym.er) notes.push(`resultados ${esc(labelOf(row.sym.er.d))}`);
     const paid =
       row.expected == null
         ? `rentab. neta ${dec(row.ret)} %`
         : `se espera pagar ${dollars(row.expected)} (historia ${dollars(row.histLoss)} · reciente ${dollars(row.recentLoss)}) · equilibrio ${balText(row)}`;
     return `${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · ${costText(row)} · pierdes máx. ${usdDec(row.loss)} · ${paid}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
   };
+  // Resultados dentro del plazo: no aparta la fila, la marca en rojo (la historia casi no contiene saltos de resultados).
+  const earnTag = (row) => (row.earnInside && row.sym.er ? `<span class="tag-earn">Resultados ${esc(labelOf(row.sym.er.d))}</span> ` : "");
   const item = (row) => `<li>
         <button class="deal ok" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span>
             <span class="deal-kpi num">${expText(row)}</span></span>
-          <span class="deal-sub small muted">${subLine(row)}</span>
+          <span class="deal-sub small muted">${earnTag(row)}${subLine(row)}</span>
         </button>
       </li>`;
   const list = rows.map(item).join("");
-  const earnList = earn.map(item).join("");
   const gatedList = gated
     .map(
       (row) => `<li style="opacity:.7">
         <button class="deal" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)}</span>
-          <span class="deal-sub small muted">${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
+          <span class="deal-sub small muted">${earnTag(row)}${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
         </button>
       </li>`,
     )
@@ -1360,7 +1360,7 @@ function viewIgual() {
       <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
         <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
     </div>
-    <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha, cobro que no cubre el coste de salir y resultados en el plazo.</p>
+    <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha y cobro que no cubre el coste de salir. Las que tienen resultados dentro del plazo se quedan en la lista, marcadas en rojo: la historia casi no contiene saltos de resultados, así que su número es menos fiable.</p>
     <p class="small muted" style="margin:0 0 8px">${
       withHist
         ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
@@ -1371,7 +1371,6 @@ function viewIgual() {
       empty
         ? `<div class="empty"><h2>${empty}</h2></div>`
         : `<div class="deal-head small muted"><span>${rows.length} ${rows.length === 1 ? "fila" : "filas"}</span><span>${withHist ? "Rentab. esperada" : "Rentab. neta"}</span></div><ul class="rows">${list}</ul>
-    ${earnList ? `<p class="small" style="margin:16px 0 2px">Con resultados en el plazo</p><p class="small muted" style="margin:0 0 4px">La historia casi no contiene saltos de resultados; no se comparan con el resto.</p><ul class="rows">${earnList}</ul>` : ""}
     ${gatedList ? `<p class="small muted" style="margin:16px 0 2px">Apartadas: no se pueden comparar</p><ul class="rows">${gatedList}</ul>` : ""}
     ${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`
     }
