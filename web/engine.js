@@ -22,6 +22,7 @@ export const DEFAULT_RULES = {
   width: 5, // ancho máximo: vale ese y cualquiera menor
   minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
   minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
+  equalFee: 1.4, // pestaña "Igual riesgo": comisión por spread al abrir, en dólares; la de salir cuenta otra vez en el coste de ida y vuelta
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
   gates: {
     event: false,
@@ -116,6 +117,7 @@ export function normalizeRules(input) {
     width: clamp(row.width, 1, 50, base.width),
     minCredit: Math.round(clamp(row.minCredit, 0, 500, base.minCredit)),
     minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
+    equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
     gates: {
       event: g.event === true,

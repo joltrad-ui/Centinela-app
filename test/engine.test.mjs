@@ -587,6 +587,14 @@ test("reglas: la horquilla máxima de Igual riesgo, 35 % de fábrica y entre 10 
   assert.equal(normalizeRules({ equalGapPct: 3 }).equalGapPct, 10);
   assert.equal(normalizeRules({ equalGapPct: 500 }).equalGapPct, 100);
   assert.equal(normalizeRules({ equalGapPct: "x" }).equalGapPct, 35);
+  // comisión por spread (pestaña Igual riesgo)
+  assert.equal(normalizeRules({}).equalFee, 1.4);
+  assert.equal(normalizeRules({ equalFee: 0.65 }).equalFee, 0.65);
+  assert.equal(normalizeRules({ equalFee: 1.234 }).equalFee, 1.23);
+  assert.equal(normalizeRules({ equalFee: -3 }).equalFee, 0);
+  assert.equal(normalizeRules({ equalFee: 99 }).equalFee, 20);
+  assert.equal(normalizeRules({ equalFee: "x" }).equalFee, 1.4);
+  assert.equal(normalizeConfig({ rules: { v: 2, equalFee: 2 } }).rules.equalFee, 2);
   assert.equal(normalizeConfig({ rules: { equalGapPct: 40 } }).rules.equalGapPct, 40);
   // en la lista, el límite de las reglas decide quién se aparta
   const strict = equalRiskList([sym], { ...tightOpts(1.4), gapPct: 25 }, today);

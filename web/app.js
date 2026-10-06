@@ -1,5 +1,7 @@
 import {
   DEFAULT_CONFIG,
+  DEFAULT_RULES,
+  RULES_V,
   ORDERS,
   PROB_OFF,
   assessSymbol,
@@ -90,14 +92,32 @@ const state = {
 
 
 
+/** La comisión de "Igual riesgo" vivía en esta pestaña (`centinela.igual.v1`); ahora es una regla (`equalFee`).
+ *  Si había una guardada, pasa a las reglas del dispositivo una sola vez. */
+function migrateEqualFee() {
+  const saved = readLocal(LS_EQUAL);
+  if (!saved || typeof saved.fee !== "number") return;
+  const config = readLocal(LS_CONFIG);
+  if (saved.fee >= 0 && saved.fee <= 20) {
+    if (config && typeof config === "object") {
+      if (config.rules && typeof config.rules === "object" && config.rules.equalFee === undefined) writeLocal(LS_CONFIG, { ...config, rules: { ...config.rules, equalFee: saved.fee } });
+      else if (!config.rules) writeLocal(LS_CONFIG, { ...config, rules: { v: RULES_V, equalFee: saved.fee } });
+    } else if (saved.fee !== DEFAULT_RULES.equalFee) {
+      writeLocal(LS_CONFIG, { rules: { v: RULES_V, equalFee: saved.fee }, savedAt: 0 });
+    }
+  }
+  const { fee, ...rest } = saved;
+  writeLocal(LS_EQUAL, rest);
+}
+
 function loadEqual() {
+  migrateEqualFee();
   const saved = readLocal(LS_EQUAL) ?? {};
   const num = (value, ok) => (EQ_OK[ok](value) ? value : null);
   return {
     prob: num(saved.prob, "prob"),
     width: num(saved.width, "width"),
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
-    fee: typeof saved.fee === "number" && saved.fee >= 0 && saved.fee <= 20 ? saved.fee : 1.4,
   };
 }
 
@@ -893,6 +913,7 @@ function viewReglas() {
       <h2>Pestaña Igual riesgo (prueba)</h2>
       <p class="small muted">Solo cuenta ahí; Lista y Deals no cambian.</p>
       <div class="panel">
+        ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste de ida y vuelta.", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
         ${stepper("rules.equalGapPct", "Horquilla máxima", "Las dos horquillas, sobre el crédito a precio medio. Por encima, la fila se aparta.", 10, 100, 5, p0)}
       </div>
     </section>
@@ -1194,7 +1215,7 @@ function sheet() {
   const wanted = state.detailDeal ?? (res.best ? dealKey(res.best) : null);
   if (igual && wanted) {
     const [expiry, short, long] = wanted.split("|");
-    const made = withHistory(spreadRow(sym, expiry, Number(short), Number(long), state.equal.fee, today), state.hist?.symbols?.[sym.s], today);
+    const made = withHistory(spreadRow(sym, expiry, Number(short), Number(long), state.config.rules.equalFee, today), state.hist?.symbols?.[sym.s], today);
     row = made.status === "ok" ? made : null;
   } else if (wanted) {
     sp = res.all.find((idea) => dealKey(idea) === wanted) ?? res.best;
@@ -1234,7 +1255,7 @@ function sheet() {
        ${stat("Equilibrio", kpiText(sp), true)}`
       : "";
   const lose = row
-    ? `Pierdes por debajo de ${usdDec(row.breakeven)}. Cobras ya con la comisión de ${usdDec(state.equal.fee)}.`
+    ? `Pierdes por debajo de ${usdDec(row.breakeven)}. Cobras ya con la comisión de ${usdDec(state.config.rules.equalFee)}.`
     : sp
       ? `Pierdes por debajo de ${money(sp.breakeven)}.`
       : "";
@@ -1339,7 +1360,7 @@ function equalOpts(symbols) {
       prob: eq.prob ?? (rules.maxProb >= PROB_OFF ? 10 : Math.min(EQ_PROB_MAX, Math.max(EQ_PROB_MIN, Math.round(rules.maxProb)))),
       width: eq.width ?? nearest(EQ_WIDTHS, rules.width),
       expiry,
-      fee: eq.fee,
+      fee: rules.equalFee,
       gapPct: rules.equalGapPct,
     },
   };
@@ -1425,8 +1446,7 @@ function viewIgual() {
       ${opts.prob < 5 ? '<p class="small muted" style="margin:0 0 6px">Por debajo del 5 % hay muy pocos casos en la historia y los precios son de céntimos: la comparación es poco fiable.</p>' : ""}
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
-      <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
-        <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
+      <button class="rules-line small" data-tab="reglas">Comisión por spread al abrir ${usdDec(opts.fee)} · horquilla máxima ${opts.gapPct} % · se cambian en Reglas</button>
     </div>
     <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha (más del ${opts.gapPct} % del crédito; se cambia en Reglas) y cobro que no cubre el coste de salir. Las que tienen resultados dentro del plazo se quedan en la lista, marcadas en rojo: la historia casi no contiene saltos de resultados, así que su número es menos fiable.</p>
     <p class="small muted" style="margin:0 0 8px">${
@@ -1508,15 +1528,14 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-eq-fee],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
-  if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp || el.dataset.eqFee) {
+  if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp) {
     const eq = state.equal;
     if (el.dataset.eqProb) eq.prob = Number(el.dataset.eqProb);
     if (el.dataset.eqWidth) eq.width = Number(el.dataset.eqWidth);
     if (el.dataset.eqExp) eq.expiry = el.dataset.eqExp;
-    if (el.dataset.eqFee) eq.fee = Math.min(20, Math.max(0, Math.round((eq.fee + Number(el.dataset.eqFee) * 0.1) * 100) / 100));
     writeLocal(LS_EQUAL, eq);
     render();
   } else if (el.dataset.off) {
