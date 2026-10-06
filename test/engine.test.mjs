@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertText, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { alertText, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 
@@ -228,17 +228,106 @@ test("igual riesgo: sin ancho, sin vencimiento, sin strike cerca y sin precio", 
   assert.equal(equalRisk(noBid, ok, today).status, "sin-precio");
 });
 
-test("igual riesgo: orden por rentabilidad neta, sin precio al final; fecha común", () => {
-  const probs = marketProbs(sym.x[0][2]);
-  const opts = { prob: Math.ceil(probs[2] * 10) / 10, width: 5, expiry: "2026-10-30", fee: 1.4 };
-  const rich = { ...sym, s: "RICH", x: [["2026-10-30", 0.4, sym.x[0][2].map((r) => (r[0] === 90 ? [90, 1.3, 1.4, 1200, 0.42, -0.17] : r))]] };
-  const none = { ...sym, s: "NONE", x: [["2026-11-27", 0.4, sym.x[0][2]]] };
-  const { rows, out } = equalRiskList([sym, none, rich], opts, today);
-  assert.deepEqual(rows.map((row) => row.sym.s), ["RICH", "XYZ"]);
+// Un nombre con horquilla estrecha (2 céntimos por pata), sin resultados: pasa las puertas de "Igual riesgo".
+const tight = (s = "TGT", er = null, bid90 = 1.0) => ({
+  ...sym,
+  s,
+  er,
+  x: [["2026-10-30", 0.4, [[80, 0.1, 0.12, 500, 0.5, -0.03], [85, 0.3, 0.32, 800, 0.46, -0.08], [90, bid90, bid90 + 0.02, 1200, 0.42, -0.17], [95, 2.4, 2.42, 900, 0.4, -0.33]]]],
+});
+const tightOpts = (fee = 1.4, width = 5) => {
+  const probs = marketProbs(tight().x[0][2]);
+  return { prob: Math.ceil(probs[2] * 10) / 10, width, expiry: "2026-10-30", fee };
+};
+
+test("igual riesgo: orden por rentabilidad neta sin cierres, sin precio al final; fecha común", () => {
+  const opts = tightOpts();
+  const rich = tight("RICH", null, 1.3);
+  const none = { ...tight("NONE"), x: [["2026-11-27", 0.4, tight().x[0][2]]] };
+  const { rows, out, gated, earn } = equalRiskList([tight(), none, rich], opts, today);
+  assert.deepEqual(rows.map((row) => row.sym.s), ["RICH", "TGT"]);
   assert.deepEqual(out.map((row) => row.sym.s), ["NONE"]);
+  assert.equal(gated.length + earn.length, 0);
   const list = commonExpiries([sym, rich, none], normalizeRules({ minDte: 10, maxDte: 60 }), today);
   assert.equal(defaultExpiry(list), "2026-10-30");
   assert.equal(list.length, 2);
+});
+
+test("igual riesgo: el largo no tiene que dar el ancho exacto, pero nunca pasa de él", () => {
+  const opts = tightOpts(1.4, 7); // corto 90: entre 83 y 90 solo está el 85
+  const row = equalRisk(tight(), opts, today);
+  assert.equal(row.status, "ok");
+  assert.equal(`${row.shortStrike}/${row.longStrike}`, "90/85");
+  assert.equal(row.width, 5);
+  // el ancho elegido de 5 deja el 85; con 4 no hay strike entre 86 y 90
+  assert.equal(equalRisk(tight(), tightOpts(1.4, 4), today).status, "sin-ancho");
+  // con varios strikes dentro del ancho, el más bajo (el ancho más grande que cabe)
+  const dense = { ...tight(), x: [["2026-10-30", 0.4, [[84, 0.2, 0.22, 9, 0.47, -0.07], [85, 0.3, 0.32, 9, 0.46, -0.08], [87.5, 0.6, 0.62, 9, 0.44, -0.12], [89, 0.8, 0.82, 9, 0.43, -0.15], [90, 1.0, 1.02, 9, 0.42, -0.17]]]] };
+  const densePick = { ...tightOpts(1.4, 5.5), prob: Math.ceil(marketProbs(dense.x[0][2])[4] * 10) / 10 };
+  const wide = equalRisk(dense, densePick, today);
+  assert.equal(wide.status, "ok");
+  assert.equal(wide.longStrike, 85); // 84 queda a 6 del corto: se pasa
+  assert.equal(wide.width, 5);
+  // si el más bajo no tiene precio, se usa el siguiente
+  const noAsk = { ...dense, x: [["2026-10-30", 0.4, dense.x[0][2].map((r) => (r[0] === 85 ? [85, 0.3, 0, 9, 0.46, -0.08] : r))]] };
+  assert.equal(equalRisk(noAsk, densePick, today).longStrike, 87.5);
+});
+
+test("igual riesgo: horquilla y coste de ida y vuelta del spread", () => {
+  const row = equalRisk(tight(), tightOpts(1.4), today);
+  assert.equal(row.gap, 0.04); // 0,02 del corto + 0,02 del largo
+  assert.equal(row.midCredit, 0.7); // 1,01 − 0,31
+  assert.equal(row.roundTrip, 6.8); // 0,04 × 100 + 2 × 1,40
+  assert.equal(row.net, 66.6); // 68 − 1,40
+  assert.equal(gateReason(row), "");
+});
+
+test("igual riesgo: las puertas apartan lo que no se puede comparar, en su orden", () => {
+  // horquilla ancha: 0,20 de horquilla frente a un crédito medio de 0,70 (más del 25 %)
+  const wide = equalRisk(sym, tightOpts(1.4), today);
+  assert.equal(wide.status, "ok");
+  assert.equal(gateReason(wide), "horquilla ancha: precio poco fiable");
+  // el cobro no cubre salir: 68 − 40 de comisión = 28, frente a 4 + 80 de ida y vuelta
+  const dear = equalRisk(tight(), tightOpts(40), today);
+  assert.equal(gateReason(dear), "no cubre el coste de salir");
+  // sin precio medio (sin ask del corto o sin bid del largo) la horquilla no es fiable
+  assert.equal(gateReason({ status: "ok", probSrc: "mercado", gap: null, midCredit: null, net: 50, roundTrip: null }), "horquilla ancha: precio poco fiable");
+  assert.equal(gateReason({ status: "ok", probSrc: "mercado", gap: 0.01, midCredit: 0, net: 50, roundTrip: 3 }), "horquilla ancha: precio poco fiable"); // crédito medio ≤ 0
+  // el orden de las puertas: la fórmula de reserva manda sobre la horquilla
+  assert.equal(gateReason({ ...wide, probSrc: "formula" }), "prob. sin medir en el mercado");
+  // en la lista, las apartadas salen en `gated` con su motivo y no entran en `rows`
+  const { rows, gated } = equalRiskList([tight(), sym, { ...tight("DEAR") }], tightOpts(1.4), today);
+  assert.deepEqual(rows.map((row) => row.sym.s).sort(), ["DEAR", "TGT"]);
+  assert.deepEqual(gated.map((row) => [row.sym.s, row.gate]), [["XYZ", "horquilla ancha: precio poco fiable"]]);
+  const costly = equalRiskList([tight()], tightOpts(40), today);
+  assert.equal(costly.rows.length, 0);
+  assert.equal(costly.gated[0].gate, "no cubre el coste de salir");
+});
+
+test("igual riesgo: con resultados en el plazo van a su propio grupo", () => {
+  const withEarn = tight("ERN", { d: "2026-10-28", x: "fecha estimada" });
+  const { rows, earn, gated } = equalRiskList([tight(), withEarn], tightOpts(1.4), today);
+  assert.deepEqual(rows.map((row) => row.sym.s), ["TGT"]);
+  assert.deepEqual(earn.map((row) => row.sym.s), ["ERN"]);
+  assert.equal(earn[0].earnInside, true);
+  assert.equal(earn[0].net, rows[0].net); // con sus números, igual que el resto
+  assert.equal(gated.length, 0);
+  // una puerta fallida manda sobre los resultados: el precio no es fiable
+  const both = equalRiskList([{ ...sym }], tightOpts(1.4), today);
+  assert.equal(both.earn.length, 0);
+  assert.equal(both.gated.length, 1);
+});
+
+test("precios del barrido de fuera del horario de mercado, con 15 minutos de retraso", () => {
+  const ny = (iso) => Date.parse(iso); // las horas van en UTC: en octubre Nueva York va 4 horas por detrás
+  assert.equal(pricesOutsideMarket(ny("2026-10-05T19:00:00Z")), false); // 15:00
+  assert.equal(pricesOutsideMarket(ny("2026-10-05T20:10:00Z")), false); // 16:10: los precios son de las 15:55
+  assert.equal(pricesOutsideMarket(ny("2026-10-05T20:20:00Z")), true); // 16:20: de las 16:05
+  assert.equal(pricesOutsideMarket(ny("2026-10-05T13:40:00Z")), true); // 9:40: de las 9:25
+  assert.equal(pricesOutsideMarket(ny("2026-10-05T13:50:00Z")), false); // 9:50: de las 9:35
+  assert.equal(pricesOutsideMarket(ny("2026-10-03T16:00:00Z")), true); // sábado
+  assert.equal(pricesOutsideMarket(ny("2026-11-26T17:00:00Z")), true); // Acción de Gracias
+  assert.equal(pricesOutsideMarket(0), false);
 });
 
 test("sesiones: lunes a viernes menos festivos de la bolsa", () => {
@@ -280,26 +369,39 @@ test("pérdida esperada reciente: coincide con sumar todos los finales posibles"
   assert.equal(expectedLoss(S, Ks, Kl, 0, T), null);
 });
 
-test("igual riesgo con historia: equilibrio, orden y poca historia", () => {
-  const probs = marketProbs(sym.x[0][2]);
-  const opts = { prob: Math.ceil(probs[2] * 10) / 10, width: 5, expiry: "2026-10-30", fee: 1.4 };
+test("igual riesgo con historia: se espera pagar la media, rentab. esperada y orden", () => {
+  const opts = tightOpts();
   const walk = (n, step) => Array.from({ length: n }, (_, i) => 100 * (1 + step * (i % 2)));
   const calm = { d: "2021-10-05", c: walk(1300, 0.02) };
   const wild = { d: "2025-06-02", c: walk(300, 0.2) };
-  const row = withHistory(equalRisk(sym, opts, today), calm, today);
+  const row = withHistory(equalRisk(tight(), opts, today), calm, today);
   assert.equal(row.sessions, 19);
   assert.equal(row.histProb, 0); // con ±2 % nunca acaba por debajo de 90
   assert.equal(row.histLoss, 0);
   assert.equal(row.shortHistory, false);
   assert.ok(row.recentLoss > 1 && row.recentLoss < 500);
-  assert.ok(Math.abs(row.balanceHist / (row.net / row.recentLoss) - 1) < 0.01); // manda la mayor de las dos pérdidas
-  const other = { ...sym, s: "WILD" };
-  const { rows } = equalRiskList([other, sym], { ...opts, hist: { XYZ: calm, WILD: wild } }, today);
-  assert.deepEqual(rows.map((r) => r.sym.s), ["XYZ", "WILD"]); // mismo cobro; la historia movida queda detrás
-  assert.equal(rows[1].shortHistory, true);
-  assert.ok(rows[1].histProb > 0 && rows[1].balanceHist < rows[0].balanceHist);
-  const none = equalRiskList([sym], { ...opts, hist: {} }, today).rows[0];
-  assert.equal(none.balanceHist, undefined); // sin cierres de ese nombre, la fila sale igual que en el paso 1
+  // la media de los dos cálculos, no la mayor
+  assert.equal(row.expected, Math.round(((row.histLoss + row.recentLoss) / 2) * 100) / 100);
+  assert.ok(row.expected < row.recentLoss && row.expected > row.histLoss);
+  assert.equal(row.retExp, Math.round(((row.net - row.expected) / row.loss) * 1000) / 10);
+  assert.equal(row.balanceHist, Math.round((row.net / row.expected) * 10) / 10); // un decimal
+  assert.equal(row.distinct, true); // 0 frente a algo: más de 3 veces
+  // con otra historia, la nota sale según la regla: el mayor, más de 3 veces el menor
+  const moved = withHistory(equalRisk(tight(), opts, today), wild, today);
+  assert.equal(moved.distinct, Math.max(moved.histLoss, moved.recentLoss) > 3 * Math.min(moved.histLoss, moved.recentLoss));
+  assert.equal(moved.shortHistory, true);
+  assert.ok(moved.histProb > 0);
+  // el orden: rentab. esperada de mayor a menor; sin cierres, detrás y por rentab. neta
+  const other = { ...tight("WILD"), x: tight().x };
+  const rich = tight("RICH", null, 1.3);
+  const { rows } = equalRiskList([other, tight(), rich], { ...opts, hist: { TGT: calm, WILD: wild } }, today);
+  assert.deepEqual(rows.map((r) => r.sym.s), ["TGT", "WILD", "RICH"]); // RICH no tiene cierres: va detrás aunque cobre más
+  assert.ok(rows[0].retExp > rows[1].retExp);
+  assert.equal(rows[2].retExp, undefined);
+  assert.ok(rows[2].ret > rows[0].ret);
+  // el equilibrio ya no ordena: un nombre con más equilibrio puede ir detrás si su rentab. esperada es menor
+  const none = equalRiskList([tight()], { ...opts, hist: {} }, today).rows[0];
+  assert.equal(none.balanceHist, undefined); // sin cierres de ese nombre, la fila sale igual que sin historia
 });
 
 test("cierres: últimos 5 años, corte en el hueco y en el inicio real del nombre", () => {

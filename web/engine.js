@@ -507,9 +507,11 @@ export function defaultExpiry(list) {
   return list.reduce((best, item) => (!best || item.names > best.names ? item : best), null)?.expiry ?? null;
 }
 
-/** "Igual riesgo": una fila por nombre con la misma prob. de asignación, ancho y vencimiento.
+/** "Igual riesgo": una fila por nombre con la misma prob. de asignación y vencimiento, y el ancho más
+ *  cercano al elegido sin pasarse.
  *  Corto = el strike más alto cuya prob. (la de mercado, o la fórmula de reserva) no pasa del objetivo.
- *  Largo = el que deja exactamente el ancho. Crédito a precio natural; comisión por spread al abrir.
+ *  Largo = el strike que deja el ancho más grande que no pasa del elegido (no hace falta que sea exacto;
+ *  entre los que tienen precio). Crédito a precio natural; comisión por spread al abrir.
  *  No aplica crédito mínimo, equilibrio ni interruptores. Estados: ok, sin-strike, sin-ancho, sin-vencimiento, sin-precio. */
 export function equalRisk(sym, opts, today = nyToday()) {
   const { prob: target, width, expiry, fee = 0 } = opts;
@@ -530,7 +532,13 @@ export function equalRisk(sym, opts, today = nyToday()) {
   if (shortProb.value < target - 3 - 1e-9) {
     return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${num(shortProb.value, 1)} %` };
   }
-  return spreadRow(sym, expiry, short[K], short[K] - width, fee, today);
+  // Largo: el strike más bajo que no pasa del ancho elegido; si ese no tiene precio, el siguiente.
+  const inside = rows.filter((row) => row[K] < short[K] - 1e-6 && row[K] >= short[K] - width - 1e-6).sort((a, b) => a[K] - b[K]);
+  if (!inside.length) {
+    return { sym, status: "sin-ancho", why: `Sin ese ancho: no hay strike entre ${fmtStrike(r2(short[K] - width))} y ${fmtStrike(short[K])}` };
+  }
+  const long = inside.find((row) => row[ASK] > 0) ?? inside[0];
+  return spreadRow(sym, expiry, short[K], long[K], fee, today);
 }
 
 /** Prob. de cada fila de un vencimiento: la de mercado y, si no se puede medir, la fórmula de reserva. */
@@ -572,9 +580,17 @@ export function spreadRow(sym, expiry, shortStrike, longStrike, fee = 0, today =
   const longProb = probOf(longIndex).value;
   const earn = sym.er && sym.er.d ? sym.er : null;
   const earnDte = earn ? daysBetween(today, earn.d) : null;
+  // Horquilla del spread (lo que cuesta entrar y salir a precio natural) y crédito a precio medio.
+  // Sin ask del corto o sin bid del largo no hay precio medio fiable.
+  const quoted = short[ASK] > 0 && long[BID] >= 0;
+  const gap = quoted ? short[ASK] - short[BID] + (long[ASK] - long[BID]) : null;
+  const midCredit = quoted ? (short[BID] + short[ASK]) / 2 - (long[BID] + long[ASK]) / 2 : null;
   return {
     sym,
     status: "ok",
+    gap: gap == null ? null : r2(gap),
+    midCredit: midCredit == null ? null : Math.round(midCredit * 1000) / 1000,
+    roundTrip: gap == null ? null : r2(gap * 100 + 2 * fee),
     expiry,
     expiryLabel: labelOf(expiry),
     dte,
@@ -619,20 +635,53 @@ export function yearRange(closes, price) {
   return { min: Math.min(...last), max: Math.max(...last), sessions: last.length };
 }
 
-/** Todas las filas: las que tienen precio, ordenadas (por rentabilidad neta, o por equilibrio con
- *  historia si se pasan cierres en `opts.hist`), y al final las que no. */
+/** Un spread es comparable si su precio es fiable. Devuelve el motivo por el que no, o "".
+ *  Orden de las puertas: prob. sin medir en el mercado, horquilla ancha, el cobro no cubre salir. */
+export const GATE_GAP_PCT = 25;
+export function gateReason(row) {
+  if (row.status !== "ok") return "";
+  if (row.probSrc === "formula") return "prob. sin medir en el mercado";
+  if (row.midCredit == null || !(row.midCredit > 0) || row.gap > (row.midCredit * GATE_GAP_PCT) / 100 + 1e-9) return "horquilla ancha: precio poco fiable";
+  if (row.net < row.roundTrip - 1e-9) return "no cubre el coste de salir";
+  return "";
+}
+
+/** Orden de "Igual riesgo": rentab. esperada (de mayor a menor); detrás, las filas sin cierres, por rentab. neta. */
+const byExpected = (a, b) => (b.retExp != null) - (a.retExp != null) || (a.retExp != null ? b.retExp - a.retExp : 0) || b.ret - a.ret;
+
+/** La lista de "Igual riesgo", en cuatro partes:
+ *  - rows: filas comparables, ordenadas (por rentab. esperada si se pasan cierres en `opts.hist`)
+ *  - earn: comparables pero con resultados dentro del plazo (la historia casi no tiene saltos de resultados)
+ *  - gated: con precio pero apartadas por una puerta (`gate` lleva el motivo); mandan antes que los resultados
+ *  - out: sin fila (sin vencimiento, strike, ancho o precio) */
 export function equalRiskList(symbols, opts, today = nyToday()) {
   const hist = opts.hist ?? null;
   const all = symbols.map((sym) => {
     const row = equalRisk(sym, opts, today);
     return hist ? withHistory(row, hist[sym.s], today) : row;
   });
-  // Con historia manda el equilibrio con historia; las filas que no lo tienen van detrás.
-  const rows = all
-    .filter((row) => row.status === "ok")
-    .sort((a, b) => (b.balanceHist != null) - (a.balanceHist != null) || (a.balanceHist != null ? b.balanceHist - a.balanceHist : 0) || b.ret - a.ret);
+  const priced = all.filter((row) => row.status === "ok").map((row) => ({ ...row, gate: gateReason(row) }));
+  const rows = priced.filter((row) => !row.gate && !row.earnInside).sort(byExpected);
+  const earn = priced.filter((row) => !row.gate && row.earnInside).sort(byExpected);
+  const gated = priced.filter((row) => row.gate).sort(byExpected);
   const out = all.filter((row) => row.status !== "ok");
-  return { rows, out };
+  return { rows, earn, gated, out };
+}
+
+/** ¿Los precios de un barrido son de fuera del horario de mercado? Cuenta el retraso de 15 minutos de
+ *  la fuente: un barrido a las 16:10 todavía trae precios de las 15:55. `at` en milisegundos. */
+export function pricesOutsideMarket(at) {
+  if (!(at > 0)) return false;
+  const taken = new Date(at - 15 * 60_000);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(taken)
+      .map((part) => [part.type, part.value]),
+  );
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return true;
+  if (US_HOLIDAYS.has(`${parts.year}-${parts.month}-${parts.day}`)) return true;
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  return minutes < 9 * 60 + 30 || minutes > 16 * 60;
 }
 
 // ---------- Historia del precio (pestaña "Igual riesgo") ----------
@@ -711,14 +760,20 @@ export function withHistory(row, series, today = nyToday()) {
   const twoYearsAgo = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
   const out = { ...row, sessions, shortHistory: !(series.d <= twoYearsAgo) };
   if (!stats || recent == null) return out;
-  const worst = Math.max(stats.loss, recent);
+  // Lo que se espera pagar: la media de los dos cálculos (5 años de precios y volatilidad reciente).
+  const high = Math.max(stats.loss, recent);
+  const low = Math.min(stats.loss, recent);
+  const expected = (stats.loss + recent) / 2;
   return {
     ...out,
     histProb: r1(stats.prob),
     histLoss: r2(stats.loss),
     vol: r1(vol * 100),
     recentLoss: r2(recent),
-    balanceHist: worst > 0 ? r2(row.net / worst) : null,
+    expected: r2(expected),
+    distinct: high > 3 * low,
+    retExp: r1(((row.net - expected) / row.loss) * 100),
+    balanceHist: expected > 0.005 ? r1(row.net / expected) : 999,
   };
 }
 

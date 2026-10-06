@@ -10,6 +10,8 @@ import {
   compareSpreads,
   defaultExpiry,
   equalRiskList,
+  gateReason,
+  pricesOutsideMarket,
   favoriteDeals,
   fmtStrike,
   ivFromPut,
@@ -641,7 +643,7 @@ const ICONS = {
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
 
-function header(eyebrow, title) {
+function header(eyebrow, title, showRules = true) {
   const scan = state.scan;
   const times = scan ? `Barrido ${when(scan.at)}` : "";
   const status = state.loading
@@ -661,7 +663,7 @@ function header(eyebrow, title) {
         }
       </div>
       <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
-      <button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>
+      ${showRules ? `<button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>` : ""}
     </header>
     ${scan?.example ? '<p class="banner small">Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer la lista.</p>' : ""}
     ${scan?.real ? readSummary(scan) : ""}
@@ -1186,6 +1188,8 @@ function sheet() {
     if (liquid.length) notes.push(`Aviso: ${liquid.join(" · ")}`);
     if (chosen.earnInside && sym.er) notes.push(`Resultados ${labelOf(sym.er.d)} · dentro del plazo`);
     if (row?.shortHistory && row.histProb != null) notes.push("Poca historia: menos de 2 años de cierres");
+    if (row?.distinct) notes.push("Estimaciones muy distintas: 5 años de precios y volatilidad reciente no se parecen");
+    if (row && gateReason(row)) notes.push(`Apartada de la comparación: ${gateReason(row)}`);
   }
   const title = chosen
     ? `${fmtStrike(chosen.shortStrike)}/${fmtStrike(chosen.longStrike)} · ${esc(chosen.expiryLabel)} · ${chosen.dte} d · ancho ${widthText(chosen)}`
@@ -1196,7 +1200,7 @@ function sheet() {
        ${stat("Pérdida máx.", usdDec(row.loss))}
        ${stat("Prob. asignación", `${row.prob == null ? "—" : `${dec(row.prob)} %`}${row.probSrc === "formula" ? sub("por fórmula") : ""}${row.histProb != null ? sub(`historia ${dec(row.histProb)} %`) : ""}`)}
        ${stat("Rentab. neta", `${dec(row.ret)} %`)}
-       ${stat(row.balanceHist != null ? "Equilibrio con historia" : "Equilibrio", row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 2), true)}`
+       ${stat(row.balanceHist != null ? "Equilibrio con historia" : "Equilibrio", row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1), true)}`
     : sp
       ? `${stat("% abajo", pct(sp.otm, 1))}
        ${stat("Cobras", usd(sp.creditUsd))}
@@ -1287,22 +1291,45 @@ function viewIgual() {
   const symbols = listSymbols();
   const { expiries, opts } = equalOpts(symbols);
   const hist = state.hist?.symbols ?? null;
-  const { rows, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], out: [] };
-  const withHist = rows.some((row) => row.balanceHist != null);
-  const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 2));
+  const { rows, earn, gated, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], earn: [], gated: [], out: [] };
+  const withHist = [...rows, ...earn].some((row) => row.retExp != null);
+  const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1));
+  const expText = (row) => (row.retExp == null ? `${dec(row.ret)} %` : `${row.retExp > 0 ? "+" : ""}${dec(row.retExp)} %`);
+  const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
   const probLine = (row) =>
     row.histProb == null
       ? `prob. asig. ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}${hist ? " · sin historia" : ""}`
       : `prob. mercado ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""} · historia ${dec(row.histProb)} %`;
+  const costText = (row) => (row.roundTrip == null ? "ida y vuelta sin precio medio" : `ida y vuelta ${usdDec(row.roundTrip)}`);
   const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
   const blockOf = (sym) => sym.b ?? "";
-  const list = rows
-    .map(
-      (row) => `<li>
+  const widthNote = (row) => (Math.abs(row.width - opts.width) > 1e-6 ? ` <span class="muted">· ancho ${shortMoney(row.width)}</span>` : "");
+  const subLine = (row) => {
+    const notes = [];
+    if (row.shortHistory && row.histProb != null) notes.push("poca historia");
+    if (row.distinct) notes.push("estimaciones muy distintas");
+    if (row.earnInside && row.sym.er) notes.push(`resultados ${esc(labelOf(row.sym.er.d))}`);
+    const paid =
+      row.expected == null
+        ? `rentab. neta ${dec(row.ret)} %`
+        : `se espera pagar ${dollars(row.expected)} (historia ${dollars(row.histLoss)} · reciente ${dollars(row.recentLoss)}) · equilibrio ${balText(row)}`;
+    return `${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · ${costText(row)} · pierdes máx. ${usdDec(row.loss)} · ${paid}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
+  };
+  const item = (row) => `<li>
         <button class="deal ok" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
-          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} <span class="muted">· ${dec(row.otm)} % abajo</span>
-            <span class="deal-kpi num">${withHist ? balText(row) : `${dec(row.ret)} %`}</span></span>
-          <span class="deal-sub small muted">${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · pierdes máx. ${usdDec(row.loss)} · rentab. neta ${dec(row.ret)} %${row.balanceHist != null ? ` · equilibrio con historia ${balText(row)}` : ""}${row.shortHistory && row.histProb != null ? " · poca historia" : ""}${row.earnInside && row.sym.er ? ` · resultados ${esc(labelOf(row.sym.er.d))}` : ""}</span>
+          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span>
+            <span class="deal-kpi num">${expText(row)}</span></span>
+          <span class="deal-sub small muted">${subLine(row)}</span>
+        </button>
+      </li>`;
+  const list = rows.map(item).join("");
+  const earnList = earn.map(item).join("");
+  const gatedList = gated
+    .map(
+      (row) => `<li style="opacity:.7">
+        <button class="deal" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
+          <span class="deal-top"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)}</span>
+          <span class="deal-sub small muted">${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
         </button>
       </li>`,
     )
@@ -1317,25 +1344,37 @@ function viewIgual() {
     : !opts.expiry
       ? "Ningún vencimiento cae dentro del plazo de Reglas."
       : "";
+  const closed = state.scan && !state.scan.example && pricesOutsideMarket(state.scan.at);
+  const noneCovers = withHist && rows.length > 0 && !rows.some((row) => row.retExp != null && row.retExp > 0);
   return `
-    ${header("Prueba", "Igual riesgo")}
+    ${header("Prueba", "Igual riesgo", false)}
+    ${closed ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos filas.</p>' : ""}
     <div class="filters">
       <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted">Prob. objetivo</span>${EQ_PROBS.map((n) => chip("eq-prob", n, `${n} %`, opts.prob === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Prob. objetivo, de ${EQ_PROB_MIN} % a ${EQ_PROB_MAX} %"><span class="small muted">${EQ_PROB_MIN} %</span>
         <input type="range" class="range" id="eq-range" min="${EQ_PROB_MIN}" max="${EQ_PROB_MAX}" step="1" value="${opts.prob}" aria-label="Prob. objetivo">
         <span class="small muted">${EQ_PROB_MAX} %</span><b class="num" id="eq-range-val" style="min-width:3.2em;text-align:right">${opts.prob} %</b></div>
+      ${opts.prob < 5 ? '<p class="small muted" style="margin:0 0 6px">Por debajo del 5 % hay muy pocos casos en la historia y los precios son de céntimos: la comparación es poco fiable.</p>' : ""}
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
       <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
         <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
     </div>
-    <p class="small muted" style="margin:0 0 8px">Todos a la misma prob. de asignación, mismo ancho y mismo vencimiento. La prob. se saca de los precios, así que a igual prob. lo que se cobra se parece mucho; la diferencia está en el coste de entrar y en la prob. de pérdida máxima.</p>
+    <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha, cobro que no cubre el coste de salir y resultados en el plazo.</p>
     <p class="small muted" style="margin:0 0 8px">${
       withHist
-        ? `Orden: equilibrio con historia = cobras neto entre lo que se espera pagar, tomando lo peor entre 5 años de precios y la volatilidad reciente. 1 = lo cobrado iguala lo que se espera pagar. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
+        ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
         : "Orden: rentab. neta. Todavía no hay cierres diarios guardados para comparar con la historia."
     }</p>
-    ${empty ? `<div class="empty"><h2>${empty}</h2></div>` : `<div class="deal-head small muted"><span>${rows.length} ${rows.length === 1 ? "fila" : "filas"}</span><span>${withHist ? "Equilibrio con historia" : "Rentab. neta"}</span></div><ul class="rows">${list}</ul>${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`}
+    ${noneCovers ? '<p class="banner small">Hoy ninguno cubre lo que se espera pagar. La lista enseña el orden, no candidatos.</p>' : ""}
+    ${
+      empty
+        ? `<div class="empty"><h2>${empty}</h2></div>`
+        : `<div class="deal-head small muted"><span>${rows.length} ${rows.length === 1 ? "fila" : "filas"}</span><span>${withHist ? "Rentab. esperada" : "Rentab. neta"}</span></div><ul class="rows">${list}</ul>
+    ${earnList ? `<p class="small" style="margin:16px 0 2px">Con resultados en el plazo</p><p class="small muted" style="margin:0 0 4px">La historia casi no contiene saltos de resultados; no se comparan con el resto.</p><ul class="rows">${earnList}</ul>` : ""}
+    ${gatedList ? `<p class="small muted" style="margin:16px 0 2px">Apartadas: no se pueden comparar</p><ul class="rows">${gatedList}</ul>` : ""}
+    ${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`
+    }
     ${foot()}`;
 }
 
