@@ -1417,13 +1417,12 @@ function viewIgual() {
     const formula = row.probSrc === "formula" ? " (fórmula)" : "";
     const probCell = cell(row.histProb == null ? "Prob. asignación" : "Prob. mercado", `${dec(row.prob)} %${formula}`);
     const longCell = cell("Prob. pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`);
-    const tripCell = cell("Coste total", row.roundTrip == null ? "sin precio medio" : usdDec(row.roundTrip));
     // Sin cierres para este nombre no hay barra ni prob. de historia.
-    const cells = row.expected == null ? [probCell, longCell, tripCell] : [probCell, cell("Prob. historia", `${dec(row.histProb)} %`), longCell, tripCell];
+    const cells = row.expected == null ? [probCell, longCell] : [probCell, cell("Prob. historia", `${dec(row.histProb)} %`), longCell];
     return `<span class="eq-grid">${cells.join("")}</span>`;
   };
   const stakes = (row) =>
-    `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
+    `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usdDec(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
   const kpiTone = (row) => (row.retExp == null ? "" : row.retExp > 0 ? " plus" : " minus");
   const item = (row) => `<li>
         <button class="deal ok eq-row" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
