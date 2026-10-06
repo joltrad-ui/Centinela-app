@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { alertText, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -506,4 +506,70 @@ test("barrido: con el mercado cerrado se conserva el último barrido de mercado 
   assert.equal(keepPrevious(undefined, closed), false); // sin barrido anterior se barre
   assert.equal(keepPrevious(open, closed, { replace: true }), false); // a mano, con "reemplazar"
   assert.equal(keepPrevious(open, Date.parse("2026-10-03T16:00:00Z")), true); // fin de semana
+});
+
+test("igual riesgo: marca \"solo con un cálculo\" cuando los dos cálculos tienen distinto signo", () => {
+  const opts = tightOpts();
+  const row0 = equalRisk(tight(), opts, today);
+  // Cada 100 sesiones, 30 con el precio un 20 % más bajo; las últimas 100 son tranquilas.
+  const blocks = [];
+  for (let b = 0; b < 12; b++) for (let i = 0; i < 100; i++) blocks.push(i < 70 ? 100 * (1 + 0.001 * (i % 2)) : 80);
+  for (let i = 0; i < 100; i++) blocks.push(100 * (1 + 0.001 * (i % 2)));
+  const split = withHistory(row0, { d: "2021-01-04", c: blocks }, today);
+  assert.ok(split.marginHist < 0 && split.marginRecent > 0, `${split.marginHist} ${split.marginRecent}`); // con historia pierde, con lo reciente gana
+  assert.equal(split.marginHist, Math.round((row0.net - split.histLoss) * 100) / 100);
+  assert.equal(split.marginRecent, Math.round((row0.net - split.recentLoss) * 100) / 100);
+  assert.equal(split.onlyOne, true);
+  assert.equal(split.distinct, true); // también son muy distintas; la vista enseña solo la marca más fuerte
+  assert.ok(split.expected > 0 && Math.abs(split.expected - (split.histLoss + split.recentLoss) / 2) < 0.011); // sigue siendo la media
+  // mismo signo: tranquila hace años y ahora → no hay marca
+  const calm = { d: "2021-01-04", c: Array.from({ length: 1300 }, (_, i) => 100 * (1 + 0.001 * (i % 2))) };
+  const same = withHistory(row0, calm, today);
+  assert.ok(same.marginHist > 0 && same.marginRecent > 0);
+  assert.equal(same.onlyOne, false);
+  // el orden no cambia por la marca: sigue siendo la rentab. esperada
+  assert.equal(split.retExp, Math.round(((row0.net - split.expected) / row0.loss) * 1000) / 10);
+});
+
+test("volatilidad de 5 años: desviación de los rendimientos diarios de todos los cierres, con √252", () => {
+  const a = Math.log(1.1);
+  const v = volatilities([100, 110, 100]);
+  assert.ok(Math.abs(v.long - a * Math.sqrt(504)) < 1e-9);
+  assert.equal(v.recent, null); // menos de 20 sesiones: no hay volatilidad reciente
+  const closes = Array.from({ length: 400 }, (_, i) => 100 + 10 * Math.sin(i / 7) + (i % 3));
+  const w = volatilities(closes);
+  assert.equal(w.longPct, Math.round(realizedVol(closes, closes.length - 1) * 1000) / 10);
+  assert.equal(w.recent, Math.max(realizedVol(closes, 20), realizedVol(closes, 60))); // la misma que usa la pérdida reciente
+  assert.equal(volatilities([100]), null);
+  const row = withHistory(equalRisk(tight(), tightOpts(), today), { d: "2021-01-04", c: closes }, today);
+  assert.equal(row.vol5, w.longPct);
+  assert.equal(row.vol, w.recentPct);
+});
+
+test("notas de tendencia: en mínimos del año y bajo su media de 200", () => {
+  const ramp = Array.from({ length: 300 }, (_, i) => 100 + i / 3); // sube de 100 a ~200
+  assert.deepEqual(trendNotes(ramp, 105), ["en mínimos del año", "bajo su media de 200"]);
+  assert.deepEqual(trendNotes(ramp, 195), []); // arriba del rango y de la media
+  // solo bajo la media: 100 sesiones a 50 y 200 a 100; a 98 no está en el 10 % bajo del rango
+  const step = [...Array(100).fill(50), ...Array(200).fill(100)];
+  assert.deepEqual(trendNotes(step, 98), ["bajo su media de 200"]);
+  // con menos de 200 cierres no hay media de 200
+  assert.deepEqual(trendNotes(Array(150).fill(100).map((x, i) => (i === 0 ? 150 : x)), 120), []);
+  assert.deepEqual(trendNotes(null, 100), []);
+  // la nota llega a la fila
+  const row = withHistory(equalRisk(tight(), tightOpts(), today), { d: "2021-01-04", c: ramp.map((x) => x * (100 / 105)) }, today);
+  assert.deepEqual(row.trend, ["en mínimos del año", "bajo su media de 200"]);
+});
+
+test("Fed: decisión entre hoy y el vencimiento, solo en bonos largos y bolsa de EE. UU.", () => {
+  assert.deepEqual(fedInside("2026-10-06", "2026-11-20"), ["2026-10-28"]);
+  assert.deepEqual(fedInside("2026-10-06", "2026-10-23"), []); // el vencimiento llega antes
+  assert.deepEqual(fedInside("2026-10-06", "2026-12-31"), ["2026-10-28", "2026-12-09"]);
+  assert.deepEqual(fedInside("2026-10-28", "2026-10-30"), ["2026-10-28"]); // el mismo día cuenta
+  assert.deepEqual(fedInside("2026-10-29", "2026-11-20"), []); // ya pasó
+  const at = (b, now = today) => spreadRow({ ...tight(), b }, "2026-10-30", 90, 85, 1.4, now);
+  assert.deepEqual(at("Bonos largos").fed, ["2026-10-28"]);
+  assert.deepEqual(at("Bolsa EE. UU.").fed, ["2026-10-28"]);
+  assert.deepEqual(at("Energía").fed, []); // otro bloque: sin aviso
+  assert.deepEqual(at("Bonos largos", "2026-10-29").fed, []); // la decisión ya pasó
 });

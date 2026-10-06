@@ -11,6 +11,7 @@ import {
   defaultExpiry,
   equalRiskList,
   gateReason,
+  volatilities,
   pricesOutsideMarket,
   favoriteDeals,
   fmtStrike,
@@ -1200,7 +1201,10 @@ function sheet() {
     if (liquid.length) notes.push(`Aviso: ${liquid.join(" · ")}`);
     if (chosen.earnInside && sym.er) notes.push(`Resultados ${labelOf(sym.er.d)} · dentro del plazo`);
     if (row?.shortHistory && row.histProb != null) notes.push("Poca historia: menos de 2 años de cierres");
-    if (row?.distinct) notes.push("Estimaciones muy distintas: 5 años de precios y volatilidad reciente no se parecen");
+    if (row?.onlyOne) notes.push(`Solo con un cálculo: con historia ${signedUsd(row.marginHist)} · con lo reciente ${signedUsd(row.marginRecent)}. La media esconde que solo sale bien con uno de los dos`);
+    else if (row?.distinct) notes.push("Estimaciones muy distintas: 5 años de precios y volatilidad reciente no se parecen");
+    if (row?.trend?.length) notes.push(`Tendencia: ${row.trend.join(" · ")}`);
+    if (row?.fed?.length) notes.push(`Fed el ${row.fed.map((date) => labelOf(date)).join(" y ")} · dentro del plazo`);
     if (row && gateReason(row)) notes.push(`Apartada de la comparación: ${gateReason(row)}`);
   }
   const title = chosen
@@ -1236,6 +1240,11 @@ function sheet() {
     : `<p class="small muted" style="margin-top:14px">${igual && wanted ? "Ese bull put ya no tiene precio." : "No hay ningún bull put cerca de tu punto en tu plazo."}</p>`;
 
   const year = yearRange(state.hist?.symbols?.[sym.s]?.c, sym.p);
+  const vols = volatilities(state.hist?.symbols?.[sym.s]?.c);
+  const volLine =
+    vols?.recentPct != null && vols.longPct != null
+      ? `<p class="small muted">Volatilidad de los cierres: ahora ${num(vols.recentPct, 0)} % · en ${spanText(state.hist.symbols[sym.s].c.length / 252)} ${num(vols.longPct, 0)} %</p>`
+      : "";
   const byOrder = (a, b) => compareSpreads(a, b, state.config.order);
   const okIdeas = res.all.filter((idea) => idea.ok).sort(byOrder);
   const otherIdeas = res.all.filter((idea) => !idea.ok).sort((a, b) => b.stage - a.stage || byOrder(a, b));
@@ -1259,6 +1268,7 @@ function sheet() {
       <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
         <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
       ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${num(sym.iv30, 0)} %</p>` : ""}
+      ${volLine}
       ${year ? `<p class="small muted">${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}, a cierre: mín. ${money(year.min)} · máx. ${money(year.max)}</p>` : ""}
       ${chosenBlock}
       ${
@@ -1282,6 +1292,11 @@ function sheet() {
 const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
 const dec = (n, d = 1) => num(n, d);
 const usdDec = (n) => `$${dec(n, 2)}`;
+/** Dólares: enteros desde $10, con céntimos por debajo. Con signo en `signedUsd`. */
+const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
+const signedUsd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${dollars(Math.abs(n))}`;
+/** "5 años" con la historia completa; si hay menos, lo que hay. */
+const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years), 0)} años` : "lo guardado");
 
 function equalOpts(symbols) {
   const rules = state.config.rules;
@@ -1307,7 +1322,6 @@ function viewIgual() {
   const withHist = rows.some((row) => row.retExp != null);
   const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1));
   const expText = (row) => (row.retExp == null ? `${dec(row.ret)} %` : `${row.retExp > 0 ? "+" : ""}${dec(row.retExp)} %`);
-  const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
   const probLine = (row) =>
     row.histProb == null
       ? `prob. asig. ${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}${hist ? " · sin historia" : ""}`
@@ -1316,23 +1330,34 @@ function viewIgual() {
   const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
   const blockOf = (sym) => sym.b ?? "";
   const widthNote = (row) => (Math.abs(row.width - opts.width) > 1e-6 ? ` <span class="muted">· ancho ${shortMoney(row.width)}</span>` : "");
+  const volText = (row) => `ahora se mueve un ${num(row.vol, 0)} %; en ${spanText(row.years)}, un ${num(row.vol5, 0)} %`;
+  // Avisos en rojo dentro de la fila: resultados dentro del plazo (la historia casi no contiene saltos de resultados)
+  // y decisión de la Fed dentro del plazo (solo bonos largos y bolsa de EE. UU.). No apartan la fila.
+  const earnTag = (row) => (row.earnInside && row.sym.er ? `<span class="tag-earn">Resultados ${esc(labelOf(row.sym.er.d))}</span> ` : "");
+  const fedTag = (row) => (row.fed?.length ? `<span class="tag-earn">Fed el ${row.fed.map((date) => esc(labelOf(date))).join(" y ")}</span> ` : "");
+  // Marca ámbar: la fila solo sale bien con uno de los dos cálculos; se enseñan las dos cifras.
+  const onlyTag = (row) =>
+    row.onlyOne ? `<span class="tag-warn">solo con un cálculo</span> <span style="white-space:nowrap">con historia ${signedUsd(row.marginHist)}</span> · <span style="white-space:nowrap">con lo reciente ${signedUsd(row.marginRecent)}</span> · ` : "";
+  const tags = (row) => `${earnTag(row)}${fedTag(row)}${onlyTag(row)}`;
   const subLine = (row) => {
     const notes = [];
     if (row.shortHistory && row.histProb != null) notes.push("poca historia");
-    if (row.distinct) notes.push("estimaciones muy distintas");
+    // "Solo con un cálculo" es más fuerte que "estimaciones muy distintas": si se dan las dos, solo la primera.
+    if (row.distinct && !row.onlyOne) notes.push("estimaciones muy distintas");
+    if (row.onlyOne || row.distinct) notes.push(volText(row));
     const paid =
       row.expected == null
         ? `rentab. neta ${dec(row.ret)} %`
         : `se espera pagar ${dollars(row.expected)} (historia ${dollars(row.histLoss)} · reciente ${dollars(row.recentLoss)}) · equilibrio ${balText(row)}`;
-    return `${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · ${costText(row)} · pierdes máx. ${usdDec(row.loss)} · ${paid}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
+    const trend = (row.trend ?? []).map((note) => `<span class="brass">${esc(note)}</span>`);
+    const all = [...notes.map(esc), ...trend];
+    return `${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · ${costText(row)} · pierdes máx. ${usdDec(row.loss)} · ${paid}${all.length ? ` · ${all.join(" · ")}` : ""}`;
   };
-  // Resultados dentro del plazo: no aparta la fila, la marca en rojo (la historia casi no contiene saltos de resultados).
-  const earnTag = (row) => (row.earnInside && row.sym.er ? `<span class="tag-earn">Resultados ${esc(labelOf(row.sym.er.d))}</span> ` : "");
   const item = (row) => `<li>
         <button class="deal ok" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span>
             <span class="deal-kpi num">${expText(row)}</span></span>
-          <span class="deal-sub small muted">${earnTag(row)}${subLine(row)}</span>
+          <span class="deal-sub small muted">${tags(row)}${subLine(row)}</span>
         </button>
       </li>`;
   const list = rows.map(item).join("");
@@ -1341,7 +1366,7 @@ function viewIgual() {
       (row) => `<li style="opacity:.7">
         <button class="deal" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)}</span>
-          <span class="deal-sub small muted">${earnTag(row)}${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
+          <span class="deal-sub small muted">${earnTag(row)}${fedTag(row)}${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
         </button>
       </li>`,
     )

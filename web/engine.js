@@ -612,6 +612,7 @@ export function spreadRow(sym, expiry, shortStrike, longStrike, fee = 0, today =
     longBid: long[BID] >= 0 ? long[BID] : null,
     longAsk: long[ASK],
     earnInside: earnDte != null && earnDte >= 0 && earnDte <= dte + 2,
+    fed: FED_BLOCKS.includes(sym.b) ? fedInside(today, expiry) : [],
   };
 }
 
@@ -693,6 +694,22 @@ const US_HOLIDAYS = new Set([
   "2028-01-17", "2028-02-21", "2028-04-14", "2028-05-29", "2028-06-19", "2028-07-04", "2028-09-04", "2028-11-23", "2028-12-25",
 ]);
 
+/** Días de decisión de la Fed (último día de cada reunión del FOMC), del calendario oficial
+ *  (federalreserve.gov/monetarypolicy/fomccalendars.htm). Hay hasta enero de 2028, que aún es provisional:
+ *  AMPLIARLA cuando la Fed publique más fechas y antes de que se acabe. */
+export const FED_DATES = [
+  "2026-10-28", "2026-12-09",
+  "2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-15", "2027-10-27", "2027-12-08",
+  "2028-01-26",
+];
+/** Bloques de la lista base sobre los que la Fed pesa lo bastante como para avisar. */
+export const FED_BLOCKS = ["Bonos largos", "Bolsa EE. UU."];
+
+/** Decisiones de la Fed desde hoy hasta el vencimiento, ambos incluidos. */
+export function fedInside(today, expiry) {
+  return FED_DATES.filter((date) => date >= today && date <= expiry);
+}
+
 /** Sesiones de bolsa después de `from` y hasta `to`, este incluido. */
 export function sessionsBetween(from, to) {
   let count = 0;
@@ -746,6 +763,30 @@ export function expectedLoss(price, shortStrike, longStrike, sigma, years) {
   return (L(shortStrike) - L(longStrike)) * 100;
 }
 
+/** Las dos volatilidades de un nombre, en % al año: la reciente (la mayor entre la de 20 y la de 60 sesiones,
+ *  la que usa la pérdida esperada reciente) y la de todos los cierres guardados (5 años), ambas con √252. */
+export function volatilities(closes) {
+  if (!Array.isArray(closes) || closes.length < 3) return null;
+  const v20 = realizedVol(closes, 20);
+  const v60 = realizedVol(closes, 60);
+  const recent = v20 == null && v60 == null ? null : Math.max(v20 ?? 0, v60 ?? 0);
+  const long = realizedVol(closes, closes.length - 1);
+  return { recent, long, recentPct: recent == null ? null : r1(recent * 100), longPct: long == null ? null : r1(long * 100) };
+}
+
+/** Notas de tendencia (avisos, no filtros): precio en el 10 % más bajo de su rango de 52 semanas y precio
+ *  por debajo de la media de sus últimos 200 cierres. */
+export function trendNotes(closes, price) {
+  const notes = [];
+  const range = yearRange(closes, price);
+  if (range && range.max > range.min && (price - range.min) / (range.max - range.min) <= 0.1 + 1e-9) notes.push("en mínimos del año");
+  if (Array.isArray(closes) && closes.length >= 200) {
+    const mean = closes.slice(-200).reduce((sum, close) => sum + close, 0) / 200;
+    if (price < mean) notes.push("bajo su media de 200");
+  }
+  return notes;
+}
+
 /** Añade a una fila de "Igual riesgo" la comparación con la historia del precio.
  *  `series` = { d: primera fecha, c: [cierres] } de ese nombre. */
 export function withHistory(row, series, today = nyToday()) {
@@ -753,25 +794,32 @@ export function withHistory(row, series, today = nyToday()) {
   if (row.status !== "ok" || !Array.isArray(closes) || closes.length < 2) return row;
   const sessions = sessionsBetween(today, row.expiry);
   const stats = historyStats(closes, row.sym.p, row.shortStrike, row.longStrike, sessions);
-  const v20 = realizedVol(closes, 20);
-  const v60 = realizedVol(closes, 60);
-  const vol = v20 == null && v60 == null ? null : Math.max(v20 ?? 0, v60 ?? 0);
+  const vols = volatilities(closes);
+  const vol = vols?.recent ?? null;
   const recent = vol == null ? null : expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol, sessions / 252);
   const twoYearsAgo = `${Number(today.slice(0, 4)) - 2}${today.slice(4)}`;
-  const out = { ...row, sessions, shortHistory: !(series.d <= twoYearsAgo) };
+  const out = { ...row, sessions, shortHistory: !(series.d <= twoYearsAgo), trend: trendNotes(closes, row.sym.p), years: r1(closes.length / 252) };
   if (!stats || recent == null) return out;
   // Lo que se espera pagar: la media de los dos cálculos (5 años de precios y volatilidad reciente).
   const high = Math.max(stats.loss, recent);
   const low = Math.min(stats.loss, recent);
   const expected = (stats.loss + recent) / 2;
+  // Lo que queda con cada cálculo por separado. Si tienen distinto signo, la media esconde que
+  // la fila solo sale bien con uno de los dos.
+  const marginHist = row.net - stats.loss;
+  const marginRecent = row.net - recent;
   return {
     ...out,
     histProb: r1(stats.prob),
     histLoss: r2(stats.loss),
     vol: r1(vol * 100),
+    vol5: vols.longPct,
     recentLoss: r2(recent),
     expected: r2(expected),
     distinct: high > 3 * low,
+    marginHist: r2(marginHist),
+    marginRecent: r2(marginRecent),
+    onlyOne: marginHist * marginRecent < 0,
     retExp: r1(((row.net - expected) / row.loss) * 100),
     balanceHist: expected > 0.005 ? r1(row.net / expected) : 999,
   };
