@@ -1383,14 +1383,14 @@ function viewIgual() {
   // y decisión de la Fed dentro del plazo (solo bonos largos y bolsa de EE. UU.). No apartan la fila.
   const earnTag = (row) => (row.earnInside && row.sym.er ? `<span class="tag-earn">Resultados ${esc(labelOf(row.sym.er.d))}</span> ` : "");
   const fedTag = (row) => (row.fed?.length ? `<span class="tag-earn">Fed el ${row.fed.map((date) => esc(labelOf(date))).join(" y ")}</span> ` : "");
-  // Marcas de la fila, en píldoras: rojas (resultados, Fed), ámbar (solo con un cálculo) y discretas (el resto).
+  // Marcas de la fila, en píldoras: rojas (resultados, Fed), ámbar (los dos cálculos no coinciden) y discretas (el resto).
   const pills = (row) => {
     const notes = [];
     // "Solo con un cálculo" es más fuerte que "estimaciones muy distintas": si se dan las dos, solo la primera.
     if (row.distinct && !row.onlyOne) notes.push('<span class="tag-note">estimaciones muy distintas</span>');
     if (row.shortHistory && row.histProb != null) notes.push('<span class="tag-note">poca historia</span>');
     for (const note of row.trend ?? []) notes.push(`<span class="tag-note brass">${esc(note)}</span>`);
-    if (row.onlyOne) notes.push('<span class="tag-warn">solo con un cálculo</span>');
+    if (row.onlyOne) notes.push('<span class="tag-warn">los dos cálculos no coinciden</span>');
     const all = `${earnTag(row)}${fedTag(row)}${notes.join("")}`;
     return all ? `<span class="eq-tags small">${all}</span>` : "";
   };
@@ -1415,11 +1415,19 @@ function viewIgual() {
   const cell = (label, value) => `<span class="eq-cell"><span class="eq-lab">${label}</span><b class="num">${value}</b></span>`;
   const grid = (row) => {
     const formula = row.probSrc === "formula" ? " (fórmula)" : "";
-    const probCell = cell(row.histProb == null ? "Prob. asignación" : "Prob. mercado", `${dec(row.prob)} %${formula}`);
+    const probCell = cell("Prob. asignación", `${dec(row.prob)} %${formula}`);
     const longCell = cell("Prob. pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`);
     // Sin cierres para este nombre no hay barra ni prob. de historia.
-    const cells = row.expected == null ? [probCell, longCell] : [probCell, cell("Prob. historia", `${dec(row.histProb)} %`), longCell];
+    const cells = row.expected == null ? [probCell, longCell] : [probCell, cell("Prob. asig. historia", `${dec(row.histProb)} %`), longCell];
     return `<span class="eq-grid">${cells.join("")}</span>`;
+  };
+  // Las tres volatilidades (% al año), con el mismo formato que las probabilidades.
+  const volGrid = (row) => {
+    const cells = [];
+    if (row.sym.iv30 != null) cells.push(cell("Vol. implícita 30 d", `${num(row.sym.iv30, 0)} %`));
+    if (row.vol != null) cells.push(cell("Vol. ahora", `${num(row.vol, 0)} %`));
+    if (row.vol5 != null) cells.push(cell(`Vol. ${spanText(row.years)}`, `${num(row.vol5, 0)} %`));
+    return cells.length ? `<span class="eq-grid eq-vols">${cells.join("")}</span>` : "";
   };
   const stakes = (row) =>
     `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usdDec(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
@@ -1432,7 +1440,7 @@ function viewIgual() {
           ${stakes(row)}
           ${pills(row)}
           ${grid(row)}
-          ${row.onlyOne || row.distinct ? `<span class="deal-sub small muted">${esc(volText(row).replace(/^a/, "A"))}</span>` : ""}
+          ${volGrid(row)}
           ${payBar(row)}
         </button>
       </li>`;
