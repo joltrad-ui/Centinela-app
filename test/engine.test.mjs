@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 
@@ -344,4 +344,32 @@ test("cierres: la serie recompuesta pasa el control y la rota no", () => {
   assert.equal(checkSeries(series, today), "");
   const broken = toSeries("XYZ", { data: [row("2026-10-01", 100), row("2026-10-02", 55)] }, today);
   assert.match(checkSeries(broken, today), /salto/);
+});
+
+test("ficha: las cuentas de un bull put concreto, sin aplicar reglas", () => {
+  const row = spreadRow(sym, "2026-10-30", 95, 85, 1.4, today);
+  assert.equal(row.status, "ok");
+  assert.equal(row.width, 10);
+  assert.equal(row.credit, 2); // 2,40 − 0,40
+  assert.equal(row.net, 198.6);
+  assert.equal(row.loss, 801.4);
+  assert.equal(row.breakeven, 93.01); // 95 − 1,986
+  assert.equal(row.expiryLabel.length > 0, true);
+  const target = Math.ceil(marketProbs(sym.x[0][2])[3]);
+  const same = equalRisk(sym, { prob: target, width: 10, expiry: "2026-10-30", fee: 1.4 }, today);
+  assert.deepEqual({ ...same, sym: null }, { ...row, sym: null }); // la pestaña y la ficha hacen la misma cuenta
+  assert.equal(spreadRow(sym, "2026-10-30", 95, 91, 0, today).status, "sin-ancho");
+  assert.equal(spreadRow(sym, "2026-10-30", 96, 91, 0, today).status, "sin-strike");
+});
+
+test("ficha: avisos de liquidez y rango de 52 semanas", () => {
+  const gates = normalizeRules({}).gates;
+  const row = spreadRow(sym, "2026-10-30", 90, 85, 0, today);
+  assert.deepEqual(liquidityNotes(row, { ...gates, oiMin: 100, spreadPct: 50 }), []);
+  assert.deepEqual(liquidityNotes(row, { ...gates, oiMin: 5000, spreadPct: 50 }), ["poco interés en el corto"]);
+  assert.deepEqual(liquidityNotes(row, { ...gates, oiMin: 100, spreadPct: 10 }), ["horquilla ancha"]);
+  const closes = [...Array.from({ length: 300 }, () => 500), 80, 120, 100];
+  assert.deepEqual(yearRange(closes, 130), { min: 80, max: 500, sessions: 253 }); // las 252 últimas y el precio de hoy
+  assert.equal(yearRange([90, 100, 95], 130).max, 130);
+  assert.equal(yearRange(null, 100), null);
 });

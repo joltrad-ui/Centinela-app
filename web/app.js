@@ -14,12 +14,16 @@ import {
   fmtStrike,
   ivFromPut,
   labelOf,
+  liquidityNotes,
   normalizeConfig,
   nyToday,
   readCboeChain,
   rulesLine,
   spreadLine,
+  spreadRow,
   statusLabel,
+  withHistory,
+  yearRange,
 } from "./engine.js";
 
 const LS_CONFIG = "centinela.config.v1";
@@ -66,6 +70,8 @@ const state = {
   offline: false,
   error: null,
   detail: null,
+  detailDeal: null, // bull put elegido en la ficha: "vencimiento|corto|largo"
+  detailSrc: "", // "igual" si la ficha se abrió desde Igual riesgo
   sync: { state: "idle", message: "" },
   gh: loadGh(),
   showGh: false,
@@ -1013,7 +1019,7 @@ function viewDeals() {
   const rows = shown
     .map(
       ({ sym, sp }) => `<li>
-        <button class="deal ${sp.ok ? "ok" : "no"}" data-open="${esc(sym.s)}">
+        <button class="deal ${sp.ok ? "ok" : "no"}" data-open="${esc(sym.s)}" data-deal="${esc(dealKey(sp))}">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(sym.s)}</b> <span class="muted">${esc(sp.expiryLabel)} · ${sp.dte} d ·</span> ${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} <span class="muted">· ancho ${widthText(sp)}</span>
             <span class="deal-kpi num">${orderText(sp, order)}</span></span>
           <span class="deal-sub small muted">${pct(sp.otm, 1)} abajo · prob. ${probText(sp)} · rentab. ${pct(sp.ret)} · equilibrio ${kpiText(sp)} · cobras ${usd(sp.creditUsd)} · pierdes máx. ${usd(sp.lossUsd)}${sp.earnInside && sym.er ? ` · resultados ${esc(labelOf(sym.er.d))}` : ""}</span>
@@ -1035,7 +1041,7 @@ function viewDeals() {
     .join("");
   const body = shown
     .map(
-      ({ sym, sp }) => `<tr data-open="${esc(sym.s)}" class="${sp.ok ? "ok" : "no"}">
+      ({ sym, sp }) => `<tr data-open="${esc(sym.s)}" data-deal="${esc(dealKey(sp))}" class="${sp.ok ? "ok" : "no"}">
         <td class="l"><i class="dot" aria-hidden="true"></i><b style="font-weight:500">${esc(sym.s)}</b></td>
         <td class="l">${esc(sp.expiryLabel)} <span class="xs muted">${sp.dte} d</span></td>
         <td class="l">${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)}</td>
@@ -1142,23 +1148,87 @@ function foot() {
   return `<p class="foot xs muted">${failed ? `Sin lectura en el último barrido: ${failed} nombres. ` : ""}${kept ? `Con datos del barrido anterior: ${kept} nombres. ` : ""}Un bull put puede perder el ancho menos el crédito. No es una orden ni un consejo, y los datos van con retraso.</p>`;
 }
 
+const dealKey = (sp) => `${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`;
+
+/** Ficha de un nombre: arriba el nombre, después el bull put elegido y abajo la lista de
+ *  bull puts del nombre. Pulsar una fila de la lista vuelca ese bull put en la zona de arriba.
+ *  Abierta desde "Igual riesgo" enseña las cuentas de esa pestaña (neto de comisión, historia). */
 function sheet() {
   if (!state.detail) return "";
   const sym = (state.scan?.symbols ?? []).find((item) => item.s === state.detail);
   if (!sym) return "";
-  const res = assessSymbol(sym, state.config.rules, state.config.order, nyToday());
-  const sp = res.best;
-  const stat = (label, value) => `<div class="metric"><dt>${label}</dt><dd>${value}</dd></div>`;
+  const today = nyToday();
+  const res = assessSymbol(sym, state.config.rules, state.config.order, today);
+  const igual = state.detailSrc === "igual";
+  const stat = (label, value, kpi = false) => `<div class="metric${kpi ? " kpi" : ""}"><dt>${label}</dt><dd>${value}</dd></div>`;
+  const sub = (text) => `<span class="xs muted" style="display:block;font-weight:400">${text}</span>`;
+
+  // El bull put elegido: el pulsado y, si no hay o ya no existe, el mejor según las reglas.
+  let sp = null; // con las cuentas de las reglas (Lista y Deals)
+  let row = null; // con las cuentas de "Igual riesgo"
+  const wanted = state.detailDeal ?? (res.best ? dealKey(res.best) : null);
+  if (igual && wanted) {
+    const [expiry, short, long] = wanted.split("|");
+    const made = withHistory(spreadRow(sym, expiry, Number(short), Number(long), state.equal.fee, today), state.hist?.symbols?.[sym.s], today);
+    row = made.status === "ok" ? made : null;
+  } else if (wanted) {
+    sp = res.all.find((idea) => dealKey(idea) === wanted) ?? res.best;
+  }
+  const chosen = row ?? sp;
+  const chosenKey = chosen ? dealKey(chosen) : null;
+
+  const notes = [];
+  if (sp?.fails.length) notes.push(`No pasa: ${sp.fails.join(" · ")}`);
+  if (chosen) {
+    const liquid = liquidityNotes(chosen, state.config.rules.gates).filter((note) => !(sp?.fails ?? []).includes(note));
+    if (liquid.length) notes.push(`Aviso: ${liquid.join(" · ")}`);
+    if (chosen.earnInside && sym.er) notes.push(`Resultados ${labelOf(sym.er.d)} · dentro del plazo`);
+    if (row?.shortHistory && row.histProb != null) notes.push("Poca historia: menos de 2 años de cierres");
+  }
+  const title = chosen
+    ? `${fmtStrike(chosen.shortStrike)}/${fmtStrike(chosen.longStrike)} · ${esc(chosen.expiryLabel)} · ${chosen.dte} d · ancho ${widthText(chosen)}`
+    : "";
+  const tiles = row
+    ? `${stat("% abajo", `${dec(row.otm)} %`)}
+       ${stat("Cobras neto", usdDec(row.net))}
+       ${stat("Pérdida máx.", usdDec(row.loss))}
+       ${stat("Prob. asignación", `${row.prob == null ? "—" : `${dec(row.prob)} %`}${row.probSrc === "formula" ? sub("por fórmula") : ""}${row.histProb != null ? sub(`historia ${dec(row.histProb)} %`) : ""}`)}
+       ${stat("Rentab. neta", `${dec(row.ret)} %`)}
+       ${stat(row.balanceHist != null ? "Equilibrio con historia" : "Equilibrio", row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 2), true)}`
+    : sp
+      ? `${stat("% abajo", pct(sp.otm, 1))}
+       ${stat("Cobras", usd(sp.creditUsd))}
+       ${stat("Pérdida máx.", usd(sp.lossUsd))}
+       ${stat("Prob. asignación", `${probText(sp)}${sp.probSrc === "formula" ? sub("por fórmula") : ""}`)}
+       ${stat("Rentabilidad", pct(sp.ret))}
+       ${stat("Equilibrio", kpiText(sp), true)}`
+      : "";
+  const lose = row
+    ? `Pierdes por debajo de ${usdDec(row.breakeven)}. Cobras ya con la comisión de ${usdDec(state.equal.fee)}.`
+    : sp
+      ? `Pierdes por debajo de ${money(sp.breakeven)}.`
+      : "";
+  const chosenBlock = chosen
+    ? `<div class="chosen">
+        <p class="chosen-title">${title}</p>
+        <dl class="stats">${tiles}</dl>
+        <p class="small" style="margin-top:8px">${lose}</p>
+        ${notes.map((note) => `<p class="small brass" style="margin-top:4px">${esc(note)}</p>`).join("")}
+      </div>`
+    : `<p class="small muted" style="margin-top:14px">${igual && wanted ? "Ese bull put ya no tiene precio." : "No hay ningún bull put cerca de tu punto en tu plazo."}</p>`;
+
+  const year = yearRange(state.hist?.symbols?.[sym.s]?.c, sym.p);
   const byOrder = (a, b) => compareSpreads(a, b, state.config.order);
   const okIdeas = res.all.filter((idea) => idea.ok).sort(byOrder);
   const otherIdeas = res.all.filter((idea) => !idea.ok).sort((a, b) => b.stage - a.stage || byOrder(a, b));
   const MAX_OK = 40;
   const MAX_OTHER = 12;
-  const ideaRow = (idea) => `<li class="${sp && idea.expiry === sp.expiry && idea.shortStrike === sp.shortStrike && idea.longStrike === sp.longStrike ? "watched" : ""}">
+  const ideaRow = (idea) => `<li class="${dealKey(idea) === chosenKey ? "watched" : ""}">
+      <button data-pick="${esc(dealKey(idea))}" aria-pressed="${dealKey(idea) === chosenKey}">
       <p class="small">${esc(idea.expiryLabel)} · ${fmtStrike(idea.shortStrike)}/${fmtStrike(idea.longStrike)} · ancho ${widthText(idea)} · ${pct(idea.otm, 1)} abajo · cobras ${usd(idea.creditUsd)}</p>
-      <p class="small muted">prob. ${probText(idea)} · rentab. ${pct(idea.ret)} · equilibrio ${kpiText(idea)} · ${pct(idea.creditPct)} del ancho${idea.ok ? "" : ` · ${esc(idea.fails.join(" · "))}`}</p>
+      <p class="small muted">prob. ${probText(idea)} · rentab. ${pct(idea.ret)} · equilibrio ${kpiText(idea)}${idea.ok ? "" : ` · ${esc(idea.fails.join(" · "))}`}</p>
+      </button>
     </li>`;
-  const gap = sp?.quoteGap == null ? "—" : money(sp.quoteGap);
   return `<div class="sheet-back" data-close>
     <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">
       <div class="sheet-head">
@@ -1171,40 +1241,12 @@ function sheet() {
       <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
         <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
       ${sym.iv30 != null ? `<p class="small muted">Volatilidad implícita a 30 días ${sym.iv30.toFixed(0)}%</p>` : ""}
-      ${
-        sp
-          ? `<p style="margin-top:14px">${esc(spreadLine(sp))}</p>
-        ${sp.fails.length ? `<p class="small muted" style="margin-top:4px">No pasa: ${esc(sp.fails.join(" · "))}</p>` : ""}
-        <dl class="stats">
-          ${stat("Corto / largo", `${fmtStrike(sp.shortStrike)} / ${fmtStrike(sp.longStrike)}`)}
-          ${stat("Vencimiento", `${esc(sp.expiryLabel)} · ${sp.dte} d`)}
-          ${stat("Bajo el precio", pct(sp.otm, 1))}
-          ${stat("Ancho", widthText(sp))}
-          ${stat("Crédito", `${money(sp.credit)} · ${usd(sp.creditUsd)}`)}
-          ${stat("Del ancho", pct(sp.creditPct))}
-          ${stat("Pérdida máx.", usd(sp.lossUsd))}
-          ${stat("Prob. asignación", `${probText(sp)}${sp.probSrc === "formula" ? " · por fórmula" : ""}`)}
-          ${stat("Rentabilidad", pct(sp.ret))}
-          ${stat("Equilibrio", kpiText(sp))}
-          ${stat("Break-even", money(sp.breakeven))}
-          ${stat("IV del corto", sp.iv == null ? "—" : pct(sp.iv * 100))}
-          ${stat("Delta", sp.delta == null ? "—" : sp.delta.toFixed(2).replace("-", "−"))}
-          ${stat("Interés corto / largo", `${sp.shortOi} / ${sp.longOi}`)}
-          ${stat("Horquilla", gap)}
-        </dl>
-        ${
-          sp.move
-            ? `<p class="small" style="margin-top:12px">Movimiento esperado ${money(sp.move.dollars)} (${pct(sp.move.pct, 1)}). El corto está ${money(sym.p - sp.shortStrike)} más abajo${sym.p - sp.shortStrike < sp.move.dollars / 2 ? ", dentro de la mitad de ese movimiento." : ", fuera de la mitad."}</p>`
-            : ""
-        }`
-          : '<p class="small muted" style="margin-top:14px">No hay ningún bull put cerca de tu punto en tu plazo.</p>'
-      }
-      <p class="small ${sp?.earnInside ? "brass" : "muted"}" style="margin-top:10px">${
-        sym.er ? `Resultados ${esc(labelOf(sym.er.d))} · ${esc(sym.er.x)}${sp ? (sp.earnInside ? " · dentro del plazo" : " · fuera del plazo de este spread") : ""}` : sym.k === "etf" ? "ETF: sin resultados." : "Sin fecha de resultados en el calendario consultado."
-      }</p>
+      ${year ? `<p class="small muted">${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}, a cierre: mín. ${money(year.min)} · máx. ${money(year.max)}</p>` : ""}
+      ${chosenBlock}
       ${
         res.all.length
           ? `<h3 style="font-size:1.25rem;margin-top:18px">Bull puts de ${esc(sym.s)}</h3>
+        <p class="small muted" style="margin-top:4px">Pulsa uno para verlo arriba.</p>
         <div class="chips" role="group" aria-label="Orden" style="margin-top:8px">
           ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
         </div>
@@ -1255,7 +1297,7 @@ function viewIgual() {
   const list = rows
     .map(
       (row) => `<li>
-        <button class="deal ok" data-open="${esc(row.sym.s)}">
+        <button class="deal ok" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
           <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} <span class="muted">· ${dec(row.otm)} % abajo</span>
             <span class="deal-kpi num">${withHist ? balText(row) : `${dec(row.ret)} %`}</span></span>
           <span class="deal-sub small muted">${probLine(row)} · prob. pérdida máx. ${row.longProb == null ? "—" : `${dec(row.longProb)} %`} · cobras neto ${usdDec(row.net)} · pierdes máx. ${usdDec(row.loss)} · rentab. neta ${dec(row.ret)} %${row.balanceHist != null ? ` · equilibrio con historia ${balText(row)}` : ""}${row.shortHistory && row.histProb != null ? " · poca historia" : ""}${row.earnInside && row.sym.er ? ` · resultados ${esc(labelOf(row.sym.er.d))}` : ""}</span>
@@ -1308,7 +1350,12 @@ function dock() {
 function render() {
   const view =
     state.tab === "deals" ? viewDeals() : state.tab === "igual" ? viewIgual() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
+  const before = root.querySelector(".sheet");
+  const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${sheet()}`;
+  // Al pulsar dentro de la ficha (otro bull put, otro orden) se queda donde estaba.
+  const after = root.querySelector(".sheet");
+  if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
 }
 
 // ---------- eventos ----------
@@ -1338,7 +1385,7 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-eq-prob],[data-eq-width],[data-eq-exp],[data-eq-fee],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-eq-fee],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp || el.dataset.eqFee) {
@@ -1429,11 +1476,18 @@ root.addEventListener("click", (event) => {
     if (state.tab === "avisos") writeLocal(LS_SEEN, Date.now());
     window.scrollTo(0, 0);
     render();
+  } else if (el.dataset.pick) {
+    state.detailDeal = el.dataset.pick;
+    render();
   } else if (el.dataset.open) {
     state.detail = el.dataset.open;
+    state.detailDeal = el.dataset.deal ?? null;
+    state.detailSrc = el.dataset.src ?? "";
     render();
   } else if (el.dataset.close != null) {
     state.detail = null;
+    state.detailDeal = null;
+    state.detailSrc = "";
     render();
   } else if (el.dataset.act === "reload") {
     void load().then(loadHist, loadHist);

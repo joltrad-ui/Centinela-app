@@ -509,14 +509,7 @@ export function equalRisk(sym, opts, today = nyToday()) {
   const entry = (sym.x ?? []).find((item) => item[0] === expiry);
   if (!entry) return { sym, status: "sin-vencimiento", why: "Sin ese vencimiento" };
   const rows = entry[2];
-  const dte = daysBetween(today, expiry);
-  const market = marketProbs(rows);
-  const probOf = (index) => {
-    if (market[index] != null) return { value: market[index], src: "mercado" };
-    const row = rows[index];
-    const model = row[IV] > 0 ? probBelow(sym.p, row[K], dte, row[IV]) : row[DELTA] < 0 ? Math.abs(row[DELTA]) * 100 : null;
-    return model == null ? { value: null, src: null } : { value: model, src: "formula" };
-  };
+  const probOf = rowProbs(sym, entry, today);
   let shortIndex = -1;
   for (let i = 0; i < rows.length; i++) {
     if (!(rows[i][K] < sym.p)) continue;
@@ -530,15 +523,45 @@ export function equalRisk(sym, opts, today = nyToday()) {
   if (shortProb.value < target - 3 - 1e-9) {
     return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${r1(shortProb.value)} %`.replace(".", ",") };
   }
-  const longIndex = rows.findIndex((row) => Math.abs(row[K] - (short[K] - width)) < 1e-6);
-  if (longIndex < 0) return { sym, status: "sin-ancho", why: `Sin ese ancho: no hay strike en ${fmtStrike(short[K] - width)}` };
+  return spreadRow(sym, expiry, short[K], short[K] - width, fee, today);
+}
+
+/** Prob. de cada fila de un vencimiento: la de mercado y, si no se puede medir, la fórmula de reserva. */
+function rowProbs(sym, entry, today) {
+  const rows = entry[2];
+  const dte = daysBetween(today, entry[0]);
+  const market = marketProbs(rows);
+  return (index) => {
+    if (market[index] != null) return { value: market[index], src: "mercado" };
+    const row = rows[index];
+    const model = row[IV] > 0 ? probBelow(sym.p, row[K], dte, row[IV]) : row[DELTA] < 0 ? Math.abs(row[DELTA]) * 100 : null;
+    return model == null ? { value: null, src: null } : { value: model, src: "formula" };
+  };
+}
+
+/** Las cuentas de "Igual riesgo" para un bull put concreto (corto, largo y vencimiento dados):
+ *  crédito a precio natural, comisión por spread al abrir, sin aplicar ninguna regla. */
+export function spreadRow(sym, expiry, shortStrike, longStrike, fee = 0, today = nyToday()) {
+  const entry = (sym.x ?? []).find((item) => item[0] === expiry);
+  if (!entry) return { sym, status: "sin-vencimiento", why: "Sin ese vencimiento" };
+  const rows = entry[2];
+  const dte = daysBetween(today, expiry);
+  const at = (strike) => rows.findIndex((row) => Math.abs(row[K] - strike) < 1e-6);
+  const shortIndex = at(shortStrike);
+  if (shortIndex < 0) return { sym, status: "sin-strike", why: `Sin strike en ${fmtStrike(shortStrike)}` };
+  const longIndex = at(longStrike);
+  if (longIndex < 0) return { sym, status: "sin-ancho", why: `Sin ese ancho: no hay strike en ${fmtStrike(longStrike)}` };
+  const short = rows[shortIndex];
   const long = rows[longIndex];
+  const width = r2(short[K] - long[K]);
   if (!(short[BID] > 0) || !(long[ASK] > 0)) return { sym, status: "sin-precio", why: "Sin precio: falta bid del corto o ask del largo" };
   const credit = r2(short[BID] - long[ASK]);
   if (credit <= 0) return { sym, status: "sin-precio", why: "Sin precio: a precio natural no hay crédito" };
   const net = credit * 100 - fee;
   const loss = width * 100 - net;
   if (!(loss > 0)) return { sym, status: "sin-precio", why: "Sin precio: el crédito iguala el ancho" };
+  const probOf = rowProbs(sym, entry, today);
+  const shortProb = probOf(shortIndex);
   const longProb = probOf(longIndex).value;
   const earn = sym.er && sym.er.d ? sym.er : null;
   const earnDte = earn ? daysBetween(today, earn.d) : null;
@@ -546,20 +569,47 @@ export function equalRisk(sym, opts, today = nyToday()) {
     sym,
     status: "ok",
     expiry,
+    expiryLabel: labelOf(expiry),
     dte,
     shortStrike: short[K],
     longStrike: long[K],
     otm: r1(((sym.p - short[K]) / sym.p) * 100),
     width,
     credit,
-    prob: r1(shortProb.value),
+    prob: shortProb.value == null ? null : r1(shortProb.value),
     probSrc: shortProb.src,
     longProb: longProb == null ? null : r1(longProb),
     net: r2(net),
     loss: r2(loss),
     ret: r1((net / loss) * 100),
+    breakeven: r2(short[K] - net / 100),
+    shortOi: short[OI] ?? 0,
+    shortBid: short[BID],
+    shortAsk: short[ASK] > 0 ? short[ASK] : null,
+    longBid: long[BID] >= 0 ? long[BID] : null,
+    longAsk: long[ASK],
     earnInside: earnDte != null && earnDte >= 0 && earnDte <= dte + 2,
   };
+}
+
+/** Avisos de poca liquidez de un bull put, con los umbrales del interruptor de liquidez. */
+export function liquidityNotes(sp, gates) {
+  const notes = [];
+  if ((sp.shortOi ?? 0) < gates.oiMin) notes.push("poco interés en el corto");
+  if (sp.shortAsk != null && sp.longBid != null) {
+    const gap = sp.shortAsk - sp.shortBid + (sp.longAsk - sp.longBid);
+    const mid = (sp.shortBid + sp.shortAsk) / 2 - (sp.longBid + sp.longAsk) / 2;
+    if (mid > 0 && gap > (mid * gates.spreadPct) / 100 + 1e-9) notes.push("horquilla ancha");
+  }
+  return notes;
+}
+
+/** Máximo y mínimo de las últimas 52 semanas (252 sesiones) a precio de cierre, contando el precio de hoy. */
+export function yearRange(closes, price) {
+  if (!Array.isArray(closes) || closes.length < 2) return null;
+  const last = closes.slice(-252);
+  if (price > 0) last.push(price);
+  return { min: Math.min(...last), max: Math.max(...last), sessions: last.length };
 }
 
 /** Todas las filas: las que tienen precio, ordenadas (por rentabilidad neta, o por equilibrio con

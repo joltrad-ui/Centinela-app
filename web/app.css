@@ -227,3 +227,11 @@ nav.dock svg { width: 20px; height: 20px; }
 nav.dock .tag { position: absolute; top: 3px; right: 6px; font-size: 0.5625rem; line-height: 1; color: var(--brass); letter-spacing: 0.02em; }
 .frow > .small { flex: none; }
 .range { flex: 1; min-width: 0; height: 32px; accent-color: var(--brass); }
+.chosen { position: sticky; top: 0; z-index: 2; background: var(--bg); margin: 12px -16px 0; padding: 10px 16px 12px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.chosen-title { font-weight: 500; }
+.chosen .stats { margin-top: 8px; }
+.chosen .stats .metric dt { white-space: normal; }
+.ideas li button { display: block; width: 100%; text-align: left; }
+/* La zona del bull put elegido se queda fija arriba al bajar por la lista: sin hueco por encima. */
+.sheet { padding-top: 0; }
+.sheet-head { padding-top: 18px; }
