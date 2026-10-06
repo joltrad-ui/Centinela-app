@@ -1,14 +1,19 @@
 name: Cierres
 
 # Solo por horario o a mano: un push no lo lanza nunca.
-# Una vez al día, con la bolsa ya cerrada, baja los cierres diarios de la lista base
+# Cada mañana, antes de que abra la bolsa, baja los cierres diarios de la lista base
 # (scanner/universe.json) y los deja en historia/. No barre opciones ni toca data/.
+# La fuente (CBOE) publica el cierre de un día a la mañana siguiente: el 6 oct a las 07:18 UTC
+# todavía no estaba el del día 5 y a las 13:52 UTC sí. Por eso dos pasadas: 12:23 y, de repuesto,
+# 13:03, las dos antes de la apertura (13:30 UTC en verano, 14:30 en invierno). Si la segunda
+# no trae nada nuevo, el archivo no cambia y la app no vuelve a descargarlo.
 # Repositorio público: el archivo es igual para cualquiera; aquí no entra ningún secreto.
 
 on:
   schedule:
-    # Hora en UTC, de lunes a viernes: después del cierre de Nueva York todo el año.
-    - cron: "23 22 * * 1-5"
+    # Horas en UTC, de lunes a viernes.
+    - cron: "23 12 * * 1-5"
+    - cron: "3 13 * * 1-5"
   workflow_dispatch:
 
 permissions:

@@ -290,10 +290,17 @@ test("igual riesgo: horquilla y coste de ida y vuelta del spread", () => {
 });
 
 test("igual riesgo: las puertas apartan lo que no se puede comparar, en su orden", () => {
-  // horquilla ancha: 0,20 de horquilla frente a un crédito medio de 0,70 (más del 25 %)
+  // horquilla: 0,20 frente a un crédito medio de 0,70 (28,6 %): pasa con el 35 % de fábrica y no con el 25 %
   const wide = equalRisk(sym, tightOpts(1.4), today);
   assert.equal(wide.status, "ok");
-  assert.equal(gateReason(wide), "horquilla ancha: precio poco fiable");
+  assert.equal(gateReason(wide), "");
+  assert.equal(gateReason(wide, 25), "horquilla ancha: precio poco fiable");
+  // 0,50 de horquilla frente a un crédito medio de 0,95 (53 %): se aparta con el límite de fábrica
+  const wideRows = tight().x[0][2].map((r) => (r[0] === 90 ? [90, 1.2, 1.5, 1200, 0.42, -0.17] : r[0] === 85 ? [85, 0.3, 0.5, 800, 0.46, -0.08] : r));
+  const veryWide = equalRisk({ ...tight(), x: [["2026-10-30", 0.4, wideRows]] }, { ...tightOpts(1.4), prob: Math.ceil(marketProbs(wideRows)[2] * 10) / 10 }, today);
+  assert.equal(veryWide.status, "ok");
+  assert.equal(gateReason(veryWide), "horquilla ancha: precio poco fiable");
+  assert.equal(gateReason(veryWide, 70), ""); // con un límite más holgado entra
   // el cobro no cubre salir: 68 − 40 de comisión = 28, frente a 4 + 80 de ida y vuelta
   const dear = equalRisk(tight(), tightOpts(40), today);
   assert.equal(gateReason(dear), "no cubre el coste de salir");
@@ -303,7 +310,7 @@ test("igual riesgo: las puertas apartan lo que no se puede comparar, en su orden
   // el orden de las puertas: la fórmula de reserva manda sobre la horquilla
   assert.equal(gateReason({ ...wide, probSrc: "formula" }), "prob. sin medir en el mercado");
   // en la lista, las apartadas salen en `gated` con su motivo y no entran en `rows`
-  const { rows, gated } = equalRiskList([tight(), sym, { ...tight("DEAR") }], tightOpts(1.4), today);
+  const { rows, gated } = equalRiskList([tight(), sym, { ...tight("DEAR") }], { ...tightOpts(1.4), gapPct: 25 }, today);
   assert.deepEqual(rows.map((row) => row.sym.s).sort(), ["DEAR", "TGT"]);
   assert.deepEqual(gated.map((row) => [row.sym.s, row.gate]), [["XYZ", "horquilla ancha: precio poco fiable"]]);
   const costly = equalRiskList([tight()], tightOpts(40), today);
@@ -319,7 +326,7 @@ test("igual riesgo: los resultados en el plazo marcan la fila, no la apartan", (
   assert.equal(rows[1].earnInside, false);
   assert.equal(gated.length, 0);
   // con una puerta fallida, la fila va a las apartadas y conserva la marca de resultados
-  const both = equalRiskList([{ ...sym }], tightOpts(1.4), today);
+  const both = equalRiskList([{ ...sym }], { ...tightOpts(1.4), gapPct: 25 }, today);
   assert.equal(both.rows.length, 0);
   assert.equal(both.gated.length, 1);
   assert.equal(both.gated[0].earnInside, true);
@@ -572,4 +579,18 @@ test("Fed: decisión entre hoy y el vencimiento, solo en bonos largos y bolsa de
   assert.deepEqual(at("Bolsa EE. UU.").fed, ["2026-10-28"]);
   assert.deepEqual(at("Energía").fed, []); // otro bloque: sin aviso
   assert.deepEqual(at("Bonos largos", "2026-10-29").fed, []); // la decisión ya pasó
+});
+
+test("reglas: la horquilla máxima de Igual riesgo, 35 % de fábrica y entre 10 y 100", () => {
+  assert.equal(normalizeRules({}).equalGapPct, 35);
+  assert.equal(normalizeRules({ equalGapPct: 50 }).equalGapPct, 50);
+  assert.equal(normalizeRules({ equalGapPct: 3 }).equalGapPct, 10);
+  assert.equal(normalizeRules({ equalGapPct: 500 }).equalGapPct, 100);
+  assert.equal(normalizeRules({ equalGapPct: "x" }).equalGapPct, 35);
+  assert.equal(normalizeConfig({ rules: { equalGapPct: 40 } }).rules.equalGapPct, 40);
+  // en la lista, el límite de las reglas decide quién se aparta
+  const strict = equalRiskList([sym], { ...tightOpts(1.4), gapPct: 25 }, today);
+  const loose = equalRiskList([sym], { ...tightOpts(1.4), gapPct: 35 }, today);
+  assert.equal(strict.gated.length, 1);
+  assert.equal(loose.rows.length, 1);
 });

@@ -22,6 +22,7 @@ export const DEFAULT_RULES = {
   width: 5, // ancho máximo: vale ese y cualquiera menor
   minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
   minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
+  equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
   gates: {
     event: false,
     liquid: false,
@@ -115,6 +116,7 @@ export function normalizeRules(input) {
     width: clamp(row.width, 1, 50, base.width),
     minCredit: Math.round(clamp(row.minCredit, 0, 500, base.minCredit)),
     minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
+    equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
     gates: {
       event: g.event === true,
       liquid: g.liquid === true,
@@ -637,12 +639,12 @@ export function yearRange(closes, price) {
 }
 
 /** Un spread es comparable si su precio es fiable. Devuelve el motivo por el que no, o "".
- *  Orden de las puertas: prob. sin medir en el mercado, horquilla ancha, el cobro no cubre salir. */
-export const GATE_GAP_PCT = 25;
-export function gateReason(row) {
+ *  Orden de las puertas: prob. sin medir en el mercado, horquilla ancha (más de `gapPct` % del crédito a
+ *  precio medio; se cambia en Reglas), el cobro no cubre salir. */
+export function gateReason(row, gapPct = DEFAULT_RULES.equalGapPct) {
   if (row.status !== "ok") return "";
   if (row.probSrc === "formula") return "prob. sin medir en el mercado";
-  if (row.midCredit == null || !(row.midCredit > 0) || row.gap > (row.midCredit * GATE_GAP_PCT) / 100 + 1e-9) return "horquilla ancha: precio poco fiable";
+  if (row.midCredit == null || !(row.midCredit > 0) || row.gap > (row.midCredit * gapPct) / 100 + 1e-9) return "horquilla ancha: precio poco fiable";
   if (row.net < row.roundTrip - 1e-9) return "no cubre el coste de salir";
   return "";
 }
@@ -662,7 +664,7 @@ export function equalRiskList(symbols, opts, today = nyToday()) {
     const row = equalRisk(sym, opts, today);
     return hist ? withHistory(row, hist[sym.s], today) : row;
   });
-  const priced = all.filter((row) => row.status === "ok").map((row) => ({ ...row, gate: gateReason(row) }));
+  const priced = all.filter((row) => row.status === "ok").map((row) => ({ ...row, gate: gateReason(row, opts.gapPct) }));
   const rows = priced.filter((row) => !row.gate).sort(byExpected);
   const gated = priced.filter((row) => row.gate).sort(byExpected);
   const out = all.filter((row) => row.status !== "ok");

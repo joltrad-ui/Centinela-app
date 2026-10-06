@@ -890,6 +890,14 @@ function viewReglas() {
     </section>
 
     <section class="block">
+      <h2>Pestaña Igual riesgo (prueba)</h2>
+      <p class="small muted">Solo cuenta ahí; Lista y Deals no cambian.</p>
+      <div class="panel">
+        ${stepper("rules.equalGapPct", "Horquilla máxima", "Las dos horquillas, sobre el crédito a precio medio. Por encima, la fila se aparta.", 10, 100, 5, p0)}
+      </div>
+    </section>
+
+    <section class="block">
       <h2>Cómo se calcula</h2>
       <div class="panel">
         <details>
@@ -1205,7 +1213,7 @@ function sheet() {
     else if (row?.distinct) notes.push("Estimaciones muy distintas: 5 años de precios y volatilidad reciente no se parecen");
     if (row?.trend?.length) notes.push(`Tendencia: ${row.trend.join(" · ")}`);
     if (row?.fed?.length) notes.push(`Fed el ${row.fed.map((date) => labelOf(date)).join(" y ")} · dentro del plazo`);
-    if (row && gateReason(row)) notes.push(`Apartada de la comparación: ${gateReason(row)}`);
+    if (row && gateReason(row, state.config.rules.equalGapPct)) notes.push(`Apartada de la comparación: ${gateReason(row, state.config.rules.equalGapPct)}`);
   }
   const title = chosen
     ? `${fmtStrike(chosen.shortStrike)}/${fmtStrike(chosen.longStrike)} · ${esc(chosen.expiryLabel)} · ${chosen.dte} d · ancho ${widthText(chosen)}`
@@ -1332,6 +1340,7 @@ function equalOpts(symbols) {
       width: eq.width ?? nearest(EQ_WIDTHS, rules.width),
       expiry,
       fee: eq.fee,
+      gapPct: rules.equalGapPct,
     },
   };
 }
@@ -1419,7 +1428,7 @@ function viewIgual() {
       <div class="frow" role="group" aria-label="Comisión"><span class="small muted">Comisión por spread al abrir</span>
         <button class="chip quiet" data-eq-fee="-1" aria-label="Bajar comisión">−</button><span class="num">${usdDec(opts.fee)}</span><button class="chip quiet" data-eq-fee="1" aria-label="Subir comisión">+</button></div>
     </div>
-    <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha y cobro que no cubre el coste de salir. Las que tienen resultados dentro del plazo se quedan en la lista, marcadas en rojo: la historia casi no contiene saltos de resultados, así que su número es menos fiable.</p>
+    <p class="small muted" style="margin:0 0 8px">Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha (más del ${opts.gapPct} % del crédito; se cambia en Reglas) y cobro que no cubre el coste de salir. Las que tienen resultados dentro del plazo se quedan en la lista, marcadas en rojo: la historia casi no contiene saltos de resultados, así que su número es menos fiable.</p>
     <p class="small muted" style="margin:0 0 8px">${
       withHist
         ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
