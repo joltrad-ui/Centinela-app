@@ -640,6 +640,14 @@ export function yearRange(closes, price) {
   return { min: Math.min(...last), max: Math.max(...last), sessions: last.length };
 }
 
+/** Mínimo y máximo del último mes (21 sesiones) con el precio de ahora; null si no hay cierres. */
+export function monthRange(closes, price) {
+  if (!Array.isArray(closes) || closes.length < 2) return null;
+  const last = closes.slice(-21);
+  if (price > 0) last.push(price);
+  return { min: Math.min(...last), max: Math.max(...last), sessions: last.length };
+}
+
 /** Un spread es comparable si su precio es fiable. Devuelve el motivo por el que no, o "".
  *  Orden de las puertas: prob. sin medir en el mercado, horquilla ancha (más de `gapPct` % del crédito a
  *  precio medio; se cambia en Reglas), el cobro no cubre salir. */

@@ -19,13 +19,13 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+html { -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; font-size: 17px; } /* un punto más que el tamaño de siempre: todo lo que va en rem crece con él */
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
   text-wrap: pretty;
 }
@@ -392,3 +392,9 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 /* Seis secciones en la barra de abajo */
 nav.dock button { min-width: 0; }
 nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* Ficha de Hoy: precio de ahora y los extremos de 52 semanas y de un mes. */
+.hoy-quote { margin: 10px 0 2px; }
+.hoy-price { font-size: 1.75rem; line-height: 1.1; font-weight: 500; margin: 0 0 6px; }
+.hoy-ends { display: grid; grid-template-columns: 5.5rem 1fr 1fr; gap: 6px; align-items: baseline; font-size: 0.8125rem; padding: 3px 0; border-top: 1px solid var(--line); }
+.hoy-ends .num:last-child { text-align: right; }

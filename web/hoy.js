@@ -22,11 +22,13 @@ import {
   levelGrid,
   levelRecord,
   mapExpiries,
+  monthRange,
   num,
   nyToday,
   pricesOutsideMarket,
   spreadRow,
   withHistory,
+  yearRange,
 } from "./engine.js";
 
 const LS_HOY = "centinela.hoy.v1";
@@ -365,9 +367,17 @@ export function createHoy(ctx) {
     const sym = (state.scan?.symbols ?? []).find((item) => item.s === hoy.deal.s);
     if (!sym) return "";
     const rows = dealRows(sym, hoy.deal, o.opts, o.today);
+    const closes = state.hist?.symbols?.[sym.s]?.c;
+    const year = yearRange(closes, sym.p), month = monthRange(closes, sym.p);
+    const ends = (label, r) => (r ? `<div class="hoy-ends"><span class="muted">${label}</span><span class="num"><b>${usd2(r.min)}</b> mín.</span><span class="num">máx. <b>${usd2(r.max)}</b></span></div>` : "");
+    const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
     const head = `<div class="sheet-head">
-        <div style="min-width:0"><h2 style="font-size:2rem">${esc(sym.s)}</h2><p class="small muted">${esc([sym.b, sym.n].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · "))}</p></div>
+        <div style="min-width:0"><h2 style="font-size:2rem">${esc(sym.s)}</h2><p class="small muted">${esc(name)}</p></div>
         <button class="btn quiet" data-hoy="close">Cerrar</button>
+      </div>
+      <div class="hoy-quote">
+        <p class="hoy-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</p>
+        ${ends(year && year.sessions > 250 ? "52 semanas" : year ? `${year.sessions} sesiones` : "", year)}${ends("1 mes", month)}
       </div>`;
     if (!rows.row) {
       return `<div class="sheet-back" data-hoy="close"><div class="sheet hoy-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">${head}

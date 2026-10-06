@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -728,4 +728,13 @@ test("mis deals: estado con el precio de ahora y registro por nivel", () => {
     { level: 2, n: 1, won: 1, total: 10, avg: 10 },
   ]); // los abiertos y los que no tienen resultado no cuentan
   assert.deepEqual(levelRecord(null), []);
+});
+
+test("monthRange: último mes (21 sesiones) con el precio de ahora", () => {
+  const closes = Array.from({ length: 60 }, (_, i) => 100 + i); // 100..159
+  const m = monthRange(closes, 170);
+  assert.equal(m.min, 139); // las últimas 21 sesiones empiezan en 139
+  assert.equal(m.max, 170);
+  assert.equal(m.sessions, 22);
+  assert.equal(monthRange([], 10), null);
 });
