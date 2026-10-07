@@ -318,8 +318,12 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .hoy-lab-btn { text-align: left; height: 32px; }
 .chip.quiet.hoy-edit { color: var(--brass); box-shadow: none; padding: 0 6px; }
 .hoy-mine-note { margin: 0 0 2px 98px; }
-.hoy-sum { margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; background: var(--up-dim); color: var(--up); font-size: 0.875rem; }
-.hoy-sum.none { background: var(--brass-dim); color: var(--brass); }
+/* El contador del mapa: una línea sin caja, con los niveles altos y sus recuentos */
+.hoy-sum { margin: 0 0 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; color: var(--muted); font-size: 0.875rem; }
+.hoy-sum.none { color: var(--brass); }
+.hoy-count { display: inline-flex; align-items: center; gap: 3px; }
+.hoy-count b { color: var(--fg); font-weight: 500; font-size: 1.0625rem; }
+.hoy-count-rest { font-size: 0.8125rem; }
 .hoy-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin: 0 0 10px; }
 .hoy-legend .lv { min-height: 0; width: 22px; height: 22px; font-size: 0.75rem; border-radius: 6px; }
 .hoy-legend > span:not(.lv) { margin-right: 6px; }

@@ -76,6 +76,7 @@ export function createHoy(ctx) {
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long }
     heldOpen: false,
+    legendOpen: false, // la leyenda del mapa, plegada al final de la matriz
     help: false,
     form: null, // "abrir" o { close: id }
     error: "",
@@ -195,12 +196,12 @@ export function createHoy(ctx) {
       ? { short: "los dos cálculos en positivo", legend: "con punto: los dos cálculos en positivo" }
       : { short: "margen", legend: `con punto: lo que queda supera ${opts.marginK === 1 ? "el error" : `${num(opts.marginK, 1)} veces el error`}` };
 
-  const legend = (opts) => `<p class="hoy-legend xs muted" aria-hidden="true">
-      <span class="lv lv0">0</span><span>no cubre</span>
-      <span class="lv lv1">1</span><span class="lv lv2">2</span><span class="lv lv3">3</span>${opts.safety === "off" ? "" : '<span class="lv lv4">4</span>'}<span>${opts.safety === "off" ? "a favor" : "todo a favor"}</span>
-      ${opts.safety === "off" ? "" : `<span class="lv lv3 firm">3</span><span>${safetyText(opts).legend}</span>`}
-      <span class="lv lvh">H</span><span>horquilla ancha</span>
-      <span class="lv lvx">–</span><span>sin fila</span>
+  const legend = (opts) => `<p class="hoy-legend xs muted" style="margin:10px 0 0">
+      <span class="hoy-pair"><span class="lv lv0">0</span>no cubre</span>
+      <span class="hoy-pair"><span class="lv lv1">1</span><span class="lv lv2">2</span><span class="lv lv3">3</span>${opts.safety === "off" ? "" : '<span class="lv lv4">4</span>'}${opts.safety === "off" ? "a favor" : "todo a favor"}</span>
+      ${opts.safety === "off" ? "" : `<span class="hoy-pair"><span class="lv lv3 firm">3</span>${safetyText(opts).legend}</span>`}
+      <span class="hoy-pair"><span class="lv lvh">H</span>horquilla ancha</span>
+      <span class="hoy-pair"><span class="lv lvx">–</span>sin fila</span>
     </p>`;
 
   const help = (opts) => `<button class="rules-line small" style="margin:10px 0 0" data-hoy="help" aria-expanded="${hoy.help}">Cómo se puntúa y cómo se lee ${hoy.help ? "▴" : "▾"}</button>
@@ -244,20 +245,25 @@ export function createHoy(ctx) {
       )
       .join("");
     const s = grid.summary;
+    // El contador: cuántas casillas hay en los niveles altos (4 y 3; solo 3 si el punto de seguridad está apagado).
+    const scored = grid.names.flatMap((name) => name.cells).filter((c) => c.state === "level");
+    const count = (level) => scored.filter((c) => c.level === level).length;
+    const tops = o.opts.safety === "off" ? [3] : [4, 3];
     const line = !s.withHistory
       ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar."
       : s.positive === 0
         ? "Hoy ninguna casilla cubre lo que se espera pagar."
-        : `${s.top} ${s.top === 1 ? "casilla" : "casillas"} de nivel 3 o más${o.opts.safety === "off" ? "" : ` · ${s.firm} con ${o.opts.safety === "both" ? "los dos cálculos en positivo" : "margen"}`} · ${s.comparable} comparables`;
+        : `${tops.map((level) => `<span class="hoy-count"><span class="lv lv${level} sm">${level}</span><b class="num">${count(level)}</b></span>`).join("")}<span class="hoy-count-rest">de ${s.comparable} comparables${o.opts.safety === "off" ? "" : ` · ${s.firm} con ${o.opts.safety === "both" ? "los dos cálculos en positivo" : "margen"}`}</span>`;
     return `${controls(o)}
       <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
-      ${legend(o.opts)}
       <div class="hoy-grid" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:54px repeat(${grid.expiries.length},minmax(0,1fr))">
         <span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="exp" data-v="${exp.expiry}" aria-label="Ver la nube del ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}
         ${rows}
       </div>
       ${hidden.length ? `<p class="xs muted" style="margin-top:10px">Sin fila en ningún vencimiento: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
       <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. Toca una fecha para comparar los de ese vencimiento.</p>
+      <button class="rules-line small" style="margin:10px 0 0" data-hoy="legend" aria-expanded="${hoy.legendOpen}">Qué significa cada casilla ${hoy.legendOpen ? "▴" : "▾"}</button>
+      ${hoy.legendOpen ? legend(o.opts) : ""}
       ${notes(o)}
       ${help(o.opts)}`;
   }
@@ -722,6 +728,8 @@ export function createHoy(ctx) {
     } else if (act === "held") {
       hoy.held = hoy.held.includes(value) ? hoy.held.filter((name) => name !== value) : [...hoy.held, value];
       keep();
+    } else if (act === "legend") {
+      hoy.legendOpen = !hoy.legendOpen;
     } else if (act === "help") {
       hoy.help = !hoy.help;
     } else if (act === "bsort") {
