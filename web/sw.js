@@ -1,9 +1,11 @@
 // Primero la red; si no hay conexión, la última copia guardada.
+// La red se pregunta siempre ("no-cache"): si no, el navegador reutiliza durante 10 minutos
+// lo que ya tenía y una versión recién publicada no aparece al recargar.
 const CACHE = "centinela-v3";
 const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "hoy.js", "manifest.webmanifest", "icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -22,7 +24,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/data/") || url.pathname.includes("/historia/")) return;
   const key = url.origin + url.pathname; // sin el ?t= que evita la caché del navegador
   event.respondWith(
-    fetch(req)
+    fetch(url.href, { cache: "no-cache" })
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();
