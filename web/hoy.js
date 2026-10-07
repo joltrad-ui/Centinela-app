@@ -253,7 +253,9 @@ export function createHoy(ctx) {
       ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar."
       : s.positive === 0
         ? "Hoy ninguna casilla cubre lo que se espera pagar."
-        : `${tops.map((level) => `<span class="hoy-count"><span class="lv lv${level} sm">${level}</span><b class="num">${count(level)}</b></span>`).join("")}<span class="hoy-count-rest">de ${s.comparable} comparables${o.opts.safety === "off" ? "" : ` · ${s.firm} con ${o.opts.safety === "both" ? "los dos cálculos en positivo" : "margen"}`}</span>`;
+        : [...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [[o.opts.safety === "both" ? "Los dos cálculos en positivo" : "Con margen", s.firm]]), ["Comparables", s.comparable]]
+            .map(([label, n]) => `<span class="hoy-count">${label}: <b class="num">${n}</b></span>`)
+            .join('<span aria-hidden="true">·</span>');
     return `${controls(o)}
       <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
       <div class="hoy-grid" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:54px repeat(${grid.expiries.length},minmax(0,1fr))">
