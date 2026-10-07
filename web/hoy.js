@@ -389,19 +389,19 @@ export function createHoy(ctx) {
     const cls = (n) => (n > 0 ? "up" : n < 0 ? "down" : "");
     const line = (label, sub, v) =>
       v
-        ? `<tbody><tr class="lab"><th scope="rowgroup" colspan="4">${label} <small>${sub}</small></th></tr>
+        ? `<tbody><tr class="lab"><th scope="rowgroup" colspan="4">${label}${sub ? ` <small>${sub}</small>` : ""}</th></tr>
           <tr><td class="num ${cls(v.gain)}">${usd(v.gain)}</td><td class="num ${cls(v.perDay)}">${usd(v.perDay)}</td><td class="num ${cls(v.onRisk)}">${pct(v.onRisk, 2)}</td><td class="num ${cls(v.onRiskPerDay)}">${pct(v.onRiskPerDay, 3)}</td></tr></tbody>`
         : "";
     const open = hoy.yieldOpen;
     return `<div class="hoy-yield">
-      <button class="hoy-yield-head" data-hoy="yield" aria-expanded="${open}"><span><b>Lo que rindes</b> <span class="muted">· ${r.days} ${r.days === 1 ? "día" : "días"}</span></span><span class="muted">${open ? "Ocultar ▴" : "Ver más ▾"}</span></button>
+      <button class="hoy-yield-head" data-hoy="yield" aria-expanded="${open}"><span class="muted">${r.days} ${r.days === 1 ? "día" : "días"} al vencimiento</span><span class="muted">${open ? "Ocultar ▴" : "Ver más ▾"}</span></button>
       <table>
-        <thead><tr><th scope="col" title="Gano">G</th><th scope="col" title="Gano por día">G/d</th><th scope="col" title="Gano sobre lo que arriesgas">G/s</th><th scope="col" title="Gano sobre lo que arriesgas, por día">G/s/d</th></tr></thead>
+        <thead><tr><th scope="col" title="Gano">g</th><th scope="col" title="Gano por día">g/d</th><th scope="col" title="Gano sobre lo que arriesgas">g/s</th><th scope="col" title="Gano sobre lo que arriesgas, por día">g/s/d</th></tr></thead>
         ${open ? line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross) : ""}
-        ${line("Con comisión", `abrir: ${usd2(fee)}`, r.net)}
+        ${line("Con comisión", "", r.net)}
         ${open ? line("Esperada", "tras lo que se espera pagar", r.expected) : ""}
       </table>
-      <p class="xs muted hoy-yield-key">G = gano · d = día · s = spread, lo que arriesgas («pierdes máx.»). Por contrato.</p>
+      <p class="xs muted hoy-yield-key">Comisión de abrir: ${usd2(fee)}.${open ? " g = gano · d = día · s = spread, lo que arriesgas («pierdes máx.»). Por contrato." : ""}</p>
     </div>`;
   }
 
