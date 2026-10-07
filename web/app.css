@@ -348,6 +348,10 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .hoy-exp { height: 32px; font-size: 0.75rem; color: var(--muted); border-bottom: 1px dashed var(--line); white-space: nowrap; }
 .hoy-name { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 0.875rem; }
 .hoy-name b { font-weight: 500; letter-spacing: 0.02em; }
+/* El mapa enfocado en una fecha: nombre, casilla y el deal al lado */
+.hoy-detail { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 1px; min-width: 0; padding: 0 0 0 8px; text-align: left; }
+.hoy-detail b { font-weight: 500; font-size: 0.875rem; }
+.hoy-detail small { font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .hoy-held { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--fg); flex: none; }
 
 .hoy-cloud { background: var(--surface); box-shadow: var(--border); border-radius: 16px; padding: 10px 8px 8px; margin-top: 4px; }

@@ -76,6 +76,7 @@ export function createHoy(ctx) {
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long }
     heldOpen: false,
+    mapExp: null, // el mapa enfocado en un vencimiento (null = todas las fechas)
     legendOpen: false, // la leyenda del mapa, plegada al final de la matriz
     help: false,
     form: null, // "abrir" o { close: id }
@@ -227,7 +228,9 @@ export function createHoy(ctx) {
   function viewMapa(o) {
     if (!o.symbols.length) return `<div class="empty"><h2>Esperando el primer barrido de la lista.</h2></div>`;
     if (!o.expiries.length) return `${controls(o)}<div class="empty"><h2>Ningún vencimiento cae dentro del plazo de Reglas.</h2></div>`;
-    const grid = levelGrid(o.symbols, o.opts, o.today);
+    // Enfocado en una fecha: la misma matriz con una sola columna, ordenada por ese vencimiento, y el deal de cada casilla al lado.
+    const focus = o.expiries.includes(hoy.mapExp) ? hoy.mapExp : null;
+    const grid = levelGrid(o.symbols, focus ? { ...o.opts, expiries: [focus] } : o.opts, o.today);
     const shown = grid.names.filter((name) => name.priced > 0);
     const hidden = grid.names.filter((name) => name.priced === 0);
     const cell = (name, c, i) => {
@@ -239,11 +242,14 @@ export function createHoy(ctx) {
       const firm = c.level >= 1 && c.checks.safe;
       return `<button class="lv lv${c.level}${firm ? " firm" : ""}" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: nivel ${c.level}${firm ? `, ${safetyText(o.opts).short}` : ""}">${c.level}</button>`;
     };
+    const detail = (name, c) =>
+      `<button class="hoy-detail" data-hoy="cell" data-s="${esc(name.sym.s)}" data-e="${grid.expiries[0].expiry}" data-k="${c.row.shortStrike}|${c.row.longStrike}" tabindex="-1" aria-hidden="true"><b class="num">${fmtStrike(c.row.shortStrike)}/${fmtStrike(c.row.longStrike)}</b><small class="num">cobras ${usd2(c.row.net)} · ${num(c.row.otm, 1)} % abajo</small></button>`;
     const rows = shown
       .map(
-        (name) => `<div class="hoy-name" role="rowheader"><b>${esc(name.sym.s)}</b>${o.opts.held.includes(name.sym.b ?? "") ? '<i class="hoy-held" title="Bloque que ya tienes"></i>' : ""}</div>${name.cells.map((c, i) => cell(name, c, i)).join("")}`,
+        (name) => `<div class="hoy-name" role="rowheader"><b>${esc(name.sym.s)}</b>${o.opts.held.includes(name.sym.b ?? "") ? '<i class="hoy-held" title="Bloque que ya tienes"></i>' : ""}</div>${name.cells.map((c, i) => cell(name, c, i)).join("")}${focus ? detail(name, name.cells[0]) : ""}`,
       )
       .join("");
+    const expChips = `<div class="frow" role="group" aria-label="Vencimiento" style="margin:-8px 0 12px"><span class="small muted hoy-lab">Vencimiento</span>${chip("mexp", "", "Todas", !focus)}${o.expiries.map((e) => chip("mexp", e, esc(labelOf(e)), e === focus)).join("")}</div>`;
     const s = grid.summary;
     // El contador: cuántas casillas hay en los niveles altos (4 y 3; solo 3 si el punto de seguridad está apagado).
     const scored = grid.names.flatMap((name) => name.cells).filter((c) => c.state === "level");
@@ -257,13 +263,14 @@ export function createHoy(ctx) {
             .map(([label, n]) => `<span class="hoy-count">${label}: <b class="num">${n}</b></span>`)
             .join('<span aria-hidden="true">·</span>');
     return `${controls(o)}
+      ${expChips}
       <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
-      <div class="hoy-grid" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:54px repeat(${grid.expiries.length},minmax(0,1fr))">
-        <span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="exp" data-v="${exp.expiry}" aria-label="Ver la nube del ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}
+      <div class="hoy-grid${focus ? " one" : ""}" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:${focus ? "54px 56px minmax(0,1fr)" : `54px repeat(${grid.expiries.length},minmax(0,1fr))`}">
+        ${focus ? "" : `<span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="mexp" data-v="${exp.expiry}" aria-label="Ver solo el ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}`}
         ${rows}
       </div>
-      ${hidden.length ? `<p class="xs muted" style="margin-top:10px">Sin fila en ningún vencimiento: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
-      <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. Toca una fecha para comparar los de ese vencimiento.</p>
+      ${hidden.length ? `<p class="xs muted" style="margin-top:10px">${focus ? "Sin fila en esta fecha" : "Sin fila en ningún vencimiento"}: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
+      <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. ${focus ? "Toca «Todas» para volver a ver todas las fechas." : "Toca una fecha para ver solo los de ese vencimiento."}</p>
       <button class="rules-line small" style="margin:10px 0 0" data-hoy="legend" aria-expanded="${hoy.legendOpen}">Qué significa cada casilla ${hoy.legendOpen ? "▴" : "▾"}</button>
       ${hoy.legendOpen ? legend(o.opts) : ""}
       ${notes(o)}
@@ -740,6 +747,13 @@ export function createHoy(ctx) {
     } else if (act === "yield") {
       hoy.yieldOpen = !hoy.yieldOpen;
       keep();
+    } else if (act === "mexp") {
+      // En el mapa, tocar una fecha no saca de la matriz: la enfoca en ese vencimiento (y la nube y las barras abrirán en él).
+      hoy.mapExp = value || null;
+      if (value) {
+        hoy.expiry = value;
+        keep();
+      }
     } else if (act === "exp") {
       hoy.expiry = value;
       if (hoy.view !== "barras") hoy.view = "nube";
