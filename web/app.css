@@ -410,9 +410,6 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .hoy-under { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .hoy-under .eq-tags { margin: 0; }
 .hoy-under > .muted { white-space: nowrap; margin-left: auto; }
-.hoy-badge { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-.hoy-badge b { font-weight: 500; display: block; font-size: 1.0625rem; }
-.hoy-badge small { display: block; font-size: 0.8125rem; color: var(--muted); }
 .hoy-checks { list-style: none; margin: 14px 0 0; padding: 0 14px; background: var(--surface); box-shadow: var(--border); border-radius: 14px; }
 .hoy-checks li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
 .hoy-checks li + li { border-top: 1px solid var(--line); }
@@ -448,10 +445,21 @@ nav.dock button { min-width: 0; }
 nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* Ficha de Hoy: precio de ahora y los extremos de 52 semanas y de un mes. */
-.hoy-quote { margin: 10px 0 2px; }
-.hoy-price { font-size: 1.75rem; line-height: 1.1; font-weight: 500; margin: 0 0 6px; }
-.hoy-ends { display: grid; grid-template-columns: 5.5rem 1fr 1fr; gap: 6px; align-items: baseline; font-size: 0.8125rem; padding: 3px 0; border-top: 1px solid var(--line); }
-.hoy-ends .num:last-child { text-align: right; }
+/* Parte alta de la ficha: nombre y precio en una línea, rangos como barras y el deal en etiquetas junto al nivel */
+.hoy-top { align-items: center; }
+.hoy-id { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.hoy-id h2 { font-size: 2rem; line-height: 1; }
+.hoy-price { font-size: 1.375rem; line-height: 1.1; font-weight: 500; white-space: nowrap; }
+.hoy-quote { margin: 8px 0 2px; }
+.hoy-ends { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; padding: 3px 0; color: var(--muted); }
+.hoy-ends > .muted { flex: none; width: 3.4rem; }
+.hoy-ends-bar { position: relative; flex: 1; min-width: 30px; height: 3px; border-radius: 999px; background: var(--line); }
+.hoy-ends-bar i { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--fg); }
+.hoy-deal { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.lv.mid { min-height: 0; width: 44px; height: 44px; font-size: 1.375rem; border-radius: 12px; flex: none; }
+.hoy-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.hoy-chip { font-size: 0.75rem; font-weight: 500; padding: 3px 9px; border-radius: 999px; white-space: nowrap; color: var(--fg); box-shadow: 0 0 0 1px rgba(232, 239, 233, 0.28); }
+.hoy-chip.brass { color: var(--brass); font-weight: 400; box-shadow: var(--border); }
 
 /* Ficha de Hoy: lo que rinde el deal, en tres filas. */
 .hoy-yield { margin: 14px 0 0; padding: 10px 12px 6px; background: var(--surface); box-shadow: var(--border); border-radius: 14px; }

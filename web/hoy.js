@@ -542,15 +542,20 @@ export function createHoy(ctx) {
     const rows = dealRows(sym, hoy.deal, o.opts, o.today);
     const closes = state.hist?.symbols?.[sym.s]?.c;
     const year = yearRange(closes, sym.p), month = monthRange(closes, sym.p);
-    const ends = (label, r) => (r ? `<div class="hoy-ends"><span class="muted">${label}</span><span class="num"><b>${usd2(r.min)}</b> mín.</span><span class="num">máx. <b>${usd2(r.max)}</b></span></div>` : "");
+    // Un rango (52 semanas, 1 mes): mínimo y máximo en gris y una barra fina con el precio de ahora como punto.
+    const ends = (label, r) => {
+      if (!r) return "";
+      const at = r.max > r.min && sym.p > 0 ? Math.min(100, Math.max(0, Math.round(((sym.p - r.min) / (r.max - r.min)) * 100))) : 50;
+      return `<div class="hoy-ends" role="img" aria-label="${label}: mínimo ${usd2(r.min)}, máximo ${usd2(r.max)}"><span class="muted">${label}</span><span class="num">${usd2(r.min)}</span><span class="hoy-ends-bar"><i style="left:${at}%"></i></span><span class="num">${usd2(r.max)}</span></div>`;
+    };
     const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
-    const head = `<div class="sheet-head">
-        <div style="min-width:0"><h2 style="font-size:2rem">${esc(sym.s)}</h2><p class="small muted">${esc(name)}</p></div>
+    const head = `<div class="sheet-head hoy-top">
+        <div class="hoy-id"><h2>${esc(sym.s)}</h2><b class="hoy-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</b></div>
         <button class="btn quiet" data-hoy="close">Cerrar</button>
       </div>
+      <p class="small muted" style="margin-top:4px">${esc(name)}</p>
       <div class="hoy-quote">
-        <p class="hoy-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</p>
-        ${ends(year && year.sessions > 250 ? "52 semanas" : year ? `${year.sessions} sesiones` : "", year)}${ends("1 mes", month)}
+        ${ends(year && year.sessions > 250 ? "52 sem." : year ? `${year.sessions} ses.` : "", year)}${ends("1 mes", month)}
       </div>`;
     if (!rows.row) {
       return `<div class="sheet-back" data-hoy="close"><div class="sheet hoy-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">${head}
@@ -578,9 +583,13 @@ export function createHoy(ctx) {
     for (const note of row.trend ?? []) pills.push(`<span class="tag-note brass">${esc(note)}</span>`);
     if (row.shortHistory && row.histProb != null) pills.push('<span class="tag-note">poca historia</span>');
     if (row.distinct && !row.onlyOne) pills.push('<span class="tag-note">estimaciones muy distintas</span>');
-    const badge = apart
-      ? `<p class="hoy-badge"><span class="lv lvh big">H</span><span><b>Apartada de la comparación</b><small>${esc(gate)}. A precio visible no se puntúa.</small></span></p>`
-      : `<p class="hoy-badge"><span class="lv lv${checks.level} big">${checks.level}</span><span><b>Nivel ${checks.level} de ${maxLevel}</b><small>${hoy.price === "mid" ? "Si te llenaran a precio medio: una hipótesis, no un precio garantizado." : checks.level === 0 ? "No cubre lo que se espera pagar." : "A precio visible."}</small></span></p>`;
+    // El nivel (solo la casilla) y, al lado, los datos del bull put en etiquetas. El ancho va en dólares por contrato.
+    const chips = [`${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}`, esc(row.expiryLabel), `ancho $${num(row.width * 100, 0)}`, `${num(row.otm, 1)} % abajo`];
+    const badge = `<div class="hoy-deal">
+        ${apart ? `<span class="lv lvh mid" role="img" aria-label="Apartada de la comparación">H</span>` : `<span class="lv lv${checks.level} mid" role="img" aria-label="Nivel ${checks.level} de ${maxLevel}">${checks.level}</span>`}
+        <span class="hoy-chips chosen-title">${chips.map((text) => `<span class="hoy-chip num">${text}</span>`).join("")}${hoy.price === "mid" ? '<span class="hoy-chip brass">precio medio: hipótesis</span>' : ""}</span>
+      </div>
+      ${apart ? `<p class="xs muted" style="margin-top:8px">Apartada de la comparación: ${esc(gate.toLowerCase())}. A precio visible no se puntúa.</p>` : ""}`;
     const pair = (label, value) => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num">${value}</b></span>`;
     const probs = [pair("asignación", row.prob == null ? "—" : `${num(row.prob, 1)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
     if (row.histProb != null) probs.push(pair("historia", `${num(row.histProb, 1)} %`));
@@ -601,7 +610,6 @@ export function createHoy(ctx) {
     return `<div class="sheet-back" data-hoy="close">
       <div class="sheet hoy-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">
         ${head}
-        <p class="chosen-title" style="margin-top:10px">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} · ${esc(row.expiryLabel)} · ${row.dte} d · ancho ${shortMoney(row.width)} · ${num(row.otm, 1)} % abajo</p>
         ${badge}
         <span class="hoy-four" style="margin-top:12px">
           <span><span class="eq-lab">Cobras neto</span><b class="num up">${usd2(row.net)}</b></span>
