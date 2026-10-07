@@ -311,6 +311,13 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .seg button { flex: 1; height: 40px; border-radius: 10px; font-size: 0.875rem; color: var(--muted); white-space: nowrap; }
 .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); font-weight: 500; }
 .hoy-lab { flex: none; width: 92px; }
+/* Bloques que ya tengo: una fila más de filtros, con la misma etiqueta y los mismos chips */
+.frow.hoy-wrap { align-items: flex-start; overflow: visible; }
+.frow.hoy-wrap .hoy-lab { line-height: 32px; }
+.hoy-mine { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 0; min-width: 0; }
+.hoy-lab-btn { text-align: left; height: 32px; }
+.chip.quiet.hoy-edit { color: var(--brass); box-shadow: none; padding: 0 6px; }
+.hoy-mine-note { margin: 0 0 2px 98px; }
 .hoy-sum { margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; background: var(--up-dim); color: var(--up); font-size: 0.875rem; }
 .hoy-sum.none { background: var(--brass-dim); color: var(--brass); }
 .hoy-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin: 0 0 10px; }

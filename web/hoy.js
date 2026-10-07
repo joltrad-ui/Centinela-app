@@ -166,21 +166,21 @@ export function createHoy(ctx) {
     const blocks = ctx.blockOrder();
     const held = o.opts.held;
     const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
-    const heldLine = held.length ? held.join(", ") : "ninguno";
     return `<div class="filters">
       <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
         <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
         <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
       <div class="frow" role="group" aria-label="Ancho máximo"><span class="small muted hoy-lab">Ancho hasta</span>${WIDTHS.map((n) => chip("width", n, `$${n}`, o.opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
-      <button class="rules-line small" data-hoy="held-open" aria-expanded="${hoy.heldOpen}">Bloques que ya tengo: ${esc(heldLine)} ${hoy.heldOpen ? "▴" : "▾"}</button>
       ${
         hoy.heldOpen
-          ? `<div class="chips" role="group" aria-label="Bloques que ya tengo" style="margin-top:2px">${blocks
+          ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
               .map((name) => `<button class="chip quiet" data-hoy="held" data-v="${esc(name)}" aria-pressed="${held.includes(name)}" ${fromDeals.includes(name) ? "disabled" : ""}>${esc(name)}</button>`)
-              .join("")}</div>
-            <p class="xs muted">Marca los bloques en los que ya tienes algo abierto. Un deal de un bloque marcado no suma el punto de bloque nuevo.${fromDeals.length ? " Los de tus deals apuntados se marcan solos." : ""} Solo en este dispositivo.</p>`
-          : ""
+              .join("")}<button class="chip quiet hoy-edit" data-hoy="held-open" aria-expanded="true">Listo</button></div></div>
+            <p class="xs muted hoy-mine-note">Marca los bloques en los que ya tienes algo abierto. Un deal de un bloque marcado no suma el punto de bloque nuevo.${fromDeals.length ? " Los de tus deals apuntados se marcan solos." : ""} Solo en este dispositivo.</p>`
+          : `<div class="frow" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="false">Ya tengo ▾</button>${held
+              .map((name) => `<button class="chip quiet" data-hoy="held-open" aria-pressed="true">${esc(name)}</button>`)
+              .join("")}${held.length ? "" : '<button class="chip quiet" data-hoy="held-open">ninguno</button>'}</div>`
       }
     </div>`;
   }
