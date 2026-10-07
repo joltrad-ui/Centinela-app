@@ -404,7 +404,7 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .hoy-four > span:first-child { text-align: left; }
 .hoy-four > span:last-child { text-align: right; }
 .hoy-four .eq-lab { white-space: nowrap; }
-.hoy-four b { font-size: 1.25rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.hoy-four b { font-size: 1.3rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
 .hoy-four b.up { color: var(--up); }
 .hoy-four b.down { color: var(--down); }
 .hoy-under { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
