@@ -368,7 +368,7 @@ export function createHoy(ctx) {
     const gated = cells.filter((c) => c.state === "gated").length;
     const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
     const floor = hoy.barSort === "floor";
-    const sortChips = `<div class="frow" role="group" aria-label="Orden"><span class="small muted hoy-lab">Orden</span>${chip("bsort", "left", "Lo que queda", !floor)}${chip("bsort", "floor", "El suelo", floor)}</div>`;
+    let head = "", legend = "";
     let body = `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`;
     if (pts.length) {
       // Escala común. Por abajo se corta en −2 %: lo que cae más allá se marca con una flecha y lleva su número.
@@ -410,23 +410,30 @@ export function createHoy(ctx) {
         .join("");
       const errLegend = k === 1 ? "± el error" : `± ${num(k, 1)} veces el error`;
       const pair = (icon, text) => `<span class="hoy-pair">${icon}${text}</span>`;
-      body = `<p class="hoy-legend xs muted" aria-hidden="true">
+      legend = `<p class="hoy-legend xs muted" style="margin-top:12px" aria-hidden="true">
           ${pair('<svg viewBox="0 0 14 14" width="14" height="14"><circle cx="7" cy="7" r="5" class="b-dot"/></svg>', "queda de media")}
           ${pair('<svg viewBox="0 0 22 14" width="22" height="14"><line x1="2" x2="20" y1="7" y2="7" class="b-err"/></svg>', errLegend)}
           ${pair('<svg viewBox="0 0 14 14" width="14" height="14"><rect x="3" y="3" width="8" height="8" transform="rotate(45 7 7)" class="b-got"/></svg>', "cobras")}
           ${pair('<svg viewBox="0 0 22 14" width="22" height="14"><line x1="2" x2="20" y1="7" y2="7" class="b-pay"/></svg>', "se espera pagar")}
-        </p>
-        <div class="hoy-bars">
+        </p>`;
+      // El orden va una sola vez, encima de la lista: a la izquierda cuántos son y a la derecha por qué van ordenados (tocar lo cambia).
+      head = `<div class="hoy-sort small">
+          <span class="muted">${pts.length} ${pts.length === 1 ? "deal" : "deals"}</span>
+          <button data-hoy="bsort" data-v="${floor ? "left" : "floor"}" aria-label="Ordenados ${floor ? "por el suelo" : "por lo que queda"}. Cambiar a ${floor ? "lo que queda" : "el suelo"}">${floor ? "Por el suelo" : "Por lo que queda"}
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 3v10M5 3L2.5 5.5M5 3l2.5 2.5M11 13V3M11 13l-2.5-2.5M11 13l2.5-2.5"/></svg></button>
+        </div>`;
+      body = `<div class="hoy-bars">
           <div class="hoy-brow-axis"><p class="xs muted">% de lo que arriesgas («pierdes máx.»)</p><svg viewBox="0 0 ${W} 14" aria-hidden="true">${ticks}</svg></div>
           <ul>${rowsHtml}</ul>
         </div>
-        <p class="xs muted" style="margin-top:8px">${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}, ${floor ? "por el suelo: lo que queda menos el error, el extremo izquierdo de la barra. Junta en un número lo que rinde y lo firme que es" : "por lo que queda de media"}. ${
+        <p class="xs muted" style="margin-top:8px">${floor ? "El suelo es lo que queda menos el error, el extremo izquierdo de la barra: junta en un número lo que rinde y lo firme que es. " : ""}${
           o.opts.safety === "margin" ? "Si la barra no toca el cero, lo que queda supera el error: tiene el punto de seguridad. " : ""
         }La flecha marca lo que cae por debajo de −${num(Math.abs(lo), 0)} %. Toca una fila para ver el deal.</p>`;
     }
-    return `${controls(o)}${expChips}${sortChips}
+    return `${controls(o)}${expChips}${head}
       ${body}
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
+      ${legend}
       ${notes(o)}
       ${help(o.opts)}`;
   }
