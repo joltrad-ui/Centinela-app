@@ -65,6 +65,7 @@ export function createHoy(ctx) {
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
+    yieldOpen: saved.yieldOpen === true, // la tabla de rendimiento de la ficha: plegada (solo "Con comisión") o con las tres filas
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long }
     heldOpen: false,
@@ -74,7 +75,7 @@ export function createHoy(ctx) {
     copied: "",
     confirm: null, // id del deal que se va a borrar
   };
-  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry });
+  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, yieldOpen: hoy.yieldOpen });
 
   const cleanDeal = (row) => {
     if (!row || typeof row !== "object" || typeof row.id !== "string" || typeof row.s !== "string" || typeof row.expiry !== "string") return null;
@@ -391,14 +392,16 @@ export function createHoy(ctx) {
         ? `<tbody><tr class="lab"><th scope="rowgroup" colspan="4">${label} <small>${sub}</small></th></tr>
           <tr><td class="num ${cls(v.gain)}">${usd(v.gain)}</td><td class="num ${cls(v.perDay)}">${usd(v.perDay)}</td><td class="num ${cls(v.onRisk)}">${pct(v.onRisk, 2)}</td><td class="num ${cls(v.onRiskPerDay)}">${pct(v.onRiskPerDay, 3)}</td></tr></tbody>`
         : "";
+    const open = hoy.yieldOpen;
     return `<div class="hoy-yield">
+      <button class="hoy-yield-head" data-hoy="yield" aria-expanded="${open}"><span><b>Lo que rindes</b> <span class="muted">· ${r.days} ${r.days === 1 ? "día" : "días"}</span></span><span class="muted">${open ? "Ocultar ▴" : "Ver más ▾"}</span></button>
       <table>
-        <caption class="xs muted">Por contrato, hasta el vencimiento (${r.days} ${r.days === 1 ? "día" : "días"}). Se arriesga «pierdes máx.».</caption>
-        <thead><tr><th scope="col">Gano</th><th scope="col">Gano / día</th><th scope="col">Gano / spread</th><th scope="col">Gano / spread / día</th></tr></thead>
-        ${line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross)}
+        <thead><tr><th scope="col" title="Gano">G</th><th scope="col" title="Gano por día">G/d</th><th scope="col" title="Gano sobre lo que arriesgas">G/s</th><th scope="col" title="Gano sobre lo que arriesgas, por día">G/s/d</th></tr></thead>
+        ${open ? line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross) : ""}
         ${line("Con comisión", `abrir: ${usd2(fee)}`, r.net)}
-        ${line("Esperada", "tras lo que se espera pagar", r.expected)}
+        ${open ? line("Esperada", "tras lo que se espera pagar", r.expected) : ""}
       </table>
+      <p class="xs muted hoy-yield-key">G = gano · d = día · s = spread, lo que arriesgas («pierdes máx.»). Por contrato.</p>
     </div>`;
   }
 
@@ -622,6 +625,9 @@ export function createHoy(ctx) {
       keep();
     } else if (act === "help") {
       hoy.help = !hoy.help;
+    } else if (act === "yield") {
+      hoy.yieldOpen = !hoy.yieldOpen;
+      keep();
     } else if (act === "exp") {
       hoy.expiry = value;
       hoy.view = "nube";
