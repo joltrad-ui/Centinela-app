@@ -28,6 +28,7 @@ import {
   nyToday,
   pricesOutsideMarket,
   rangeOf,
+  rangeOrder,
   returnsOf,
   spreadRow,
   withHistory,
@@ -70,6 +71,7 @@ export function createHoy(ctx) {
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
+    barSort: saved.barSort === "floor" ? "floor" : "left", // orden de la vista Barras: por lo que queda o por el suelo
     yieldOpen: saved.yieldOpen === true, // la tabla de rendimiento de la ficha: plegada (solo "Con comisión") o con las tres filas
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long }
@@ -80,7 +82,7 @@ export function createHoy(ctx) {
     copied: "",
     confirm: null, // id del deal que se va a borrar
   };
-  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, yieldOpen: hoy.yieldOpen });
+  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, yieldOpen: hoy.yieldOpen, barSort: hoy.barSort });
 
   const cleanDeal = (row) => {
     if (!row || typeof row !== "object" || typeof row.id !== "string" || typeof row.s !== "string" || typeof row.expiry !== "string") return null;
@@ -362,9 +364,11 @@ export function createHoy(ctx) {
       .filter((c) => c.state === "level" && c.checks.scored && c.checks.costShare != null)
       .map((c) => ({ c, r: rangeOf(c.row, k) }))
       .filter((item) => item.r)
-      .sort((a, b) => b.r.expected - a.r.expected);
+      .sort((a, b) => rangeOrder(a.r, b.r, hoy.barSort));
     const gated = cells.filter((c) => c.state === "gated").length;
     const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
+    const floor = hoy.barSort === "floor";
+    const sortChips = `<div class="frow" role="group" aria-label="Orden"><span class="small muted hoy-lab">Orden</span>${chip("bsort", "left", "Lo que queda", !floor)}${chip("bsort", "floor", "El suelo", floor)}</div>`;
     let body = `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`;
     if (pts.length) {
       // Escala común. Por abajo se corta en −2 %: lo que cae más allá se marca con una flecha y lleva su número.
@@ -390,10 +394,13 @@ export function createHoy(ctx) {
             ? `<path d="M${PAD + 5} ${cy - 5} L${PAD - 3} ${cy} L${PAD + 5} ${cy + 5} Z" class="b-off"/>`
             : `<circle cx="${px.toFixed(1)}" cy="${cy}" r="${pos ? 5.5 : 4.5}" class="b-dot${pos ? "" : " neg"}"/>`;
           const firm = c.level >= 1 && c.checks.safe;
-          const errText = r.err == null ? "" : ` <small>± ${num(r.err, 1)}</small>`;
+          // A la derecha, el número por el que se ordena: lo que queda con su error, o el suelo.
+          const byFloor = floor && r.low != null;
+          const kpi = byFloor ? `${signedPct(r.low)} <small>suelo</small>` : `${signedPct(r.expected)}${r.err == null ? "" : ` <small>± ${num(r.err, 1)}</small>`}`;
+          const kpiPos = byFloor ? r.low > 0 : pos;
           return `<li><button class="hoy-brow" data-hoy="cell" data-s="${esc(c.sym.s)}" data-e="${expiry}" data-k="${c.row.shortStrike}|${c.row.longStrike}" aria-label="${esc(c.sym.s)}: cobra ${num(r.collected, 1)} %, se espera pagar ${num(r.pay, 1)} %, queda ${signedPct(r.expected)}${r.err == null ? "" : `, error ${num(r.err, 1)}`}">
             <span class="hoy-brow-top">${levelTag(c.level, ` sm${firm ? " firm" : ""}`)} <b>${esc(c.sym.s)}</b> <span class="muted">${fmtStrike(c.row.shortStrike)}/${fmtStrike(c.row.longStrike)}</span>
-              <span class="hoy-brow-kpi num ${pos ? "plus" : "minus"}">${signedPct(r.expected)}${errText}</span></span>
+              <span class="hoy-brow-kpi num ${kpiPos ? "plus" : "minus"}">${kpi}</span></span>
             <svg viewBox="0 0 ${W} ${H}" aria-hidden="true">${gridLines}
               <line x1="${px.toFixed(1)}" x2="${gx.toFixed(1)}" y1="${cy}" y2="${cy}" class="b-pay"/>${whisker}${dot}
               <rect x="${(gx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" transform="rotate(45 ${gx.toFixed(1)} ${cy})" class="b-got"/></svg>
@@ -413,11 +420,11 @@ export function createHoy(ctx) {
           <div class="hoy-brow-axis"><p class="xs muted">% de lo que arriesgas («pierdes máx.»)</p><svg viewBox="0 0 ${W} 14" aria-hidden="true">${ticks}</svg></div>
           <ul>${rowsHtml}</ul>
         </div>
-        <p class="xs muted" style="margin-top:8px">${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}, por lo que queda de media. ${
+        <p class="xs muted" style="margin-top:8px">${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}, ${floor ? "por el suelo: lo que queda menos el error, el extremo izquierdo de la barra. Junta en un número lo que rinde y lo firme que es" : "por lo que queda de media"}. ${
           o.opts.safety === "margin" ? "Si la barra no toca el cero, lo que queda supera el error: tiene el punto de seguridad. " : ""
         }La flecha marca lo que cae por debajo de −${num(Math.abs(lo), 0)} %. Toca una fila para ver el deal.</p>`;
     }
-    return `${controls(o)}${expChips}
+    return `${controls(o)}${expChips}${sortChips}
       ${body}
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
       ${notes(o)}
@@ -710,6 +717,9 @@ export function createHoy(ctx) {
       keep();
     } else if (act === "help") {
       hoy.help = !hoy.help;
+    } else if (act === "bsort") {
+      hoy.barSort = value === "floor" ? "floor" : "left";
+      keep();
     } else if (act === "yield") {
       hoy.yieldOpen = !hoy.yieldOpen;
       keep();

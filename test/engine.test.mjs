@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -860,4 +860,21 @@ test("hoy: un deal en una sola escala para la vista Barras", () => {
   assert.equal(rangeOf({ ...row, expected: null }), null);
   assert.equal(rangeOf({ status: "sin-precio" }), null);
   assert.equal(rangeOf(null), null);
+});
+
+test("hoy: el orden de Barras, por lo que queda o por el suelo", () => {
+  // IWM y TLT del 30 oct: queda casi lo mismo, pero el error de IWM es el doble
+  const iwm = rangeOf({ status: "ok", net: 15, loss: 485, expected: 11.07, err: 3.1 });
+  const tlt = rangeOf({ status: "ok", net: 9, loss: 491, expected: 5.17, err: 1.49 });
+  const bare = rangeOf({ status: "ok", net: 20, loss: 480, expected: 10, err: null }); // queda más que nadie, sin error medido
+  const names = (list, by) => [...list].sort((a, b) => rangeOrder(a[1], b[1], by)).map((item) => item[0]);
+  const list = [["TLT", tlt], ["sin error", bare], ["IWM", iwm]];
+  // por lo que queda: IWM (0,81) por delante de TLT (0,78)
+  assert.deepEqual(names(list, "left"), ["sin error", "IWM", "TLT"]);
+  assert.deepEqual(names(list), ["sin error", "IWM", "TLT"]);
+  // por el suelo: TLT (0,48) por delante de IWM (0,17); sin error medido, al final
+  assert.deepEqual(names(list, "floor"), ["TLT", "IWM", "sin error"]);
+  // mismo suelo: decide lo que queda
+  const a = { expected: 1, low: 0.5 }, b = { expected: 2, low: 0.5 };
+  assert.ok(rangeOrder(a, b, "floor") > 0);
 });

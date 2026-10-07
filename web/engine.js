@@ -1165,6 +1165,17 @@ export function rangeOf(row, k = 1) {
   return { collected: pct(row.net), expected, pay: pct(row.expected), err, low: err == null ? null : expected - err, high: err == null ? null : expected + err };
 }
 
+/** Orden de la vista "Barras". `by`: "left" (lo que queda de media, de mayor a menor) o "floor" (el suelo:
+ *  lo que queda menos el error, el extremo bajo de la barra). Con "floor", los que no tienen error medido
+ *  van detrás; los empates se deshacen por lo que queda. Compara dos resultados de `rangeOf`. */
+export function rangeOrder(a, b, by = "left") {
+  if (by === "floor") {
+    if ((a.low == null) !== (b.low == null)) return a.low == null ? 1 : -1;
+    if (a.low != null && a.low !== b.low) return b.low - a.low;
+  }
+  return b.expected - a.expected;
+}
+
 /** Una casilla del mapa: un nombre en un vencimiento.
  *  state: "level" (comparable, con su nivel), "gated" (con precio pero apartada por una puerta) u
  *  "out" (sin fila). `opts.price`: "nat" (precio natural, el de siempre) o "mid" (hipótesis a precio medio:
