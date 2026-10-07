@@ -174,9 +174,12 @@ export function createHoy(ctx) {
             <p class="xs muted">Marca los bloques en los que ya tienes algo abierto. Un deal de un bloque marcado no suma el punto de bloque nuevo.${fromDeals.length ? " Los de tus deals apuntados se marcan solos." : ""} Solo en este dispositivo.</p>`
           : ""
       }
-      <button class="rules-line small" data-tab="reglas">Plazo ${o.rules.minDte}–${o.rules.maxDte} días · comisión ${usd2(o.opts.fee)} · horquilla máxima ${o.opts.gapPct} % · se cambian en Reglas</button>
     </div>`;
   }
+
+  /** Los avisos de abajo del todo: si el precio es una hipótesis y qué reglas mandan. Van al final para no empujar lo importante. */
+  const notes = (o) => `${hoy.price === "mid" ? '<p class="banner small" style="margin-top:14px">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
+    <button class="rules-line small" style="margin-top:${hoy.price === "mid" ? 8 : 14}px" data-tab="reglas">Plazo ${o.rules.minDte}–${o.rules.maxDte} días · comisión ${usd2(o.opts.fee)} · horquilla máxima ${o.opts.gapPct} % · se cambian en Reglas</button>`;
 
   // Cómo se llama el punto de seguridad según la regla (Reglas > Pestaña Hoy).
   const safetyText = (opts) =>
@@ -239,7 +242,6 @@ export function createHoy(ctx) {
         ? "Hoy ninguna casilla cubre lo que se espera pagar."
         : `${s.top} ${s.top === 1 ? "casilla" : "casillas"} de nivel 3 o más${o.opts.safety === "off" ? "" : ` · ${s.firm} con ${o.opts.safety === "both" ? "los dos cálculos en positivo" : "margen"}`} · ${s.comparable} comparables`;
     return `${controls(o)}
-      ${hoy.price === "mid" ? '<p class="banner small">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
       <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
       ${legend(o.opts)}
       <div class="hoy-grid" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:54px repeat(${grid.expiries.length},minmax(0,1fr))">
@@ -248,6 +250,7 @@ export function createHoy(ctx) {
       </div>
       ${hidden.length ? `<p class="xs muted" style="margin-top:10px">Sin fila en ningún vencimiento: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
       <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. Toca una fecha para comparar los de ese vencimiento.</p>
+      ${notes(o)}
       ${help(o.opts)}`;
   }
 
@@ -328,13 +331,13 @@ export function createHoy(ctx) {
       )
       .join("");
     return `${controls(o)}${expChips}
-      ${hoy.price === "mid" ? '<p class="banner small">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
       ${
         pts.length
           ? `${chart}<div class="deal-head small muted" style="margin-top:14px"><span>${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}</span><span>Rentab. esperada</span></div><ul class="rows">${list}</ul>`
           : `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`
       }
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
+      ${notes(o)}
       ${help(o.opts)}`;
   }
 
@@ -409,9 +412,9 @@ export function createHoy(ctx) {
         }La flecha marca lo que cae por debajo de −${num(Math.abs(lo), 0)} %. Toca una fila para ver el deal.</p>`;
     }
     return `${controls(o)}${expChips}
-      ${hoy.price === "mid" ? '<p class="banner small">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
       ${body}
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
+      ${notes(o)}
       ${help(o.opts)}`;
   }
 
