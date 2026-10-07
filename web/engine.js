@@ -1128,6 +1128,30 @@ export function dealChecks(row, opts = {}) {
   };
 }
 
+/** Lo que rinde un deal, en tres filas: sin descontar la comisión, descontándola y tras lo que se espera pagar.
+ *  Cada fila: `gain` (dólares por contrato), `perDay` (dólares por día), `onRisk` (% de lo que arriesgas) y
+ *  `onRiskPerDay` (% al día). Arriesgas el ancho menos lo cobrado ("pierdes máx."), con la comisión descontada o sin ella.
+ *  Los días son los naturales hasta el vencimiento. La tercera fila (`expected`) es null sin cierres para puntuar. */
+export function returnsOf(row, fee = 0) {
+  if (!row || row.status !== "ok" || !(row.dte > 0) || !(row.width > 0)) return null;
+  const days = row.dte;
+  const line = (gain, risk) => ({
+    gain: r2(gain),
+    perDay: r2(gain / days),
+    onRisk: risk > 0 ? r2((gain / risk) * 100) : null,
+    onRiskPerDay: risk > 0 ? Math.round(((gain / risk) * 100 * 10000) / days) / 10000 : null,
+  });
+  const gross = row.credit * 100;
+  const out = {
+    days,
+    gross: line(gross, row.width * 100 - gross),
+    net: line(row.net, row.loss),
+    expected: null,
+  };
+  if (row.expected != null) out.expected = line(row.net - row.expected, row.loss);
+  return out;
+}
+
 /** Una casilla del mapa: un nombre en un vencimiento.
  *  state: "level" (comparable, con su nivel), "gated" (con precio pero apartada por una puerta) u
  *  "out" (sin fila). `opts.price`: "nat" (precio natural, el de siempre) o "mid" (hipótesis a precio medio:

@@ -26,6 +26,7 @@ import {
   num,
   nyToday,
   pricesOutsideMarket,
+  returnsOf,
   spreadRow,
   withHistory,
   yearRange,
@@ -378,6 +379,29 @@ export function createHoy(ctx) {
     );
   }
 
+  /** Lo que rinde el deal: sin comisión, con comisión y tras lo que se espera pagar. Cada fila, en dólares, por día, sobre lo que arriesgas y sobre lo que arriesgas por día. */
+  function yieldTable(row, fee) {
+    const r = returnsOf(row, fee);
+    if (!r) return "";
+    const pct = (n, d) => (n == null ? "—" : `${n < 0 ? "−" : ""}${num(Math.abs(n), d)} %`);
+    const usd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}$${num(Math.abs(n), 2)}`; // siempre con céntimos: aquí importan
+    const cls = (n) => (n > 0 ? "up" : n < 0 ? "down" : "");
+    const line = (label, sub, v) =>
+      v
+        ? `<tbody><tr class="lab"><th scope="rowgroup" colspan="4">${label} <small>${sub}</small></th></tr>
+          <tr><td class="num ${cls(v.gain)}">${usd(v.gain)}</td><td class="num ${cls(v.perDay)}">${usd(v.perDay)}</td><td class="num ${cls(v.onRisk)}">${pct(v.onRisk, 2)}</td><td class="num ${cls(v.onRiskPerDay)}">${pct(v.onRiskPerDay, 3)}</td></tr></tbody>`
+        : "";
+    return `<div class="hoy-yield">
+      <table>
+        <caption class="xs muted">Por contrato, hasta el vencimiento (${r.days} ${r.days === 1 ? "día" : "días"}). Se arriesga «pierdes máx.».</caption>
+        <thead><tr><th scope="col">Gano</th><th scope="col">Gano / día</th><th scope="col">Gano / spread</th><th scope="col">Gano / spread / día</th></tr></thead>
+        ${line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross)}
+        ${line("Con comisión", `abrir: ${usd2(fee)}`, r.net)}
+        ${line("Esperada", "tras lo que se espera pagar", r.expected)}
+      </table>
+    </div>`;
+  }
+
   function orderText(sym, row, rows) {
     const year = row.expiry.slice(0, 4);
     const lines = [
@@ -461,6 +485,7 @@ export function createHoy(ctx) {
         ${badge}
         <span class="eq-stakes" style="margin-top:12px"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usd2(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usd2(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></span></span>
         ${pills.length ? `<span class="eq-tags small" style="margin-top:10px">${pills.join("")}</span>` : ""}
+        ${yieldTable(row, o.opts.fee)}
         ${list}
         ${marginBar(row)}
         <span class="eq-mini" style="margin-top:12px"><span class="eq-line"><span class="eq-lab">Prob.</span>${probs.join("")}</span></span>

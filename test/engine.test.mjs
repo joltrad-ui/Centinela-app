@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -806,4 +806,26 @@ test("monthRange: último mes (21 sesiones) con el precio de ahora", () => {
   assert.equal(m.max, 170);
   assert.equal(m.sessions, 22);
   assert.equal(monthRange([], 10), null);
+});
+
+test("hoy: lo que rinde un deal, sin comisión, con comisión y tras lo que se espera pagar", () => {
+  const row = { status: "ok", dte: 20, width: 5, credit: 0.2, net: 18.8, loss: 481.2, expected: 14 };
+  const r = returnsOf(row, 1.2);
+  assert.equal(r.days, 20);
+  // sin comisión: cobras 20 y arriesgas 500 − 20 = 480
+  assert.deepEqual(r.gross, { gain: 20, perDay: 1, onRisk: 4.17, onRiskPerDay: 0.2083 });
+  // con comisión: cobras 18,80 y arriesgas 481,20 (lo mismo que la rentab. neta de la app)
+  assert.deepEqual(r.net, { gain: 18.8, perDay: 0.94, onRisk: 3.91, onRiskPerDay: 0.1953 });
+  // tras lo que se espera pagar: queda 4,80 sobre 481,20
+  assert.deepEqual(r.expected, { gain: 4.8, perDay: 0.24, onRisk: 1, onRiskPerDay: 0.0499 });
+  assert.equal(r.net.onRisk, Math.round((row.net / row.loss) * 10000) / 100);
+  // sin cierres no hay fila esperada; sin días o sin fila no hay nada
+  assert.equal(returnsOf({ ...row, expected: undefined }, 1.2).expected, null);
+  assert.equal(returnsOf({ ...row, dte: 0 }, 1.2), null);
+  assert.equal(returnsOf({ status: "sin-precio" }, 1.2), null);
+  assert.equal(returnsOf(null), null);
+  // la tabla de la conversación: 15 días, cobras 15 sobre 400 → 0,25 % al día (no 1,78, que era la inversa)
+  const a = returnsOf({ status: "ok", dte: 15, width: 4.15, credit: 0.15, net: 15, loss: 400, expected: 10 }, 0);
+  assert.equal(a.net.onRisk, 3.75);
+  assert.equal(a.net.onRiskPerDay, 0.25);
 });
