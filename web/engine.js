@@ -1152,6 +1152,17 @@ export function returnsOf(row, fee = 0) {
   return out;
 }
 
+/** Un deal en una sola escala, para la vista "Barras" de Hoy: todo en % de lo que se arriesga ("pierdes máx.").
+ *  collected = cobras neto; expected = lo que queda (cobras neto − se espera pagar); pay = se espera pagar;
+ *  err = `k` veces el error del cálculo. collected = expected + pay. Sin cierres no hay nada que dibujar. */
+export function rangeOf(row, k = 1) {
+  if (!row || row.status !== "ok" || !(row.loss > 0) || row.expected == null) return null;
+  const pct = (dollars) => (dollars / row.loss) * 100;
+  const err = row.err == null ? null : pct(row.err * k);
+  const expected = pct(row.net - row.expected);
+  return { collected: pct(row.net), expected, pay: pct(row.expected), err, low: err == null ? null : expected - err, high: err == null ? null : expected + err };
+}
+
 /** Una casilla del mapa: un nombre en un vencimiento.
  *  state: "level" (comparable, con su nivel), "gated" (con precio pero apartada por una puerta) u
  *  "out" (sin fila). `opts.price`: "nat" (precio natural, el de siempre) o "mid" (hipótesis a precio medio:

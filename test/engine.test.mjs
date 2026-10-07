@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -828,4 +828,32 @@ test("hoy: lo que rinde un deal, sin comisión, con comisión y tras lo que se e
   const a = returnsOf({ status: "ok", dte: 15, width: 4.15, credit: 0.15, net: 15, loss: 400, expected: 10 }, 0);
   assert.equal(a.net.onRisk, 3.75);
   assert.equal(a.net.onRiskPerDay, 0.25);
+});
+
+test("hoy: un deal en una sola escala para la vista Barras", () => {
+  // el deal de IWM del 30 oct: cobra 15, se espera pagar 11,07, arriesga 485 y el error es 3,10
+  const row = { status: "ok", net: 15, loss: 485, expected: 11.07, err: 3.1 };
+  const r = rangeOf(row);
+  const near = (a, b) => assert.ok(Math.abs(a - b) < 0.005, `${a} ≠ ${b}`);
+  near(r.collected, 3.09);
+  near(r.pay, 2.28);
+  near(r.expected, 0.81);
+  near(r.err, 0.64);
+  near(r.low, 0.17);
+  near(r.high, 1.45);
+  // lo cobrado es lo que queda más lo que se espera pagar
+  near(r.collected, r.expected + r.pay);
+  // con margen de 2 veces la barra mide el doble y toca el cero: sin punto de seguridad
+  const wide = rangeOf(row, 2);
+  near(wide.err, 1.28);
+  assert.ok(wide.low < 0);
+  near(wide.expected, r.expected);
+  // sin error se dibuja el punto pero no la barra; sin cierres o sin fila, nada
+  const bare = rangeOf({ ...row, err: null });
+  assert.equal(bare.err, null);
+  assert.equal(bare.low, null);
+  near(bare.expected, 0.81);
+  assert.equal(rangeOf({ ...row, expected: null }), null);
+  assert.equal(rangeOf({ status: "sin-precio" }), null);
+  assert.equal(rangeOf(null), null);
 });

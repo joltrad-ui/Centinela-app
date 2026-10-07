@@ -4,7 +4,7 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da ór
 
 ## Qué hace
 
-- **Hoy**: la pantalla que se abre al entrar. Un mapa de nombres por vencimientos, con un nivel de 0 a 4 por casilla (cuánto tiene a favor el bull put de igual riesgo de esa casilla); una nube para comparar los de un vencimiento; la ficha del deal con los cuatro puntos que dan el nivel; y **Mis deals**, donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
+- **Hoy**: la pantalla que se abre al entrar. Un mapa de nombres por vencimientos, con un nivel de 0 a 4 por casilla (cuánto tiene a favor el bull put de igual riesgo de esa casilla); una nube para comparar los de un vencimiento; unas barras con los mismos deals, una fila cada uno, que enseñan lo que cobra, lo que se espera pagar y lo que queda con su error; la ficha del deal con los cuatro puntos que dan el nivel; y **Mis deals**, donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
 - **Lista**: la lista base y la única que hay. 32 nombres con opciones líquidas, agrupados por bloque (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
 - **Deals**: todos los bull puts de la lista juntos, con filtros por ancho, vencimiento y % abajo.
 - **Avisos**: cuando un nombre de la lista pasa a cumplir. Llegan al móvil con la app gratuita ntfy.

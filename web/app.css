@@ -355,6 +355,31 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .hoy-cloud g[data-hoy]:focus-visible { outline: none; }
 .hoy-cloud g[data-hoy]:focus-visible .lab { fill: var(--brass); }
 
+.hoy-bars { background: var(--surface); box-shadow: var(--border); border-radius: 16px; padding: 8px 12px 2px; margin-top: 4px; }
+.hoy-bars ul { list-style: none; margin: 0; padding: 0; }
+.hoy-bars li { border-top: 1px solid var(--line); }
+.hoy-bars svg { display: block; width: 100%; height: auto; }
+.hoy-brow-axis p { margin: 0 0 2px; }
+.hoy-brow { display: block; width: 100%; text-align: left; padding: 9px 0 8px; }
+.hoy-brow-top { display: block; position: relative; padding-right: 108px; margin-bottom: 5px; }
+.hoy-brow-top b { font-weight: 500; letter-spacing: 0.02em; }
+.hoy-brow-kpi { position: absolute; right: 0; top: 0; font-weight: 500; white-space: nowrap; }
+.hoy-brow-kpi.plus { color: var(--up); }
+.hoy-brow-kpi.minus { color: var(--down); }
+.hoy-brow-kpi small { font-size: 0.75rem; font-weight: 400; color: var(--muted); }
+.hoy-brow-sub { display: block; margin-top: 4px; }
+.hoy-bars .grid { stroke: var(--line); stroke-width: 1; }
+.hoy-bars .zero { stroke: var(--muted); stroke-width: 1.5; }
+.hoy-bars .tick { fill: var(--muted); font-size: 10px; font-family: var(--sans); }
+.hoy-legend .hoy-pair { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; margin-right: 8px; }
+.b-pay { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; fill: none; }
+.b-err { stroke: var(--brass); stroke-width: 4; stroke-linecap: round; opacity: 0.55; }
+.b-err.neg { stroke: var(--muted); }
+.b-dot { fill: var(--brass); }
+.b-dot.neg { fill: var(--surface); stroke: var(--muted); stroke-width: 1.5; }
+.b-off { fill: var(--muted); }
+.b-got { fill: var(--surface); stroke: var(--fg); stroke-width: 1.5; }
+
 .hoy-sheet { padding-bottom: 36px; }
 .hoy-badge { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .hoy-badge b { font-weight: 500; display: block; font-size: 1.0625rem; }

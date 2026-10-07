@@ -2,6 +2,7 @@
 //
 //   1. Mapa   — nombres por vencimientos, cada casilla con su nivel de 0 a 4: ¿hay algo hoy?
 //   2. Nube   — los deals de un vencimiento, coste frente a rentab. esperada: ¿cuál?
+//      Barras — los mismos deals, una fila cada uno: lo que cobra, lo que se espera pagar y lo que queda con su error.
 //   3. Ficha  — las cuatro comprobaciones, lo que queda con cada cálculo y los avisos: ¿me lo creo?
 //   4. Resumen para el bróker — texto para copiar. La app no envía órdenes ni sabe de ningún bróker.
 //   5. Mis deals — lo abierto y lo cerrado, con el nivel que tenía cada uno: vigilar y aprender.
@@ -26,6 +27,7 @@ import {
   num,
   nyToday,
   pricesOutsideMarket,
+  rangeOf,
   returnsOf,
   spreadRow,
   withHistory,
@@ -36,7 +38,7 @@ const LS_HOY = "centinela.hoy.v1";
 const LS_DEALS = "centinela.misdeals.v1";
 const PROBS = [5, 8, 10];
 const WIDTHS = [2, 3, 5, 10];
-const VIEWS = ["mapa", "nube", "mis"];
+const VIEWS = ["mapa", "nube", "barras", "mis"];
 const MAX_DEALS = 300;
 
 const usd2 = (n) => `$${num(n, 2)}`;
@@ -151,7 +153,7 @@ export function createHoy(ctx) {
   function segmented() {
     const open = openDeals().length;
     const item = (id, label) => `<button data-hoy="view" data-v="${id}" aria-pressed="${hoy.view === id}">${label}</button>`;
-    return `<div class="seg" role="group" aria-label="Vistas de Hoy">${item("mapa", "Mapa")}${item("nube", "Nube")}${item("mis", `Mis deals${open ? ` · ${open}` : ""}`)}</div>`;
+    return `<div class="seg" role="group" aria-label="Vistas de Hoy">${item("mapa", "Mapa")}${item("nube", "Nube")}${item("barras", "Barras")}${item("mis", `Mis deals${open ? ` · ${open}` : ""}`)}</div>`;
   }
 
   function controls(o) {
@@ -332,6 +334,83 @@ export function createHoy(ctx) {
           ? `${chart}<div class="deal-head small muted" style="margin-top:14px"><span>${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}</span><span>Rentab. esperada</span></div><ul class="rows">${list}</ul>`
           : `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`
       }
+      ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
+      ${help(o.opts)}`;
+  }
+
+  // ---------- 2 bis. barras ----------
+
+  /** Los mismos deals que la nube, una fila cada uno y todos en la misma escala (% de lo que se arriesga):
+   *  el rombo es lo que cobra, el punto lo que queda de media, la barra su error y la línea de puntos lo que se espera pagar. */
+  function viewBarras(o) {
+    if (!o.symbols.length) return `<div class="empty"><h2>Esperando el primer barrido de la lista.</h2></div>`;
+    if (!o.expiries.length) return `${controls(o)}<div class="empty"><h2>Ningún vencimiento cae dentro del plazo de Reglas.</h2></div>`;
+    const expiry = o.expiries.includes(hoy.expiry) ? hoy.expiry : o.expiries.at(-1);
+    const grid = levelGrid(o.symbols, { ...o.opts, expiries: [expiry] }, o.today);
+    const cells = grid.names.map((name) => name.cells[0]);
+    const k = o.opts.safety === "margin" ? o.opts.marginK : 1;
+    const pts = cells
+      .filter((c) => c.state === "level" && c.checks.scored && c.checks.costShare != null)
+      .map((c) => ({ c, r: rangeOf(c.row, k) }))
+      .filter((item) => item.r)
+      .sort((a, b) => b.r.expected - a.r.expected);
+    const gated = cells.filter((c) => c.state === "gated").length;
+    const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
+    let body = `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`;
+    if (pts.length) {
+      // Escala común. Por abajo se corta en −2 %: lo que cae más allá se marca con una flecha y lleva su número.
+      const W = 320, H = 24, PAD = 9, FLOOR = -2;
+      const hi = Math.max(1, Math.ceil(Math.max(...pts.map(({ r }) => Math.max(r.collected, r.high ?? r.expected)))));
+      const lo = Math.max(FLOOR, Math.min(-1, Math.floor(Math.min(...pts.map(({ r }) => r.low ?? r.expected)))));
+      const x = (v) => PAD + ((Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo)) * (W - 2 * PAD);
+      const f = (v) => x(v).toFixed(1);
+      const step = hi - lo <= 8 ? 1 : 2;
+      let gridLines = "", ticks = "";
+      for (let v = lo; v <= hi + 1e-9; v += step) {
+        gridLines += `<line x1="${f(v)}" x2="${f(v)}" y1="0" y2="${H}" class="${v === 0 ? "zero" : "grid"}"/>`;
+        ticks += `<text x="${f(v)}" y="11" text-anchor="middle" class="tick">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), 0)}</text>`;
+      }
+      const cy = H / 2;
+      const rowsHtml = pts
+        .map(({ c, r }) => {
+          const pos = r.expected > 0;
+          const off = r.expected < lo;
+          const px = x(r.expected), gx = x(r.collected);
+          const whisker = r.err == null || r.high <= lo ? "" : `<line x1="${f(r.low)}" x2="${f(r.high)}" y1="${cy}" y2="${cy}" class="b-err${pos ? "" : " neg"}"/>`;
+          const dot = off
+            ? `<path d="M${PAD + 5} ${cy - 5} L${PAD - 3} ${cy} L${PAD + 5} ${cy + 5} Z" class="b-off"/>`
+            : `<circle cx="${px.toFixed(1)}" cy="${cy}" r="${pos ? 5.5 : 4.5}" class="b-dot${pos ? "" : " neg"}"/>`;
+          const firm = c.level >= 1 && c.checks.safe;
+          const errText = r.err == null ? "" : ` <small>± ${num(r.err, 1)}</small>`;
+          return `<li><button class="hoy-brow" data-hoy="cell" data-s="${esc(c.sym.s)}" data-e="${expiry}" data-k="${c.row.shortStrike}|${c.row.longStrike}" aria-label="${esc(c.sym.s)}: cobra ${num(r.collected, 1)} %, se espera pagar ${num(r.pay, 1)} %, queda ${signedPct(r.expected)}${r.err == null ? "" : `, error ${num(r.err, 1)}`}">
+            <span class="hoy-brow-top">${levelTag(c.level, ` sm${firm ? " firm" : ""}`)} <b>${esc(c.sym.s)}</b> <span class="muted">${fmtStrike(c.row.shortStrike)}/${fmtStrike(c.row.longStrike)}</span>
+              <span class="hoy-brow-kpi num ${pos ? "plus" : "minus"}">${signedPct(r.expected)}${errText}</span></span>
+            <svg viewBox="0 0 ${W} ${H}" aria-hidden="true">${gridLines}
+              <line x1="${px.toFixed(1)}" x2="${gx.toFixed(1)}" y1="${cy}" y2="${cy}" class="b-pay"/>${whisker}${dot}
+              <rect x="${(gx - 4.5).toFixed(1)}" y="${cy - 4.5}" width="9" height="9" transform="rotate(45 ${gx.toFixed(1)} ${cy})" class="b-got"/></svg>
+            <span class="hoy-brow-sub xs muted">cobras ${usd2(c.row.net)} · se espera pagar ${usd2(c.row.expected)} · coste ${c.checks.costShare} %</span>
+          </button></li>`;
+        })
+        .join("");
+      const errLegend = k === 1 ? "± el error" : `± ${num(k, 1)} veces el error`;
+      const pair = (icon, text) => `<span class="hoy-pair">${icon}${text}</span>`;
+      body = `<p class="hoy-legend xs muted" aria-hidden="true">
+          ${pair('<svg viewBox="0 0 14 14" width="14" height="14"><circle cx="7" cy="7" r="5" class="b-dot"/></svg>', "queda de media")}
+          ${pair('<svg viewBox="0 0 22 14" width="22" height="14"><line x1="2" x2="20" y1="7" y2="7" class="b-err"/></svg>', errLegend)}
+          ${pair('<svg viewBox="0 0 14 14" width="14" height="14"><rect x="3" y="3" width="8" height="8" transform="rotate(45 7 7)" class="b-got"/></svg>', "cobras")}
+          ${pair('<svg viewBox="0 0 22 14" width="22" height="14"><line x1="2" x2="20" y1="7" y2="7" class="b-pay"/></svg>', "se espera pagar")}
+        </p>
+        <div class="hoy-bars">
+          <div class="hoy-brow-axis"><p class="xs muted">% de lo que arriesgas («pierdes máx.»)</p><svg viewBox="0 0 ${W} 14" aria-hidden="true">${ticks}</svg></div>
+          <ul>${rowsHtml}</ul>
+        </div>
+        <p class="xs muted" style="margin-top:8px">${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}, por lo que queda de media. ${
+          o.opts.safety === "margin" ? "Si la barra no toca el cero, lo que queda supera el error: tiene el punto de seguridad. " : ""
+        }La flecha marca lo que cae por debajo de −${num(Math.abs(lo), 0)} %. Toca una fila para ver el deal.</p>`;
+    }
+    return `${controls(o)}${expChips}
+      ${hoy.price === "mid" ? '<p class="banner small">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
+      ${body}
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
       ${help(o.opts)}`;
   }
@@ -589,7 +668,7 @@ export function createHoy(ctx) {
   function view() {
     const o = options();
     const closed = state.scan && !state.scan.example && pricesOutsideMarket(state.scan.at);
-    const body = hoy.view === "mis" ? viewMis() : hoy.view === "nube" ? viewNube(o) : viewMapa(o);
+    const body = hoy.view === "mis" ? viewMis() : hoy.view === "nube" ? viewNube(o) : hoy.view === "barras" ? viewBarras(o) : viewMapa(o);
     return `
       ${ctx.header("Nuevo", "Hoy", false)}
       ${closed && hoy.view !== "mis" ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.</p>' : ""}
@@ -630,7 +709,7 @@ export function createHoy(ctx) {
       keep();
     } else if (act === "exp") {
       hoy.expiry = value;
-      hoy.view = "nube";
+      if (hoy.view !== "barras") hoy.view = "nube";
       keep();
       window.scrollTo(0, 0);
     } else if (act === "cell") {
