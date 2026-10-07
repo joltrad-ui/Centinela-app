@@ -10,6 +10,7 @@ export const RATE = 0.04; // tipo sin riesgo de la fórmula de reserva de la pro
 // Versión de las reglas. La 2 fija el riesgo con la prob. de asignación (la misma
 // vara para todos los nombres) en vez de con "% abajo" y "% del ancho".
 export const RULES_V = 2;
+export const LEVEL_SAFETY = ["margin", "both", "off"];
 
 export const DEFAULT_RULES = {
   v: RULES_V,
@@ -23,6 +24,8 @@ export const DEFAULT_RULES = {
   minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
   minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
   equalFee: 1.4, // pestaña "Igual riesgo": comisión por spread al abrir, en dólares; la de salir cuenta otra vez en el coste de ida y vuelta
+  levelSafety: "margin", // pestaña "Hoy": el punto de seguridad del nivel: "margin" (lo que queda supera el error del cálculo), "both" (los dos cálculos en positivo) u "off" (no cuenta)
+  levelMargin: 1, // pestaña "Hoy": cuántas veces el error tiene que caber en lo que queda, de 0,5 a 3
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
   gates: {
     event: false,
@@ -119,6 +122,8 @@ export function normalizeRules(input) {
     minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
     equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
+    levelSafety: LEVEL_SAFETY.includes(row.levelSafety) ? row.levelSafety : base.levelSafety,
+    levelMargin: Math.round(clamp(row.levelMargin, 0.5, 3, base.levelMargin) * 2) / 2,
     gates: {
       event: g.event === true,
       liquid: g.liquid === true,
@@ -744,12 +749,33 @@ export function historyStats(closes, price, shortStrike, longStrike, sessions) {
   const width = shortStrike - longStrike;
   let below = 0;
   let loss = 0;
+  const lost = new Array(windows);
   for (let i = 0; i < windows; i++) {
     const final = (price * closes[i + sessions]) / closes[i];
     if (final < shortStrike) below++;
-    loss += Math.min(Math.max(shortStrike - final, 0), width);
+    lost[i] = Math.min(Math.max(shortStrike - final, 0), width);
+    loss += lost[i];
   }
-  return { windows, prob: (below / windows) * 100, loss: (loss / windows) * 100 };
+  const mean = loss / windows;
+  // Error de la media por lotes: las ventanas vecinas comparten días, así que se parten en lotes seguidos de `sessions` ventanas
+  // (unos 55 con 5 años y un mes de plazo), se saca la media de cada lote y el error es la desviación de esas medias entre √lotes.
+  // Con menos de 3 lotes, la desviación de todas las ventanas entre √(ventanas / sesiones).
+  const batches = Math.floor(windows / sessions);
+  let se;
+  if (batches >= 3) {
+    const means = [];
+    for (let b = 0; b < batches; b++) {
+      let sum = 0;
+      for (let i = b * sessions; i < (b + 1) * sessions; i++) sum += lost[i];
+      means.push(sum / sessions);
+    }
+    const m = means.reduce((a, x) => a + x, 0) / batches;
+    se = Math.sqrt(means.reduce((a, x) => a + (x - m) ** 2, 0) / (batches - 1) / batches);
+  } else {
+    const sd = windows > 1 ? Math.sqrt(lost.reduce((a, x) => a + (x - mean) ** 2, 0) / (windows - 1)) : 0;
+    se = sd / Math.sqrt(Math.max(1, windows / sessions));
+  }
+  return { windows, prob: (below / windows) * 100, loss: mean * 100, se: se * 100 };
 }
 
 /** Volatilidad realizada de las últimas `n` sesiones, anualizada con √252 (en tanto por uno). */
@@ -820,6 +846,13 @@ export function withHistory(row, series, today = nyToday()) {
   // la fila solo sale bien con uno de los dos.
   const marginHist = row.net - stats.loss;
   const marginRecent = row.net - recent;
+  // Cuánto se puede equivocar cada cálculo. Historia: error de la media de 5 años de ventanas. Reciente: media diferencia entre
+  // la pérdida con la volatilidad un 10 % mayor y un 10 % menor. Lo que se espera pagar es su media, y su error combina los dos.
+  const recentHigh = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * 1.1, sessions / 252);
+  const recentLow = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * 0.9, sessions / 252);
+  const errRecent = recentHigh == null || recentLow == null ? null : Math.abs(recentHigh - recentLow) / 2;
+  const errHist = stats.se;
+  const err = errRecent == null ? null : 0.5 * Math.sqrt(errHist * errHist + errRecent * errRecent);
   return {
     ...out,
     histProb: r1(stats.prob),
@@ -828,6 +861,9 @@ export function withHistory(row, series, today = nyToday()) {
     vol5: vols.longPct,
     recentLoss: r2(recent),
     expected: r2(expected),
+    errHist: r2(errHist),
+    errRecent: errRecent == null ? null : r2(errRecent),
+    err: err == null ? null : r2(err),
     distinct: high > 3 * low,
     marginHist: r2(marginHist),
     marginRecent: r2(marginRecent),
@@ -1059,13 +1095,22 @@ export function atMid(row, fee = 0) {
   };
 }
 
-/** Las comprobaciones de un deal y su nivel (0 a 4). `held` = bloques que ya están abiertos. */
+/** Las comprobaciones de un deal y su nivel (0 a 4; 0 a 3 si el punto de seguridad no cuenta). `held` = bloques que ya están abiertos.
+ *  Punto de seguridad (`opts.safety`, regla `levelSafety`): "margin" = lo que queda (cobras neto menos lo que se espera pagar)
+ *  supera `opts.marginK` veces el error del cálculo; "both" = los dos cálculos salen en positivo; "off" = no cuenta.
+ *  `room` = lo que queda partido por su error (null si no hay error calculado); `both` se da siempre, sea cual sea la regla. */
 export function dealChecks(row, opts = {}) {
   const held = Array.isArray(opts.held) ? opts.held : [];
   const costPct = opts.costPct ?? LEVEL_COST_PCT;
+  const safety = LEVEL_SAFETY.includes(opts.safety) ? opts.safety : DEFAULT_RULES.levelSafety;
+  const marginK = opts.marginK ?? DEFAULT_RULES.levelMargin;
   const scored = row.retExp != null;
   const positive = scored && row.retExp > 0;
   const both = scored && row.marginHist > 0 && row.marginRecent > 0;
+  const left = scored ? row.net - row.expected : null;
+  const room = scored && row.err > 0 ? left / row.err : null;
+  const roomOk = room != null && room >= marginK - 1e-9;
+  const safe = safety === "off" ? false : safety === "both" ? both : roomOk;
   const costShare = row.roundTrip != null && row.net > 0 ? (row.roundTrip / row.net) * 100 : null;
   const cheap = costShare != null && costShare <= costPct + 1e-9;
   const fresh = !held.includes(row.sym?.b ?? "");
@@ -1073,10 +1118,13 @@ export function dealChecks(row, opts = {}) {
     scored,
     positive,
     both,
+    safe,
+    safety,
+    room: room == null ? null : Math.round(room * 10) / 10,
     cheap,
     fresh,
     costShare: costShare == null ? null : Math.round(costShare),
-    level: positive ? 1 + (both ? 1 : 0) + (cheap ? 1 : 0) + (fresh ? 1 : 0) : 0,
+    level: positive ? 1 + (safe ? 1 : 0) + (cheap ? 1 : 0) + (fresh ? 1 : 0) : 0,
   };
 }
 
@@ -1122,7 +1170,7 @@ export function levelGrid(symbols, opts, today = nyToday()) {
       gated: all.filter((cell) => cell.state === "gated").length,
       positive: scored.filter((cell) => cell.level >= 1).length,
       top: scored.filter((cell) => cell.level >= 3).length,
-      firm: scored.filter((cell) => cell.level >= 1 && cell.checks.both).length, // por encima de 0 y con los dos cálculos en positivo
+      firm: scored.filter((cell) => cell.level >= 1 && cell.checks.safe).length, // por encima de 0 y con el punto de seguridad
       withHistory: scored.some((cell) => cell.checks.scored),
     },
   };

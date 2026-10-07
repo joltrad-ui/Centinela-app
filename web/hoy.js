@@ -123,6 +123,8 @@ export function createHoy(ctx) {
         width: hoy.width ?? nearest(WIDTHS, rules.width),
         fee: rules.equalFee,
         gapPct: rules.equalGapPct,
+        safety: rules.levelSafety,
+        marginK: rules.levelMargin,
         hist: state.hist?.symbols ?? null,
         held: heldBlocks(),
         price: hoy.price,
@@ -172,20 +174,32 @@ export function createHoy(ctx) {
     </div>`;
   }
 
-  const legend = () => `<p class="hoy-legend xs muted" aria-hidden="true">
+  // Cómo se llama el punto de seguridad según la regla (Reglas > Pestaña Hoy).
+  const safetyText = (opts) =>
+    opts.safety === "both"
+      ? { short: "los dos cálculos en positivo", legend: "con punto: los dos cálculos en positivo" }
+      : { short: "margen", legend: `con punto: lo que queda supera ${opts.marginK === 1 ? "el error" : `${num(opts.marginK, 1)} veces el error`}` };
+
+  const legend = (opts) => `<p class="hoy-legend xs muted" aria-hidden="true">
       <span class="lv lv0">0</span><span>no cubre</span>
-      <span class="lv lv1">1</span><span class="lv lv2">2</span><span class="lv lv3">3</span><span class="lv lv4">4</span><span>todo a favor</span>
-      <span class="lv lv3 firm">3</span><span>con punto: los dos cálculos en positivo</span>
+      <span class="lv lv1">1</span><span class="lv lv2">2</span><span class="lv lv3">3</span>${opts.safety === "off" ? "" : '<span class="lv lv4">4</span>'}<span>${opts.safety === "off" ? "a favor" : "todo a favor"}</span>
+      ${opts.safety === "off" ? "" : `<span class="lv lv3 firm">3</span><span>${safetyText(opts).legend}</span>`}
       <span class="lv lvh">H</span><span>horquilla ancha</span>
       <span class="lv lvx">–</span><span>sin fila</span>
     </p>`;
 
-  const help = () => `<button class="rules-line small" style="margin:10px 0 0" data-hoy="help" aria-expanded="${hoy.help}">Cómo se puntúa y cómo se lee ${hoy.help ? "▴" : "▾"}</button>
+  const help = (opts) => `<button class="rules-line small" style="margin:10px 0 0" data-hoy="help" aria-expanded="${hoy.help}">Cómo se puntúa y cómo se lee ${hoy.help ? "▴" : "▾"}</button>
     ${
       hoy.help
         ? `<div class="eq-help small muted" style="margin-top:8px">
         <p>Cada casilla es un bull put: el de ese nombre en ese vencimiento, con la prob. de asignación hasta el objetivo y el ancho más cercano al elegido. Las cuentas son las de la pestaña Igual riesgo.</p>
-        <p>Nivel 0: la rentab. esperada no es positiva; lo cobrado no cubre lo que se espera pagar. Si es positiva, el nivel empieza en 1 y suma un punto por cada comprobación: los dos cálculos (5 años de precios y volatilidad reciente) salen en positivo; el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.</p>
+        <p>Nivel 0: la rentab. esperada no es positiva; lo cobrado no cubre lo que se espera pagar. Si es positiva, el nivel empieza en 1 y suma un punto por cada comprobación: ${
+          opts.safety === "off"
+            ? ""
+            : opts.safety === "both"
+              ? "los dos cálculos (5 años de precios y volatilidad reciente) salen en positivo; "
+              : `lo que queda (cobras neto menos lo que se espera pagar) supera ${opts.marginK === 1 ? "una vez" : `${num(opts.marginK, 1)} veces`} el error del cálculo, que es lo que se puede equivocar la media de los dos; `
+        }el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.${opts.safety === "off" ? " El punto de seguridad está apagado en Reglas, así que el nivel llega a 3." : " El punto de seguridad se cambia en Reglas."}</p>
         <p>Es un nivel y no una nota porque las cuentas no dan para afinar más: dos deals del mismo nivel no se pueden ordenar con seguridad. «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: medio» se ve qué nivel tendría si te llenaran a precio medio; es una hipótesis, no un precio garantizado.</p>
         <p>Es una estimación para ordenar, no una previsión, y no es un consejo.</p>
       </div>`
@@ -206,8 +220,8 @@ export function createHoy(ctx) {
       if (c.state === "out") return `<span class="lv lvx" role="gridcell" aria-label="${esc(name.sym.s)} ${esc(exp.label)}: sin fila" title="${esc(c.why)}">–</span>`;
       const keys = `data-k="${c.row.shortStrike}|${c.row.longStrike}"`;
       if (c.state === "gated") return `<button class="lv lvh" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: apartada, ${esc(c.gate)}">H</button>`;
-      const firm = c.level >= 1 && c.checks.both;
-      return `<button class="lv lv${c.level}${firm ? " firm" : ""}" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: nivel ${c.level}${firm ? ", los dos cálculos en positivo" : ""}">${c.level}</button>`;
+      const firm = c.level >= 1 && c.checks.safe;
+      return `<button class="lv lv${c.level}${firm ? " firm" : ""}" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: nivel ${c.level}${firm ? `, ${safetyText(o.opts).short}` : ""}">${c.level}</button>`;
     };
     const rows = shown
       .map(
@@ -219,18 +233,18 @@ export function createHoy(ctx) {
       ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar."
       : s.positive === 0
         ? "Hoy ninguna casilla cubre lo que se espera pagar."
-        : `${s.top} ${s.top === 1 ? "casilla" : "casillas"} de nivel 3 o más · ${s.firm} con los dos cálculos en positivo · ${s.comparable} comparables`;
+        : `${s.top} ${s.top === 1 ? "casilla" : "casillas"} de nivel 3 o más${o.opts.safety === "off" ? "" : ` · ${s.firm} con ${o.opts.safety === "both" ? "los dos cálculos en positivo" : "margen"}`} · ${s.comparable} comparables`;
     return `${controls(o)}
       ${hoy.price === "mid" ? '<p class="banner small">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
       <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
-      ${legend()}
+      ${legend(o.opts)}
       <div class="hoy-grid" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:54px repeat(${grid.expiries.length},minmax(0,1fr))">
         <span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="exp" data-v="${exp.expiry}" aria-label="Ver la nube del ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}
         ${rows}
       </div>
       ${hidden.length ? `<p class="xs muted" style="margin-top:10px">Sin fila en ningún vencimiento: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
       <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. Toca una fecha para comparar los de ese vencimiento.</p>
-      ${help()}`;
+      ${help(o.opts)}`;
   }
 
   // ---------- 2. nube ----------
@@ -317,7 +331,7 @@ export function createHoy(ctx) {
           : `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`
       }
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
-      ${help()}`;
+      ${help(o.opts)}`;
   }
 
   // ---------- 3 y 4. ficha del deal y resumen para el bróker ----------
@@ -335,7 +349,7 @@ export function createHoy(ctx) {
     const xa = x(a), xb = x(b);
     // Tres alturas para que nada se pise: arriba lo reciente, en medio la barra y el cero, abajo la historia.
     return `<div class="hoy-bar">
-      <p class="small">Queda, de media, <b class="num ${m > 0 ? "up" : "down"}">${signedUsd(m)}</b> <span class="muted">· cobras neto menos lo que se espera pagar</span></p>
+      <p class="small">Queda, de media, <b class="num ${m > 0 ? "up" : "down"}">${signedUsd(m)}</b>${row.err != null ? ` <span class="num muted">± ${dollars(row.err)}</span>` : ""} <span class="muted">· cobras neto menos lo que se espera pagar</span></p>
       <svg viewBox="0 0 ${W} 82" role="img" aria-label="Con la volatilidad reciente queda ${signedUsd(a)}; con 5 años de precios, ${signedUsd(b)}">
         <line x1="${L}" x2="${W - R}" y1="38" y2="38" class="grid"/>
         <line x1="${x(0).toFixed(1)}" x2="${x(0).toFixed(1)}" y1="25" y2="51" class="zero"/>
@@ -347,6 +361,21 @@ export function createHoy(ctx) {
         <text x="${xb.toFixed(1)}" y="77" text-anchor="${anchor(xb)}" class="lab">historia ${signedUsd(b)}</text>
       </svg>
     </div>`;
+  }
+
+  /** El punto de seguridad en la ficha, según la regla. Apagado no sale: queda la barra de los dos cálculos. */
+  function safetyItem(item, checks, row, opts, both, anyOne) {
+    const calcs = `Con lo reciente ${signedUsd(row.marginRecent)} · con la historia ${signedUsd(row.marginHist)}.`;
+    if (opts.safety === "off") return "";
+    if (opts.safety === "both") return item(checks.both, both ? "Los dos cálculos en positivo" : anyOne ? "Solo un cálculo en positivo" : "Ningún cálculo en positivo", calcs);
+    if (checks.room == null) return item(false, "Sin error calculado para medir el margen", calcs);
+    const left = row.net - row.expected;
+    const k = opts.marginK === 1 ? "1 vez" : `${num(opts.marginK, 1)} veces`;
+    return item(
+      checks.safe,
+      checks.safe ? "Lo que queda supera el error del cálculo" : left > 0 ? "Lo que queda no supera el error del cálculo" : "No queda nada tras lo que se espera pagar",
+      `Queda <b class="num">${signedUsd(left)}</b> y el cálculo se puede equivocar en ±${dollars(row.err)}: ${num(Math.max(0, checks.room), 1)} ${checks.room === 1 ? "vez" : "veces"}. Pides ${k}. ${calcs}`,
+    );
   }
 
   function orderText(sym, row, rows) {
@@ -390,10 +419,11 @@ export function createHoy(ctx) {
     const both = row.marginHist > 0 && row.marginRecent > 0;
     const anyOne = row.marginHist > 0 || row.marginRecent > 0;
     const item = (ok, text, sub = "") => `<li class="${ok ? "yes" : "no"}"><i aria-hidden="true">${ok ? "✓" : "✕"}</i><span>${text}${sub ? `<small>${sub}</small>` : ""}</span></li>`;
+    const maxLevel = o.opts.safety === "off" ? 3 : 4;
     const list = checks.scored
       ? `<ul class="hoy-checks">
         ${item(checks.positive, `Rentab. esperada <b class="num">${signedPct(row.retExp)}</b>`, checks.positive ? "Lo cobrado supera lo que se espera pagar." : "Lo cobrado no cubre lo que se espera pagar. Sin esto, nivel 0.")}
-        ${item(checks.both, both ? "Los dos cálculos en positivo" : anyOne ? "Solo un cálculo en positivo" : "Ningún cálculo en positivo", `Con lo reciente ${signedUsd(row.marginRecent)} · con la historia ${signedUsd(row.marginHist)}.`)}
+        ${safetyItem(item, checks, row, o.opts, both, anyOne)}
         ${item(checks.cheap, checks.costShare == null ? "Coste sin precio medio" : `Coste de ida y vuelta: <b class="num">${checks.costShare} %</b> de lo cobrado`, `Tope para el punto: ${LEVEL_COST_PCT} %. Entrar y salir cuesta ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}.`)}
         ${item(checks.fresh, checks.fresh ? `Bloque nuevo: ${esc(sym.b ?? "sin bloque")}` : `Repite un bloque que ya tienes: ${esc(sym.b ?? "")}`)}
       </ul>`
@@ -406,7 +436,7 @@ export function createHoy(ctx) {
     if (row.distinct && !row.onlyOne) pills.push('<span class="tag-note">estimaciones muy distintas</span>');
     const badge = apart
       ? `<p class="hoy-badge"><span class="lv lvh big">H</span><span><b>Apartada de la comparación</b><small>${esc(gate)}. A precio visible no se puntúa.</small></span></p>`
-      : `<p class="hoy-badge"><span class="lv lv${checks.level} big">${checks.level}</span><span><b>Nivel ${checks.level} de 4</b><small>${hoy.price === "mid" ? "Si te llenaran a precio medio: una hipótesis, no un precio garantizado." : checks.level === 0 ? "No cubre lo que se espera pagar." : "A precio visible."}</small></span></p>`;
+      : `<p class="hoy-badge"><span class="lv lv${checks.level} big">${checks.level}</span><span><b>Nivel ${checks.level} de ${maxLevel}</b><small>${hoy.price === "mid" ? "Si te llenaran a precio medio: una hipótesis, no un precio garantizado." : checks.level === 0 ? "No cubre lo que se espera pagar." : "A precio visible."}</small></span></p>`;
     const pair = (label, value) => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num">${value}</b></span>`;
     const probs = [pair("asignación", row.prob == null ? "—" : `${num(row.prob, 1)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
     if (row.histProb != null) probs.push(pair("historia", `${num(row.histProb, 1)} %`));

@@ -913,6 +913,21 @@ function viewReglas() {
     </section>
 
     <section class="block">
+      <h2>Pestaña Hoy</h2>
+      <p class="small muted">Solo cuenta ahí. Usa la comisión y la horquilla de la sección de abajo.</p>
+      <div class="panel">
+        <div class="field" style="display:block">
+          <div class="txt"><b>Punto de seguridad del nivel</b><span class="small muted">Es uno de los puntos que suman al nivel. Elige qué se le pide a lo que queda tras pagar lo que se espera.</span></div>
+          <div class="seg" role="group" aria-label="Punto de seguridad" style="margin:10px 0 4px">
+            ${[["margin", "Con margen"], ["both", "Los dos cálculos"], ["off", "No cuenta"]].map(([id, label]) => `<button data-rule-set="levelSafety" data-v="${id}" aria-pressed="${state.config.rules.levelSafety === id}">${label}</button>`).join("")}
+          </div>
+          <p class="small muted">${{ margin: "Lo que queda (cobras neto menos lo que se espera pagar) tiene que superar el error del cálculo. Es lo que se puede equivocar esa media: cambia con los años de historia y con la volatilidad.", both: "La historia de 5 años y la volatilidad reciente tienen que salir las dos en positivo. Corta en el cero: −0,05 y −5 cuentan igual.", off: "El nivel llega a 3. Los dos cálculos se siguen viendo en la ficha." }[state.config.rules.levelSafety]}</p>
+        </div>
+        ${state.config.rules.levelSafety === "margin" ? stepper("rules.levelMargin", "Margen exigido", "Cuántas veces tiene que caber el error en lo que queda. 1 es lo mínimo; más es más exigente.", 0.5, 3, 0.5, (n) => `${num(n, 1)} ${n === 1 ? "vez" : "veces"}`) : ""}
+      </div>
+    </section>
+
+    <section class="block">
       <h2>Pestaña Igual riesgo (prueba)</h2>
       <p class="small muted">Solo cuenta ahí; Lista y Deals no cambian.</p>
       <div class="panel">
@@ -1569,7 +1584,7 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.hoy) {
@@ -1601,6 +1616,10 @@ root.addEventListener("click", (event) => {
   } else if (el.dataset.gate) {
     changeConfig((config) => {
       config.rules.gates[el.dataset.gate] = !config.rules.gates[el.dataset.gate];
+    });
+  } else if (el.dataset.ruleSet) {
+    changeConfig((config) => {
+      config.rules[el.dataset.ruleSet] = el.dataset.v;
     });
   } else if (el.dataset.ruleSwitch) {
     changeConfig((config) => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -631,15 +631,17 @@ test("hoy: a precio medio cambian el cobro y lo que queda, no lo que se espera p
 });
 
 test("hoy: el nivel es 0 sin rentab. esperada positiva y suma un punto por comprobación", () => {
-  const base = { sym: { b: "Energía" }, retExp: 2, marginHist: 5, marginRecent: 8, net: 20, roundTrip: 6 };
+  // queda 20 − 12 = 8 con un error de 4: cabe 2 veces
+  const base = { sym: { b: "Energía" }, retExp: 2, marginHist: 5, marginRecent: 8, net: 20, expected: 12, err: 4, roundTrip: 6 };
   assert.equal(LEVEL_COST_PCT, 40);
-  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, cheap: true, fresh: true, costShare: 30, level: 4 });
+  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, safe: true, safety: "margin", room: 2, cheap: true, fresh: true, costShare: 30, level: 4 });
   assert.equal(dealChecks(base, { held: ["Energía"] }).level, 3); // repite bloque
-  assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 3); // solo un cálculo
+  assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 4); // con "margen" cuenta lo que queda, no el signo de cada cálculo
+  assert.equal(dealChecks({ ...base, marginHist: -1 }, { safety: "both" }).level, 3); // con "los dos cálculos", uno solo no basta
   assert.equal(dealChecks({ ...base, roundTrip: 9 }).level, 3); // coste del 45 %
   assert.equal(dealChecks({ ...base, roundTrip: 8 }).cheap, true); // justo el 40 % entra
   assert.equal(dealChecks({ ...base, roundTrip: 9 }, { costPct: 50 }).level, 4); // el tope se puede mover
-  assert.equal(dealChecks({ ...base, marginHist: -1, roundTrip: 9 }, { held: ["Energía"] }).level, 1); // solo el requisito
+  assert.equal(dealChecks({ ...base, marginHist: -1, roundTrip: 9 }, { held: ["Energía"], safety: "both" }).level, 1); // solo el requisito
   // sin el requisito no hay nivel, aunque pase todo lo demás
   const neg = dealChecks({ ...base, retExp: -0.1 });
   assert.equal(neg.level, 0);
@@ -652,8 +654,71 @@ test("hoy: el nivel es 0 sin rentab. esperada positiva y suma un punto por compr
   assert.equal(dealChecks({ ...base, roundTrip: null }).cheap, false); // sin precio medio no se sabe el coste
 });
 
+test("hoy: punto de seguridad por margen, por los dos cálculos o apagado", () => {
+  const base = { sym: { b: "Energía" }, retExp: 2, marginHist: -1, marginRecent: 9, net: 20, expected: 12, err: 4, roundTrip: 6 };
+  // queda 8 con error 4: 2 errores
+  assert.equal(dealChecks(base, { safety: "margin", marginK: 2 }).safe, true); // justo 2 entra
+  assert.equal(dealChecks(base, { safety: "margin", marginK: 2.5 }).safe, false);
+  assert.equal(dealChecks(base, { safety: "margin", marginK: 0.5 }).room, 2);
+  assert.equal(dealChecks({ ...base, net: 15 }, { safety: "margin", marginK: 1 }).safe, false); // queda 3, 0,75 errores
+  assert.equal(dealChecks({ ...base, net: 15 }, { safety: "margin", marginK: 0.5 }).safe, true);
+  assert.equal(dealChecks({ ...base, net: 15 }, { safety: "margin", marginK: 1 }).room, 0.8); // 3 / 4 = 0,75, a un decimal
+  assert.equal(dealChecks(base, { safety: "both" }).safe, false); // la historia sale en negativo
+  assert.equal(dealChecks({ ...base, marginHist: 1 }, { safety: "both" }).safe, true);
+  const off = dealChecks({ ...base, marginHist: 1 }, { safety: "off" });
+  assert.equal(off.safe, false);
+  assert.equal(off.level, 3); // sin el punto el nivel llega a 3
+  assert.equal(off.both, true); // el dato de los dos cálculos se sigue dando
+  // sin error calculado no hay margen que medir
+  const blind = dealChecks({ ...base, err: null }, { safety: "margin" });
+  assert.equal(blind.room, null);
+  assert.equal(blind.safe, false);
+  // por omisión manda la regla de fábrica
+  assert.equal(dealChecks(base).safety, DEFAULT_RULES.levelSafety);
+  assert.equal(dealChecks(base, { safety: "otra" }).safety, DEFAULT_RULES.levelSafety);
+});
+
+test("hoy: reglas del punto de seguridad", () => {
+  const d = normalizeRules({});
+  assert.equal(d.levelSafety, "margin");
+  assert.equal(d.levelMargin, 1);
+  assert.equal(normalizeRules({ levelSafety: "both" }).levelSafety, "both");
+  assert.equal(normalizeRules({ levelSafety: "off" }).levelSafety, "off");
+  assert.equal(normalizeRules({ levelSafety: "xx" }).levelSafety, "margin");
+  assert.equal(normalizeRules({ levelMargin: 0 }).levelMargin, 0.5);
+  assert.equal(normalizeRules({ levelMargin: 9 }).levelMargin, 3);
+  assert.equal(normalizeRules({ levelMargin: 1.3 }).levelMargin, 1.5); // de media en media
+  assert.equal(normalizeRules({ levelMargin: "x" }).levelMargin, 1);
+});
+
+test("hoy: el error de la historia sale de la variación entre lotes de ventanas", () => {
+  const flat = Array.from({ length: 300 }, () => 100);
+  assert.equal(historyStats(flat, 100, 90, 85, 20).se, 0); // nunca pasa nada: nada que equivocar
+  // una sola caída, de 40 sesiones, en una serie de 400: se comprueba a mano con lotes de 20 ventanas
+  const lump = Array.from({ length: 400 }, (_, i) => (i >= 150 && i < 190 ? 80 : 100));
+  const got = historyStats(lump, 100, 90, 85, 20);
+  const lost = [];
+  for (let i = 0; i < 380; i++) lost.push(Math.min(Math.max(90 - (100 * lump[i + 20]) / lump[i], 0), 5));
+  const means = Array.from({ length: 19 }, (_, b) => lost.slice(b * 20, b * 20 + 20).reduce((x, y) => x + y, 0) / 20);
+  const m = means.reduce((x, y) => x + y, 0) / 19;
+  const by = Math.sqrt(means.reduce((x, y) => x + (y - m) ** 2, 0) / 18 / 19) * 100;
+  assert.ok(got.se > 0);
+  assert.ok(Math.abs(got.se - by) < 1e-9, `${got.se} frente a ${by}`);
+  assert.ok(Math.abs(got.loss - (lost.reduce((x, y) => x + y, 0) / 380) * 100) < 1e-9); // la media sigue siendo la de siempre
+  // pocas ventanas: no hay lotes suficientes y se usa la desviación entre ventanas
+  const short = historyStats(Array.from({ length: 50 }, (_, i) => 100 - (i % 7)), 100, 99, 95, 20);
+  assert.ok(short.se >= 0 && Number.isFinite(short.se));
+  // la fila con historia trae los tres errores y el de la media los combina
+  const row = withHistory(equalRisk(tight(), tightOpts(1.4), today), roughHist, today);
+  assert.ok(Number.isFinite(row.errHist) && row.errHist >= 0);
+  assert.ok(Number.isFinite(row.errRecent) && row.errRecent >= 0);
+  assert.ok(Math.abs(row.err - 0.5 * Math.sqrt(row.errHist ** 2 + row.errRecent ** 2)) < 0.011); // cifras redondeadas a céntimos
+  // una fila sin cierres no trae errores
+  assert.equal(equalRisk(tight(), tightOpts(1.4), today).err, undefined);
+});
+
 test("hoy: una casilla es comparable, apartada o sin fila; a precio medio la horquilla no aparta", () => {
-  const opts = { ...tightOpts(1.4), hist: { TGT: calmHist, XYZ: calmHist }, held: [] };
+  const opts = { ...tightOpts(1.4), hist: { TGT: calmHist, XYZ: calmHist }, held: [], safety: "both" };
   const good = levelCell({ ...tight(), b: "Energía" }, opts, today);
   assert.equal(good.state, "level");
   assert.equal(good.level, 4); // positiva con los dos cálculos, coste del 10 % y bloque nuevo
@@ -685,7 +750,7 @@ test("hoy: una casilla es comparable, apartada o sin fila; a precio medio la hor
 test("hoy: el mapa ordena los nombres por su mejor nivel y cuenta las casillas", () => {
   const two = (s, b, hist) => ({ ...tight(s), b, x: [...tight().x, ["2026-11-06", 0.4, tight().x[0][2]]] });
   const symbols = [two("BBB", "Bolsa EE. UU."), two("AAA", "Energía"), { ...tight("CCC"), b: "Metales" }];
-  const opts = { ...tightOpts(1.4), expiries: ["2026-10-30", "2026-11-06"], hist: { AAA: calmHist, BBB: calmHist, CCC: roughHist }, held: ["Bolsa EE. UU."] };
+  const opts = { ...tightOpts(1.4), expiries: ["2026-10-30", "2026-11-06"], hist: { AAA: calmHist, BBB: calmHist, CCC: roughHist }, held: ["Bolsa EE. UU."], safety: "both" };
   const grid = levelGrid(symbols, opts, today);
   assert.deepEqual(grid.expiries.map((e) => e.expiry), ["2026-10-30", "2026-11-06"]);
   assert.deepEqual(grid.names.map((n) => n.sym.s), ["AAA", "BBB", "CCC"]); // 4, 3 (repite bloque) y el de historia mala
@@ -701,6 +766,10 @@ test("hoy: el mapa ordena los nombres por su mejor nivel y cuenta las casillas",
   assert.equal(grid.summary.positive, 5);
   assert.equal(grid.summary.firm, 4); // AAA y BBB, dos vencimientos cada una; CCC no
   assert.deepEqual(levelGrid([], opts, today).names, []);
+  // sin el punto de seguridad el nivel llega a 3 y no hay casillas con punto
+  const off = levelGrid(symbols, { ...opts, safety: "off", held: [] }, today);
+  assert.equal(off.summary.firm, 0);
+  assert.ok(off.names.every((n) => n.best <= 3));
 });
 
 test("hoy: vencimientos del mapa, los comunes del plazo y como mucho cinco", () => {
