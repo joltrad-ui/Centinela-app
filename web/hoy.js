@@ -37,6 +37,9 @@ import {
 const LS_HOY = "centinela.hoy.v1";
 const LS_DEALS = "centinela.misdeals.v1";
 const PROBS = [5, 8, 10];
+const PROB_MIN = 3; // la barra de prob. va de 3 a 12 % en pasos de 1 punto: "X % o menos"
+const PROB_MAX = 12;
+const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
 const VIEWS = ["mapa", "nube", "barras", "mis"];
 const MAX_DEALS = 300;
@@ -62,7 +65,7 @@ export function createHoy(ctx) {
   const saved = ctx.readLocal(LS_HOY) ?? {};
   const hoy = {
     view: VIEWS.includes(saved.view) ? saved.view : "mapa",
-    prob: PROBS.includes(saved.prob) ? saved.prob : null,
+    prob: probOk(saved.prob) ? saved.prob : null,
     width: WIDTHS.includes(saved.width) ? saved.width : null,
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
@@ -132,6 +135,7 @@ export function createHoy(ctx) {
         hist: state.hist?.symbols ?? null,
         held: heldBlocks(),
         price: hoy.price,
+        orLess: true,
         expiries,
       },
     };
@@ -162,8 +166,10 @@ export function createHoy(ctx) {
     const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
     const heldLine = held.length ? held.join(", ") : "ninguno";
     return `<div class="filters">
-      <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted hoy-lab">Prob. objetivo</span>${PROBS.map((n) => chip("prob", n, `${n} %`, o.opts.prob === n)).join("")}</div>
-      <div class="frow" role="group" aria-label="Ancho"><span class="small muted hoy-lab">Ancho</span>${WIDTHS.map((n) => chip("width", n, `$${n}`, o.opts.width === n)).join("")}</div>
+      <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
+        <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
+        <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
+      <div class="frow" role="group" aria-label="Ancho máximo"><span class="small muted hoy-lab">Ancho hasta</span>${WIDTHS.map((n) => chip("width", n, `$${n}`, o.opts.width === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
       <button class="rules-line small" data-hoy="held-open" aria-expanded="${hoy.heldOpen}">Bloques que ya tengo: ${esc(heldLine)} ${hoy.heldOpen ? "▴" : "▾"}</button>
       ${
@@ -691,9 +697,6 @@ export function createHoy(ctx) {
       hoy.confirm = null;
       keep();
       window.scrollTo(0, 0);
-    } else if (act === "prob" && PROBS.includes(Number(value))) {
-      hoy.prob = Number(value);
-      keep();
     } else if (act === "width" && WIDTHS.includes(Number(value))) {
       hoy.width = Number(value);
       keep();
@@ -835,5 +838,13 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape };
+  /** La barra de prob.: al soltar, se aplica. */
+  function setProb(value) {
+    if (!probOk(value)) return false;
+    hoy.prob = value;
+    keep();
+    return true;
+  }
+
+  return { view, sheet, click, submit, escape, setProb };
 }

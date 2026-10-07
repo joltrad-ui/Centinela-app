@@ -231,6 +231,10 @@ test("igual riesgo: sin ancho, sin vencimiento, sin strike cerca y sin precio", 
   assert.equal(equalRisk(sym, { ...ok, width: 3 }, today).status, "sin-ancho");
   assert.equal(equalRisk(sym, { ...ok, expiry: "2026-11-20" }, today).status, "sin-vencimiento");
   assert.equal(equalRisk(sym, { ...ok, prob: probs[2] + 6 }, today).status, "sin-strike"); // el corto queda >3 puntos por debajo
+  // "X % o menos" (Hoy): sin el límite de 3 puntos por debajo, vale el corto más cercano.
+  const orLess = equalRisk(sym, { ...ok, prob: probs[2] + 6, orLess: true }, today);
+  assert.equal(orLess.status, "ok");
+  assert.ok(orLess.prob <= probs[2] + 6);
   const noBid = { ...sym, x: [["2026-10-30", 0.4, sym.x[0][2].map((r) => (r[0] === 90 ? [90, 0, 1.1, 1200, 0.42, -0.17] : r))]] };
   assert.equal(equalRisk(noBid, ok, today).status, "sin-precio");
 });

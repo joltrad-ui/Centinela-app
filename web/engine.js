@@ -519,6 +519,8 @@ export function defaultExpiry(list) {
 /** "Igual riesgo": una fila por nombre con la misma prob. de asignación y vencimiento, y el ancho más
  *  cercano al elegido sin pasarse.
  *  Corto = el strike más alto cuya prob. (la de mercado, o la fórmula de reserva) no pasa del objetivo.
+ *  Sin `opts.orLess`, si el más cercano se queda a más de 3 puntos por debajo del objetivo no hay fila ("sin strike").
+ *  Con `orLess` ("X % o menos") no hay ese límite inferior: vale el más cercano, quede donde quede.
  *  Largo = el strike que deja el ancho más grande que no pasa del elegido (no hace falta que sea exacto;
  *  entre los que tienen precio). Crédito a precio natural; comisión por spread al abrir.
  *  No aplica crédito mínimo, equilibrio ni interruptores. Estados: ok, sin-strike, sin-ancho, sin-vencimiento, sin-precio. */
@@ -538,7 +540,7 @@ export function equalRisk(sym, opts, today = nyToday()) {
   if (shortIndex < 0) return { sym, status: "sin-strike", why: "Sin strike cerca: ninguno llega al objetivo" };
   const short = rows[shortIndex];
   const shortProb = probOf(shortIndex);
-  if (shortProb.value < target - 3 - 1e-9) {
+  if (!opts.orLess && shortProb.value < target - 3 - 1e-9) {
     return { sym, status: "sin-strike", why: `Sin strike cerca: el más próximo tiene ${num(shortProb.value, 1)} %` };
   }
   // Largo: el strike más bajo que no pasa del ancho elegido; si ese no tiene precio, el siguiente.

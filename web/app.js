@@ -1561,6 +1561,11 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = id === "f-width-range" ? `hasta $${event.target.value}` : `hasta ${event.target.value} %`;
     return;
   }
+  if (id === "hoy-range") {
+    const label = root.querySelector("#hoy-range-val");
+    if (label) label.textContent = `${event.target.value} %`;
+    return;
+  }
   if (id !== "eq-range") return;
   const label = root.querySelector("#eq-range-val");
   if (label) label.textContent = `${event.target.value} %`;
@@ -1573,6 +1578,10 @@ root.addEventListener("change", (event) => {
     else state.dealFilter.maxProb = value >= DP_MIN && value <= DP_MAX ? value : 0;
     state.dealsShown = 60;
     render();
+    return;
+  }
+  if (id === "hoy-range") {
+    if (hoy.setProb(Number(event.target.value))) render();
     return;
   }
   if (event.target.id !== "eq-range") return;
