@@ -411,7 +411,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .hoy-yield tr.lab th { text-align: left; font-weight: 500; font-size: 0.8125rem; padding: 8px 0 3px; border-top: 1px solid var(--line); }
 .hoy-yield tbody:first-of-type tr.lab th { border-top: 0; }
 .hoy-yield tr.lab th small { font-weight: 400; color: var(--muted); font-size: 0.75rem; margin-left: 4px; }
-.hoy-yield-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 0 4px; font-size: 0.875rem; text-align: left; }
+.hoy-yield-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 0 4px; font-size: calc(0.875rem + 2px); font-weight: 700; text-align: left; }
+.hoy-yield-head > span:first-child { color: #fff; }
 .hoy-yield-head > span:last-child { font-size: 0.75rem; white-space: nowrap; }
 .hoy-yield-key { margin: 0 0 2px; padding-top: 6px; }
 .hoy-yield thead th { padding-bottom: 2px; }
