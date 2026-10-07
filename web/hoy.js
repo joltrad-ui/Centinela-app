@@ -603,8 +603,13 @@ export function createHoy(ctx) {
         ${head}
         <p class="chosen-title" style="margin-top:10px">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} · ${esc(row.expiryLabel)} · ${row.dte} d · ancho ${shortMoney(row.width)} · ${num(row.otm, 1)} % abajo</p>
         ${badge}
-        <span class="eq-stakes" style="margin-top:12px"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usd2(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usd2(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></span></span>
-        ${pills.length ? `<span class="eq-tags small" style="margin-top:10px">${pills.join("")}</span>` : ""}
+        <span class="hoy-four" style="margin-top:12px">
+          <span><span class="eq-lab">Cobras neto</span><b class="num up">${usd2(row.net)}</b></span>
+          <span><span class="eq-lab">Prob. asig.</span><b class="num">${row.prob == null ? "—" : `${num(row.prob, 1)} %`}</b></span>
+          <span><span class="eq-lab">Días</span><b class="num">${row.dte}</b></span>
+          <span><span class="eq-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></span>
+        </span>
+        <span class="hoy-under small" style="margin-top:10px"><span class="eq-tags">${pills.join("")}</span><span class="xs muted num">Coste total ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}</span></span>
         ${yieldTable(row, o.opts.fee)}
         ${list}
         ${marginBar(row)}

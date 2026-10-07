@@ -398,6 +398,18 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .b-got { fill: var(--surface); stroke: var(--fg); stroke-width: 1.5; }
 
 .hoy-sheet { padding-bottom: 36px; }
+/* Cabecera de la ficha: cuatro números del mismo tamaño en una fila (cobras, prob., días, pierdes) */
+.hoy-four { display: flex; justify-content: space-between; gap: 8px; align-items: flex-end; }
+.hoy-four > span { display: grid; gap: 0; min-width: 0; text-align: center; }
+.hoy-four > span:first-child { text-align: left; }
+.hoy-four > span:last-child { text-align: right; }
+.hoy-four .eq-lab { white-space: nowrap; }
+.hoy-four b { font-size: 1.25rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.hoy-four b.up { color: var(--up); }
+.hoy-four b.down { color: var(--down); }
+.hoy-under { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hoy-under .eq-tags { margin: 0; }
+.hoy-under > .muted { white-space: nowrap; margin-left: auto; }
 .hoy-badge { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .hoy-badge b { font-weight: 500; display: block; font-size: 1.0625rem; }
 .hoy-badge small { display: block; font-size: 0.8125rem; color: var(--muted); }
