@@ -164,7 +164,7 @@ export function createHoy(ctx) {
     return `<div class="filters">
       <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted hoy-lab">Prob. objetivo</span>${PROBS.map((n) => chip("prob", n, `${n} %`, o.opts.prob === n)).join("")}</div>
       <div class="frow" role="group" aria-label="Ancho"><span class="small muted hoy-lab">Ancho</span>${WIDTHS.map((n) => chip("width", n, `$${n}`, o.opts.width === n)).join("")}</div>
-      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Visible", hoy.price === "nat")}${chip("price", "mid", "Medio, si te llenaran", hoy.price === "mid")}</div>
+      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
       <button class="rules-line small" data-hoy="held-open" aria-expanded="${hoy.heldOpen}">Bloques que ya tengo: ${esc(heldLine)} ${hoy.heldOpen ? "▴" : "▾"}</button>
       ${
         hoy.heldOpen
@@ -204,7 +204,7 @@ export function createHoy(ctx) {
               ? "los dos cálculos (5 años de precios y volatilidad reciente) salen en positivo; "
               : `lo que queda (cobras neto menos lo que se espera pagar) supera ${opts.marginK === 1 ? "una vez" : `${num(opts.marginK, 1)} veces`} el error del cálculo, que es lo que se puede equivocar la media de los dos; `
         }el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.${opts.safety === "off" ? " El punto de seguridad está apagado en Reglas, así que el nivel llega a 3." : " El punto de seguridad se cambia en Reglas."}</p>
-        <p>Es un nivel y no una nota porque las cuentas no dan para afinar más: dos deals del mismo nivel no se pueden ordenar con seguridad. «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: medio» se ve qué nivel tendría si te llenaran a precio medio; es una hipótesis, no un precio garantizado.</p>
+        <p>Es un nivel y no una nota porque las cuentas no dan para afinar más: dos deals del mismo nivel no se pueden ordenar con seguridad. «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: Mid» se ve qué nivel tendría si te llenaran a precio medio (la mitad entre bid y ask); es una hipótesis, no un precio garantizado.</p>
         <p>Es una estimación para ordenar, no una previsión, y no es un consejo.</p>
       </div>`
         : ""
