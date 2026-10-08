@@ -123,6 +123,7 @@ async function loadUniverse(config) {
   const names = new Map();
   const kinds = new Map();
   const blocks = new Map();
+  const feeds = new Map(); // nombres cuyo código en CBOE no es su símbolo (índices): { c: código, r: raíces }
   const symbols = [];
   for (const block of base.bloques ?? []) {
     for (const row of block.nombres ?? []) {
@@ -132,24 +133,25 @@ async function loadUniverse(config) {
       names.set(symbol, row.n ?? symbol);
       kinds.set(symbol, row.k === "etf" ? "etf" : "stock");
       blocks.set(symbol, block.nombre);
+      if (typeof row.c === "string") feeds.set(symbol, { c: row.c, r: Array.isArray(row.r) ? row.r : null });
     }
   }
   for (const raw of PUBLIC ? [] : [...config.favorites, ...config.extra]) {
     const symbol = cleanSymbol(raw);
     if (symbol && !symbols.includes(symbol)) symbols.push(symbol);
   }
-  return { symbols, names, kinds, blocks, blockOrder: (base.bloques ?? []).map((block) => block.nombre) };
+  return { symbols, names, kinds, blocks, feeds, blockOrder: (base.bloques ?? []).map((block) => block.nombre) };
 }
 
 // ---------- cadena de CBOE ----------
 
-async function fetchChain(symbol) {
+async function fetchChain(symbol, feed = null) {
   if (FIXTURES) {
     const file = path.join(FIXTURES, `${symbol}.json`);
     if (!existsSync(file)) return null;
     return JSON.parse(await readFile(file, "utf8"));
   }
-  const variants = symbol.includes(".") ? [symbol, symbol.replace(".", "")] : [symbol];
+  const variants = feed ? [feed.c] : symbol.includes(".") ? [symbol, symbol.replace(".", "")] : [symbol];
   for (const variant of variants) {
     const res = await getJson(cboeUrl(variant));
     if (res.body) return res.body;
@@ -448,8 +450,9 @@ export async function scanOnce({ force = false, replace = false } = {}) {
         return null;
       }
       try {
-        const body = await fetchChain(symbol);
-        const sym = body ? readChain(symbol, body, today) : null;
+        const feed = universe.feeds.get(symbol) ?? null;
+        const body = await fetchChain(symbol, feed);
+        const sym = body ? readChain(symbol, body, today, feed?.r ?? null) : null;
         if (!sym) {
           why.set(symbol, body ? "cadena sin puts útiles" : "CBOE no tiene ese símbolo");
           return null;

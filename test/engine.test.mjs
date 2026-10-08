@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -936,4 +936,19 @@ test("deals: todos los bull puts del plazo, puntuados y ordenados por nivel, con
   // la prob. máxima recorta los cortos
   const tight = qualityDeals([sym], { ...base, hist: { [sym.s]: series }, maxProb: 5 }, today);
   assert.ok(tight.deals.every((d) => d.row.prob <= 5 + 1e-9));
+});
+
+test("readCboeChain: XSP lee las mensuales (XSP) y las semanales (XSPW) con las dos raíces", () => {
+  const row = (option, bid, ask) => ({ option, bid, ask, iv: 0.12, open_interest: 500, delta: -0.1 });
+  const body = { data: { security_type: "index", current_price: 778.8, options: [
+    row("XSP261120P00730000", 3.36, 3.41),
+    row("XSPW261030P00740000", 1.52, 1.55),
+    row("SPY261030P00737000", 1.5, 1.52),
+  ] } };
+  const today = "2026-10-08";
+  const none = readCboeChain("XSP", body, today); // sin raíces: solo ve XSP, la semanal no casa
+  assert.equal(none.x.length, 1);
+  const both = readCboeChain("XSP", body, today, ["XSP", "XSPW"]);
+  assert.deepEqual(both.x.map((e) => e[0]), ["2026-10-30", "2026-11-20"]);
+  assert.equal(both.x[0][2][0][0], 740);
 });

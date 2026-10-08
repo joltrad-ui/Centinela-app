@@ -251,22 +251,26 @@ function numOf(value) {
   return Number.isFinite(n) ? n : null;
 }
 
-function parseOcc(root, option) {
-  if (!option.startsWith(root)) return null;
-  const match = /^(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(option.slice(root.length));
-  if (!match) return null;
-  return { expiry: `20${match[1]}-${match[2]}-${match[3]}`, call: match[4] === "C", strike: Number(match[5]) / 1000 };
+function parseOcc(roots, option) {
+  for (const root of Array.isArray(roots) ? roots : [roots]) {
+    if (!option.startsWith(root)) continue;
+    const match = /^(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(option.slice(root.length));
+    if (match) return { expiry: `20${match[1]}-${match[2]}-${match[3]}`, call: match[4] === "C", strike: Number(match[5]) / 1000 };
+  }
+  return null;
 }
 
 const roundTo = (n, digits) => Math.round(n * 10 ** digits) / 10 ** digits;
 
-/** De la respuesta de CBOE a lo que guarda Centinela para un nombre. */
-export function readCboeChain(symbol, body, today = nyToday()) {
+/** De la respuesta de CBOE a lo que guarda Centinela para un nombre.
+ *  `roots`: raíces de los contratos si no coinciden con el símbolo (un índice como XSP
+ *  tiene las mensuales en XSP y las semanales en XSPW). */
+export function readCboeChain(symbol, body, today = nyToday(), roots = null) {
   const data = body?.data;
   const price = numOf(data?.current_price) ?? numOf(data?.close);
   const options = Array.isArray(data?.options) ? data.options : [];
   if (!(price > 0)) return null;
-  const root = symbol.replace(".", "");
+  const root = roots?.length ? roots : symbol.replace(".", "");
   const floor = price * CBOE_FLOOR;
   const byExpiry = new Map();
   const atm = new Map();

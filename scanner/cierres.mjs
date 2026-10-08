@@ -38,7 +38,7 @@ const log = (...parts) => console.log(new Date().toISOString().slice(11, 19), ..
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const urlOf = (symbol) => `https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/${encodeURIComponent(symbol)}.json`;
 
-async function fetchHistory(symbol) {
+async function fetchHistory(symbol, code = symbol) {
   if (FIXTURES) {
     const file = path.join(FIXTURES, `${symbol}.json`);
     return existsSync(file) ? JSON.parse(await readFile(file, "utf8")) : null;
@@ -46,7 +46,7 @@ async function fetchHistory(symbol) {
   let last;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(urlOf(symbol), { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
+      const res = await fetch(urlOf(code), { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
       if (res.status === 404 || res.status === 403) return null;
       if (!res.ok) throw new Error(`respondió ${res.status}`);
       return await res.json();
@@ -127,6 +127,8 @@ async function main() {
   const today = FIXTURES ? nyToday() : lastClosedDay();
   const universe = JSON.parse(await readFile(path.join(ROOT, "scanner", "universe.json"), "utf8"));
   const names = [...new Set(universe.bloques.flatMap((block) => block.nombres.map((row) => row.s)))];
+  // Los índices (XSP) tienen otro código en CBOE (_XSP); la historia se guarda con el símbolo de la app.
+  const codes = new Map(universe.bloques.flatMap((block) => block.nombres.filter((row) => row.c).map((row) => [row.s, row.c])));
   log(`Cierres de ${names.length} nombres`);
   const symbols = {};
   const missing = [];
@@ -135,7 +137,7 @@ async function main() {
   let shortened = 0;
   let last = "";
   for (const symbol of names) {
-    const body = await fetchHistory(symbol);
+    const body = await fetchHistory(symbol, codes.get(symbol));
     if (!FIXTURES) await sleep(1_100);
     if (!body) {
       missing.push(symbol);

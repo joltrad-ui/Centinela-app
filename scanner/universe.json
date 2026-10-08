@@ -10,6 +10,16 @@
      "k": "etf"
     },
     {
+     "s": "XSP",
+     "n": "S&P 500 mini (índice, sin asignación)",
+     "k": "etf",
+     "c": "_XSP",
+     "r": [
+      "XSP",
+      "XSPW"
+     ]
+    },
+    {
      "s": "QQQ",
      "n": "Nasdaq 100",
      "k": "etf"

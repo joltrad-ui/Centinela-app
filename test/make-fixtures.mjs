@@ -59,13 +59,13 @@ const kinds = new Map(universe.bloques.flatMap((block) => block.nombres.map((row
 // ONLY=AAPL,SPY limita los ejemplos a esos nombres.
 const only = (process.env.ONLY ?? "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
 const symbols = only.length ? only : [...new Set(pool)].slice(0, count);
-const fixed = { AAPL: [333.69, 0.26], NVDA: [233.95, 0.44], MSFT: [517.53, 0.22], SPY: [769.64, 0.14], QQQ: [640.1, 0.18], TSLA: [412.3, 0.58], COIN: [301.2, 0.72], SMCI: [48.6, 0.8], KO: [71.2, 0.15], GOOGL: [246.8, 0.31], PLTR: [182.4, 0.62], AMD: [228.7, 0.5] };
+const fixed = { AAPL: [333.69, 0.26], NVDA: [233.95, 0.44], MSFT: [517.53, 0.22], SPY: [769.64, 0.14], XSP: [773.2, 0.14], QQQ: [640.1, 0.18], TSLA: [412.3, 0.58], COIN: [301.2, 0.72], SMCI: [48.6, 0.8], KO: [71.2, 0.15], GOOGL: [246.8, 0.31], PLTR: [182.4, 0.62], AMD: [228.7, 0.5] };
 const earnings = {};
 
 for (const symbol of symbols) {
   const [basePrice, atm] = fixed[symbol] ?? [20 + Math.floor(rnd() * 600), 0.14 + rnd() * 0.6];
   const S = Math.round(basePrice * (1 + shift / 100) * 100) / 100;
-  const step = S < 50 ? 1 : S < 200 ? 2.5 : S > 600 && ["SPY", "QQQ"].includes(symbol) ? 1 : 5;
+  const step = S < 50 ? 1 : S < 200 ? 2.5 : S > 600 && ["SPY", "QQQ", "XSP"].includes(symbol) ? 1 : 5;
   const liquid = rnd();
   const options = [];
   for (const expiry of fridays) {
