@@ -638,13 +638,19 @@ test("hoy: el nivel es 0 sin rentab. esperada positiva y suma un punto por compr
   // queda 20 − 12 = 8 con un error de 4: cabe 2 veces
   const base = { sym: { b: "Energía" }, retExp: 2, marginHist: 5, marginRecent: 8, net: 20, expected: 12, err: 4, roundTrip: 6 };
   assert.equal(LEVEL_COST_PCT, 40);
-  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, safe: true, safety: "margin", room: 2, cheap: true, fresh: true, costShare: 30, level: 4 });
+  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, safe: true, safety: "margin", room: 2, cheap: true, fresh: true, costShare: 30, level: 5 }); // cabe 2 veces: todo a favor y firme
   assert.equal(dealChecks(base, { held: ["Energía"] }).level, 3); // repite bloque
-  assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 4); // con "margen" cuenta lo que queda, no el signo de cada cálculo
+  assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 5); // con "margen" cuenta lo que queda, no el signo de cada cálculo
   assert.equal(dealChecks({ ...base, marginHist: -1 }, { safety: "both" }).level, 3); // con "los dos cálculos", uno solo no basta
   assert.equal(dealChecks({ ...base, roundTrip: 9 }).level, 3); // coste del 45 %
   assert.equal(dealChecks({ ...base, roundTrip: 8 }).cheap, true); // justo el 40 % entra
-  assert.equal(dealChecks({ ...base, roundTrip: 9 }, { costPct: 50 }).level, 4); // el tope se puede mover
+  assert.equal(dealChecks({ ...base, roundTrip: 9 }, { costPct: 50 }).level, 5); // el tope se puede mover
+  // el 5: todo a favor y lo que queda supera el doble del margen exigido
+  assert.equal(dealChecks({ ...base, net: 19.9 }).level, 4); // queda 7,9: 1,98 veces el error, se queda en 4
+  assert.equal(dealChecks(base, { marginK: 2 }).level, 4); // con margen exigido 2, el 5 pide 4 veces
+  assert.equal(dealChecks({ ...base, err: 2 }, { marginK: 2 }).level, 5); // 8 / 2 = 4 veces
+  assert.equal(dealChecks(base, { safety: "both" }).level, 4); // con "los dos cálculos" no hay 5
+  assert.equal(dealChecks(base, { held: ["Energía"] }).level, 3); // si falta algo, no hay 5 aunque sea muy firme
   assert.equal(dealChecks({ ...base, marginHist: -1, roundTrip: 9 }, { held: ["Energía"], safety: "both" }).level, 1); // solo el requisito
   // sin el requisito no hay nivel, aunque pase todo lo demás
   const neg = dealChecks({ ...base, retExp: -0.1 });

@@ -335,6 +335,7 @@ nav.dock .tag { position: absolute; top: 7px; left: calc(50% + 9px); width: 6px;
 .lv2 { background: #5c4b22; color: #f6dfab; }
 .lv3 { background: #a8843f; color: var(--brass-ink); }
 .lv4 { background: var(--brass); color: var(--brass-ink); font-weight: 600; }
+.lv5 { background: #f3cf86; color: var(--brass-ink); font-weight: 600; box-shadow: inset 0 0 0 2px var(--brass); }
 .lvh { color: var(--muted); border: 1px dashed var(--muted); }
 /* Punto bajo el número: el deal sale en positivo con los dos cálculos, no solo con uno. */
 .lv.firm { position: relative; }

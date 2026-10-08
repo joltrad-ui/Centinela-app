@@ -1104,7 +1104,7 @@ export function atMid(row, fee = 0) {
   };
 }
 
-/** Las comprobaciones de un deal y su nivel (0 a 4; 0 a 3 si el punto de seguridad no cuenta). `held` = bloques que ya están abiertos.
+/** Las comprobaciones de un deal y su nivel (0 a 5 con la regla "margin"; 0 a 4 con "both"; 0 a 3 si el punto de seguridad no cuenta). `held` = bloques que ya están abiertos.
  *  Punto de seguridad (`opts.safety`, regla `levelSafety`): "margin" = lo que queda (cobras neto menos lo que se espera pagar)
  *  supera `opts.marginK` veces el error del cálculo; "both" = los dos cálculos salen en positivo; "off" = no cuenta.
  *  `room` = lo que queda partido por su error (null si no hay error calculado); `both` se da siempre, sea cual sea la regla. */
@@ -1133,7 +1133,8 @@ export function dealChecks(row, opts = {}) {
     cheap,
     fresh,
     costShare: costShare == null ? null : Math.round(costShare),
-    level: positive ? 1 + (safe ? 1 : 0) + (cheap ? 1 : 0) + (fresh ? 1 : 0) : 0,
+    // 5 = todo a favor (4) y, con la regla "margin", lo que queda supera el doble del margen exigido (2 veces el error de fábrica).
+    level: !positive ? 0 : (safe && cheap && fresh && safety === "margin" && room != null && room >= 2 * marginK - 1e-9) ? 5 : 1 + (safe ? 1 : 0) + (cheap ? 1 : 0) + (fresh ? 1 : 0),
   };
 }
 
@@ -1258,7 +1259,7 @@ export function dealStatus(deal, price, today = nyToday(), nearPct = 3) {
 export function levelRecord(deals) {
   const closed = (deals ?? []).filter((deal) => deal && deal.closedAt && typeof deal.result === "number" && Number.isFinite(deal.result));
   const out = [];
-  for (let level = 4; level >= 0; level--) {
+  for (let level = 5; level >= 0; level--) {
     const own = closed.filter((deal) => deal.level === level);
     if (!own.length) continue;
     const total = own.reduce((sum, deal) => sum + deal.result, 0);

@@ -202,7 +202,8 @@ export function createHoy(ctx) {
   const legend = (opts) => `<p class="hoy-legend xs muted" style="margin:10px 0 0">
       <span class="hoy-pair"><span class="lv lv0">0</span>no cubre</span>
       <span class="hoy-pair"><span class="lv lv1">1</span><span class="lv lv2">2</span><span class="lv lv3">3</span>${opts.safety === "off" ? "" : '<span class="lv lv4">4</span>'}${opts.safety === "off" ? "a favor" : "todo a favor"}</span>
-      ${opts.safety === "off" ? "" : `<span class="hoy-pair"><span class="lv lv3 firm">3</span>${safetyText(opts).legend}</span>`}
+      ${opts.safety === "margin" ? `<span class="hoy-pair"><span class="lv lv5">5</span>todo a favor y lo que queda supera ${opts.marginK === 1 ? "2 veces" : `${num(2 * opts.marginK, 1)} veces`} el error</span>` : ""}
+      ${opts.safety === "off" ? "" : `<span class="hoy-pair"><span class="lv lv3 firm">3</span>${safetyText(opts).legend} (en 1, 2 y 3)</span>`}
       <span class="hoy-pair"><span class="lv lvh">H</span>horquilla ancha</span>
       <span class="hoy-pair"><span class="lv lvx">–</span>sin fila</span>
     </p>`;
@@ -218,8 +219,8 @@ export function createHoy(ctx) {
             : opts.safety === "both"
               ? "los dos cálculos (5 años de precios y volatilidad reciente) salen en positivo; "
               : `lo que queda (cobras neto menos lo que se espera pagar) supera ${opts.marginK === 1 ? "una vez" : `${num(opts.marginK, 1)} veces`} el error del cálculo, que es lo que se puede equivocar la media de los dos; `
-        }el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.${opts.safety === "off" ? " El punto de seguridad está apagado en Reglas, así que el nivel llega a 3." : " El punto de seguridad se cambia en Reglas."}</p>
-        <p>Es un nivel y no una nota porque las cuentas no dan para afinar más: dos deals del mismo nivel no se pueden ordenar con seguridad. «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: Mid» se ve qué nivel tendría si te llenaran a precio medio (la mitad entre bid y ask); es una hipótesis, no un precio garantizado.</p>
+        }el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.${opts.safety === "off" ? " El punto de seguridad está apagado en Reglas, así que el nivel llega a 3." : " El punto de seguridad se cambia en Reglas."}${opts.safety === "margin" ? ` Un 4 que además deja ${opts.marginK === 1 ? "el doble" : `${num(2 * opts.marginK, 1)} veces`} el error es un 5: todo a favor y firme. El punto bajo el número solo sale en 1, 2 y 3: dice que lo que falta no es el margen.` : ""}</p>
+        <p>Es un nivel y no una nota porque las cuentas no dan para afinar más. A igual nivel, las listas ponen primero el que más aguanta si el cálculo se equivoca (el suelo: lo que queda menos el error). «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: Mid» se ve qué nivel tendría si te llenaran a precio medio (la mitad entre bid y ask); es una hipótesis, no un precio garantizado.</p>
         <p>Es una estimación para ordenar, no una previsión, y no es un consejo.</p>
       </div>`
         : ""
@@ -241,7 +242,7 @@ export function createHoy(ctx) {
       if (c.state === "out") return `<span class="lv lvx" role="gridcell" aria-label="${esc(name.sym.s)} ${esc(exp.label)}: sin fila" title="${esc(c.why)}">–</span>`;
       const keys = `data-k="${c.row.shortStrike}|${c.row.longStrike}"`;
       if (c.state === "gated") return `<button class="lv lvh" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: apartada, ${esc(c.gate)}">H</button>`;
-      const firm = c.level >= 1 && c.checks.safe;
+      const firm = c.level >= 1 && c.level <= 3 && c.checks.safe;
       return `<button class="lv lv${c.level}${firm ? " firm" : ""}" role="gridcell" ${base} ${keys} aria-label="${esc(name.sym.s)} ${esc(exp.label)}: nivel ${c.level}${firm ? `, ${safetyText(o.opts).short}` : ""}">${c.level}</button>`;
     };
     const detail = (name, c) =>
@@ -256,7 +257,7 @@ export function createHoy(ctx) {
     // El contador: cuántas casillas hay en los niveles altos (4 y 3; solo 3 si el punto de seguridad está apagado).
     const scored = grid.names.flatMap((name) => name.cells).filter((c) => c.state === "level");
     const count = (level) => scored.filter((c) => c.level === level).length;
-    const tops = o.opts.safety === "off" ? [3] : [4, 3];
+    const tops = o.opts.safety === "off" ? [3] : o.opts.safety === "margin" ? [5, 4, 3] : [4, 3];
     const line = !s.withHistory
       ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar."
       : s.positive === 0
@@ -287,7 +288,9 @@ export function createHoy(ctx) {
     const expiry = o.expiries.includes(hoy.expiry) ? hoy.expiry : o.expiries.at(-1);
     const grid = levelGrid(o.symbols, { ...o.opts, expiries: [expiry] }, o.today);
     const cells = grid.names.map((name) => name.cells[0]);
-    const pts = cells.filter((c) => c.state === "level" && c.checks.scored && c.checks.costShare != null).sort((a, b) => b.row.retExp - a.row.retExp);
+    // A igual nivel, primero el que más aguanta si el cálculo se equivoca: el suelo (lo que queda menos el error).
+    const floorOf = (c) => (c.row.err == null ? -Infinity : c.row.net - c.row.expected - c.row.err);
+    const pts = cells.filter((c) => c.state === "level" && c.checks.scored && c.checks.costShare != null).sort((a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp);
     const gated = cells.filter((c) => c.state === "gated").length;
     const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
     let chart = "";
@@ -410,7 +413,7 @@ export function createHoy(ctx) {
           const dot = off
             ? `<path d="M${PAD + 5} ${cy - 5} L${PAD - 3} ${cy} L${PAD + 5} ${cy + 5} Z" class="b-off"/>`
             : `<circle cx="${px.toFixed(1)}" cy="${cy}" r="${pos ? 5.5 : 4.5}" class="b-dot${pos ? "" : " neg"}"/>`;
-          const firm = c.level >= 1 && c.checks.safe;
+          const firm = c.level >= 1 && c.level <= 3 && c.checks.safe;
           // A la derecha, el número por el que se ordena: lo que queda con su error, o el suelo.
           const byFloor = floor && r.low != null;
           const kpi = byFloor ? `${signedPct(r.low)} <small>suelo</small>` : `${signedPct(r.expected)}${r.err == null ? "" : ` <small>± ${num(r.err, 1)}</small>`}`;
@@ -570,7 +573,7 @@ export function createHoy(ctx) {
     const both = row.marginHist > 0 && row.marginRecent > 0;
     const anyOne = row.marginHist > 0 || row.marginRecent > 0;
     const item = (ok, text, sub = "") => `<li class="${ok ? "yes" : "no"}"><i aria-hidden="true">${ok ? "✓" : "✕"}</i><span>${text}${sub ? `<small>${sub}</small>` : ""}</span></li>`;
-    const maxLevel = o.opts.safety === "off" ? 3 : 4;
+    const maxLevel = o.opts.safety === "off" ? 3 : o.opts.safety === "margin" ? 5 : 4;
     const list = checks.scored
       ? `<ul class="hoy-checks">
         ${item(checks.positive, `Rentab. esperada <b class="num">${signedPct(row.retExp)}</b>`, checks.positive ? "Lo cobrado supera lo que se espera pagar." : "Lo cobrado no cubre lo que se espera pagar. Sin esto, nivel 0.")}
