@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_RULES, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious } from "../scanner/scan.mjs";
@@ -910,4 +910,30 @@ test("hoy: el orden de Barras, por lo que queda o por el suelo", () => {
   // mismo suelo: decide lo que queda
   const a = { expected: 1, low: 0.5 }, b = { expected: 2, low: 0.5 };
   assert.ok(rangeOrder(a, b, "floor") > 0);
+});
+
+test("deals: todos los bull puts del plazo, puntuados y ordenados por nivel, con si cumplen las Reglas", () => {
+  let seed = 7, price = 100;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
+  const series = { d: "2021-10-05", c: Array.from({ length: 1300 }, () => (price *= Math.exp(rand() * 0.087))) };
+  const rules = { ...DEFAULT_RULES, minDte: 1, maxDte: 60 };
+  const base = { rules, fee: 1.4, gapPct: 100, safety: "margin", marginK: 1, held: [], maxProb: 50, maxWidth: 10 };
+  const none = qualityDeals([sym], base, today);
+  assert.equal(none.deals.length, 0); // sin historia no se puede puntuar
+  assert.ok(none.unscored > 0);
+  const out = qualityDeals([sym], { ...base, hist: { [sym.s]: series } }, today);
+  assert.ok(out.deals.length > 0);
+  for (const d of out.deals) {
+    assert.ok(d.row.shortStrike < sym.p && d.row.longStrike < d.row.shortStrike);
+    assert.ok(d.row.width <= 10 + 1e-9);
+    assert.ok(d.row.prob <= 50 + 1e-9);
+    assert.ok(Array.isArray(d.fails) && d.ok === (d.fails.length === 0));
+  }
+  for (let i = 1; i < out.deals.length; i++) assert.ok(out.deals[i - 1].level >= out.deals[i].level); // por nivel
+  // un ancho por encima del de las Reglas no cumple, y lo dice
+  const wide = out.deals.find((d) => d.row.width > rules.width);
+  if (wide) assert.ok(wide.fails.some((f) => f.startsWith("ancho")));
+  // la prob. máxima recorta los cortos
+  const tight = qualityDeals([sym], { ...base, hist: { [sym.s]: series }, maxProb: 5 }, today);
+  assert.ok(tight.deals.every((d) => d.row.prob <= 5 + 1e-9));
 });

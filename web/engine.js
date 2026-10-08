@@ -177,11 +177,16 @@ export function daysBetween(from, to) {
   return Math.round((end - start) / 86_400_000);
 }
 
+// Crear el formateador de fechas es caro: uno solo, y cada fecha se formatea una vez.
+const DAY_FORMAT = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", timeZone: "UTC" });
+const LABELS = new Map();
+
 export function labelOf(iso) {
+  if (LABELS.has(iso)) return LABELS.get(iso);
   const [year, month, day] = iso.split("-").map(Number);
-  return new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", timeZone: "UTC" }).format(
-    new Date(Date.UTC(year, (month ?? 1) - 1, day)),
-  );
+  const label = DAY_FORMAT.format(new Date(Date.UTC(year, (month ?? 1) - 1, day)));
+  if (LABELS.size < 2000) LABELS.set(iso, label);
+  return label;
 }
 
 function normCdf(x) {
@@ -734,7 +739,17 @@ export function fedInside(today, expiry) {
 }
 
 /** Sesiones de bolsa después de `from` y hasta `to`, este incluido. */
+const SESSIONS = new Map();
+
 export function sessionsBetween(from, to) {
+  const key = `${from}|${to}`;
+  if (SESSIONS.has(key)) return SESSIONS.get(key);
+  const count = sessionsCount(from, to);
+  if (SESSIONS.size < 2000) SESSIONS.set(key, count);
+  return count;
+}
+
+function sessionsCount(from, to) {
   let count = 0;
   const end = Date.parse(`${to}T00:00:00Z`);
   for (let t = Date.parse(`${from}T00:00:00Z`) + 86_400_000; t <= end; t += 86_400_000) {
@@ -809,8 +824,20 @@ export function expectedLoss(price, shortStrike, longStrike, sigma, years) {
 
 /** Las dos volatilidades de un nombre, en % al año: la reciente (la mayor entre la de 20 y la de 60 sesiones,
  *  la que usa la pérdida esperada reciente) y la de todos los cierres guardados (5 años), ambas con √252. */
+// Las volatilidades y las notas de tendencia solo dependen de los cierres (y del precio): se guardan por serie para no
+// recalcularlas en cada bull put del mismo nombre (la pestaña Deals puntúa miles).
+const VOLS_MEMO = new WeakMap();
+const TREND_MEMO = new WeakMap();
+
 export function volatilities(closes) {
   if (!Array.isArray(closes) || closes.length < 3) return null;
+  if (VOLS_MEMO.has(closes)) return VOLS_MEMO.get(closes);
+  const out = volatilitiesOf(closes);
+  VOLS_MEMO.set(closes, out);
+  return out;
+}
+
+function volatilitiesOf(closes) {
   const v20 = realizedVol(closes, 20);
   const v60 = realizedVol(closes, 60);
   const recent = v20 == null && v60 == null ? null : Math.max(v20 ?? 0, v60 ?? 0);
@@ -821,6 +848,15 @@ export function volatilities(closes) {
 /** Notas de tendencia (avisos, no filtros): precio en el 10 % más bajo de su rango de 52 semanas y precio
  *  por debajo de la media de sus últimos 200 cierres. */
 export function trendNotes(closes, price) {
+  if (!Array.isArray(closes)) return trendNotesOf(closes, price);
+  const memo = TREND_MEMO.get(closes);
+  if (memo && memo.price === price) return [...memo.notes];
+  const notes = trendNotesOf(closes, price);
+  TREND_MEMO.set(closes, { price, notes });
+  return [...notes];
+}
+
+function trendNotesOf(closes, price) {
   const notes = [];
   const range = yearRange(closes, price);
   if (range && range.max > range.min && (price - range.min) / (range.max - range.min) <= 0.1 + 1e-9) notes.push("en mínimos del año");
@@ -1182,6 +1218,87 @@ export function rangeOrder(a, b, by = "left") {
     if (a.low != null && a.low !== b.low) return b.low - a.low;
   }
   return b.expected - a.expected;
+}
+
+/** Por qué un bull put no cumple las Reglas cuando no está en la lista que arman las reglas (queda lejos de ellas):
+ *  lo mismo que miran las reglas, en sus palabras. */
+function ruleFailsOf(row, rules) {
+  const fails = [];
+  if (rules.maxProb < PROB_OFF && !(row.prob != null && row.prob <= rules.maxProb + 1e-9)) fails.push(row.prob == null ? "sin dato de probabilidad" : "probabilidad alta");
+  if (rules.otmOn && !(row.otm >= rules.minOtm - 1e-9 && row.otm <= rules.maxOtm + 1e-9)) fails.push("fuera del punto");
+  if (row.width > rules.width + 1e-9) fails.push(`ancho de $${fmtWidth(row.width)}`);
+  if (Math.round(row.credit * 100) < rules.minCredit) fails.push("crédito corto");
+  return fails.length ? fails : ["lejos de tus Reglas"];
+}
+
+/** Pestaña Deals: todos los bull puts del plazo de las Reglas, puntuados con el mismo nivel que Hoy.
+ *  Corto por debajo del precio con prob. de asignación hasta `maxProb` (20 % de fábrica); largo hasta `maxWidth` dólares por
+ *  debajo (10). Cuentas de "Igual riesgo" (comisión al abrir, historia) y nivel de `dealChecks`. A precio natural se apartan los
+ *  de horquilla ancha (`gated`); a precio medio (`price: "mid"`) se puntúa el crédito medio, salvo los de prob. sin medir.
+ *  Cada deal lleva si cumple las Reglas (`ok`) y por qué no (`fails`), y su suelo: lo que queda menos el error del cálculo,
+ *  en % de lo que se arriesga.
+ *  Orden: nivel, suelo y rentab. esperada. */
+export function qualityDeals(symbols, opts, today = nyToday()) {
+  const { rules, fee = 0, gapPct = DEFAULT_RULES.equalGapPct, hist = null, price = "nat", maxProb = 20, maxWidth = 10 } = opts;
+  const err = { volPct: opts.errVolPct, histK: opts.errHistK };
+  const deals = [];
+  let gated = 0;
+  let unscored = 0;
+  for (const sym of symbols) {
+    if (!(sym.p > 0)) continue;
+    const byRules = new Map();
+    for (const sp of STRATEGIES.bullPut.build(sym, rules, today)) byRules.set(`${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`, sp);
+    for (const entry of sym.x ?? []) {
+      const [expiry, , rows] = entry;
+      const dte = daysBetween(today, expiry);
+      if (dte < rules.minDte || dte > rules.maxDte) continue;
+      const probOf = rowProbs(sym, entry, today);
+      for (let i = 0; i < rows.length; i++) {
+        const short = rows[i];
+        if (!(short[K] < sym.p) || !(short[BID] > 0)) continue;
+        const p = probOf(i).value;
+        if (p == null || p > maxProb + 1e-9) continue;
+        for (const long of rows) {
+          const width = short[K] - long[K];
+          if (!(width > 1e-6) || width > maxWidth + 1e-6 || !(long[ASK] > 0)) continue;
+          let row = spreadRow(sym, expiry, short[K], long[K], fee, today);
+          if (row.status !== "ok") continue;
+          if (hist) row = withHistory(row, hist[sym.s], today, err);
+          let use = row;
+          if (price === "mid") {
+            if (row.probSrc === "formula") {
+              gated++;
+              continue;
+            }
+            use = atMid(row, fee);
+            if (!use) continue;
+          } else if (gateReason(row, gapPct)) {
+            gated++;
+            continue;
+          }
+          const checks = dealChecks(use, opts);
+          if (!checks.scored) {
+            unscored++;
+            continue;
+          }
+          const sp = byRules.get(`${expiry}|${short[K]}|${long[K]}`);
+          deals.push({
+            sym,
+            row: use,
+            checks,
+            level: checks.level,
+            // El suelo en % de lo que se arriesga, como la rentab. esperada: así se comparan deals de distinto ancho.
+            floor: use.err == null || !(use.loss > 0) ? null : r1(((use.net - use.expected - use.err) / use.loss) * 100),
+            ok: sp ? sp.ok : false,
+            fails: sp ? sp.fails : ruleFailsOf(use, rules),
+          });
+        }
+      }
+    }
+  }
+  const floorOf = (d) => (d.floor == null ? -Infinity : d.floor);
+  deals.sort((a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp);
+  return { deals, gated, unscored };
 }
 
 /** Una casilla del mapa: un nombre en un vencimiento.

@@ -479,3 +479,36 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .hoy-yield-head > span:last-child { font-size: 0.75rem; white-space: nowrap; }
 .hoy-yield-key { margin: 0 0 2px; padding-top: 6px; }
 .hoy-yield thead th { padding-bottom: 2px; }
+
+/* Deals por calidad: filtros como en Hoy, una cabecera de columnas y dos líneas por deal. Color solo en lo que cobras, la rentab. y resultados. */
+.dq-lvb { min-height: 0; width: 34px; height: 30px; font-size: 0.875rem; border-radius: 8px; flex: none; }
+.dq-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
+.dq-more-filters { justify-self: start; font-size: 0.8125rem; color: var(--brass); padding: 2px 0; }
+.dq-more-filters span { color: var(--fg); }
+.dq-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.dq-count { display: inline-flex; align-items: center; gap: 6px; }
+.dq-orders { display: flex; gap: 4px; }
+.dq-orders .chip, .dq-count .chip { height: 28px; padding: 0 9px; }
+.dq-head { display: grid; grid-template-columns: 1.25fr 1fr 0.6fr 1.25fr; gap: 4px; padding: 12px 0 6px 34px; }
+.dq-head span:nth-child(2), .dq-head span:nth-child(3) { text-align: center; }
+.dq-head span:last-child { text-align: right; }
+.dq-list { list-style: none; margin: 0; padding: 0; }
+.dq-row { border-top: 1px solid var(--line); padding: 9px 0; }
+.dq-row.sub { border-top-style: dashed; padding-left: 14px; }
+.dq-open { display: block; width: 100%; text-align: left; }
+.dq-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lv.dq-lv { min-height: 0; width: 26px; height: 26px; font-size: 0.8125rem; border-radius: 7px; flex: none; }
+.lv.dq-lv.firm::after { bottom: 2px; width: 3px; height: 3px; margin-left: -1.5px; }
+.dq-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; }
+.dq-title b { font-weight: 500; }
+.dq-title .muted { font-size: 0.75rem; }
+.dq-ret { flex: none; font-size: 0.75rem; color: var(--muted); }
+.dq-ret.up { color: var(--up); }
+.dq-four { display: grid; grid-template-columns: 1.25fr 1fr 0.6fr 1.25fr; gap: 4px; padding: 4px 0 0 34px; font-size: 1rem; font-weight: 600; white-space: nowrap; }
+.dq-four span:nth-child(2), .dq-four span:nth-child(3) { text-align: center; }
+.dq-four span:last-child { text-align: right; }
+.dq-four .up { color: var(--up); }
+.dq-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 5px 0 0 34px; }
+.dq-tag { font-size: 0.6875rem; line-height: 18px; padding: 0 7px; border-radius: 999px; white-space: nowrap; color: var(--muted); box-shadow: var(--border); }
+.dq-tag.red { color: var(--down); box-shadow: 0 0 0 1px rgba(224, 112, 95, 0.35); }
+.dq-more { font-size: 0.6875rem; color: var(--muted); padding: 0 2px; }

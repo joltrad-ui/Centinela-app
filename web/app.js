@@ -30,6 +30,7 @@ import {
   statusLabel,
   withHistory,
   yearRange,
+  qualityDeals,
 } from "./engine.js";
 import { createHoy } from "./hoy.js";
 
@@ -1048,125 +1049,217 @@ const PER_NAME = [
   [10, "10 por nombre"],
   [0, "Sin tope"],
 ];
-function viewDeals() {
-  const symbols = state.scan?.symbols ?? [];
-  const f = state.dealFilter;
-  const order = state.config.order;
-  const { deals, counts, expiries, widths, otmRange, matched } = favoriteDeals(symbols, listSymbols().map((sym) => sym.s), state.config.rules, order, nyToday(), {
-    perName: state.dealsPerName,
-    expiries: f.expiries,
-    maxWidth: f.maxWidth,
-    minOtm: f.minOtm,
-    maxProb: f.maxProb,
-  });
-  // Escalones dentro de lo que hay en la lista: "desde 8%", "desde 10%"… De 2 en 2,
-  // o de 4 en 4 si el tramo es largo, para que la fila no se haga interminable.
-  const otmSteps = [];
-  const otmBy = otmRange && otmRange[1] - otmRange[0] > 16 ? 4 : 2;
-  if (otmRange) for (let n = Math.ceil((otmRange[0] + 0.01) / otmBy) * otmBy; n <= otmRange[1]; n += otmBy) otmSteps.push(n);
+// ---------- Deals: todos los bull puts del plazo, por calidad ----------
+// Mismo nivel que la pestaña Hoy (0–5). Por defecto, de nivel 3 en adelante, uno por nombre (el mejor) y ordenados por nivel;
+// a igual nivel, el que más aguanta si el cálculo se equivoca (el suelo) y luego la rentab. esperada.
+// Los filtros viven en el dispositivo (`centinela.deals.v2`). El precio (Bid/Ask o Mid) y los bloques que ya tienes son los de Hoy.
+const LS_DQ = "centinela.deals.v2";
+const DQ_WIDTHS = [2, 3, 5, 10];
+const DQ_PROB_MIN = 3;
+const DQ_PROB_MAX = 20;
+const DQ_ORDERS = [
+  ["lv", "Nivel"],
+  ["ret", "Rentab."],
+  ["prob", "Prob."],
+  ["net", "Cobras"],
+];
+const DQ_HIDES = [
+  ["earn", "Resultados"],
+  ["name", "Nombres que tengo"],
+  ["block", "Bloques que tengo"],
+  ["rules", "Fuera de Reglas"],
+];
+const dq = (() => {
+  const saved = readLocal(LS_DQ) ?? {};
+  const hide = saved.hide && typeof saved.hide === "object" ? saved.hide : {};
+  return {
+    levels: Array.isArray(saved.levels) ? saved.levels.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [3, 4, 5],
+    prob: Number.isInteger(saved.prob) && saved.prob >= DQ_PROB_MIN && saved.prob <= DQ_PROB_MAX ? saved.prob : null,
+    width: DQ_WIDTHS.includes(saved.width) ? saved.width : null,
+    exp: typeof saved.exp === "string" ? saved.exp : "",
+    margin: saved.margin === true,
+    hide: Object.fromEntries(DQ_HIDES.map(([id]) => [id, hide[id] === true])),
+    one: saved.one !== false,
+    order: DQ_ORDERS.some(([id]) => id === saved.order) ? saved.order : "lv",
+    more: false,
+    open: new Set(),
+    shown: 40,
+  };
+})();
+const keepDq = () => writeLocal(LS_DQ, { levels: dq.levels, prob: dq.prob, width: dq.width, exp: dq.exp, margin: dq.margin, hide: dq.hide, one: dq.one, order: dq.order });
+let dqCache = { key: "", out: null };
+
+/** Los deals puntuados (se calculan una vez por barrido, reglas, precio y bloques) y lo que hace falta para los avisos. */
+function dqData() {
+  const rules = state.config.rules;
+  const hoyLs = readLocal("centinela.hoy.v1") ?? {};
+  const price = hoyLs.price === "mid" ? "mid" : "nat";
+  const mine = (readLocal("centinela.misdeals.v1") ?? []).filter((d) => d && typeof d.s === "string" && !d.closedAt);
+  const held = [...new Set([...(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : []), ...mine.map((d) => d.b).filter(Boolean)])];
   const today = nyToday();
-  const money0 = shortMoney;
-  const names = Object.keys(counts);
-  const okTotal = names.reduce((sum, name) => sum + counts[name].ok, 0);
-  const noTotal = names.reduce((sum, name) => sum + counts[name].no, 0);
-  const shown = deals.slice(0, state.dealsShown);
-  const filtered = f.expiries.length > 0 || f.maxWidth > 0 || f.minOtm > 0 || f.maxProb > 0;
-  const summary = names.length
-    ? `${okTotal} cumplen y ${noTotal} no, en ${names.length} nombres.${filtered ? ` Con tus filtros quedan ${matched}.` : ""} Ves ${shown.length}${
-        deals.length < matched ? `, con el tope de ${state.dealsPerName} por nombre` : shown.length < deals.length ? ` de ${deals.length}` : ""
-      }.`
-    : "";
-  const why = (sp) => (sp.ok ? "" : `No pasa: ${sp.fails.join(" · ")}`);
-  const rows = shown
-    .map(
-      ({ sym, sp }) => `<li>
-        <button class="deal ${sp.ok ? "ok" : "no"}" data-open="${esc(sym.s)}" data-deal="${esc(dealKey(sp))}">
-          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(sym.s)}</b> <span class="muted">${esc(sp.expiryLabel)} · ${sp.dte} d ·</span> ${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)} <span class="muted">· ancho ${widthText(sp)}</span>
-            <span class="deal-kpi num">${orderText(sp, order)}</span></span>
-          <span class="deal-sub small muted">${pct(sp.otm, 1)} abajo · prob. ${probText(sp)} · rentab. ${pct(sp.ret)} · equilibrio ${kpiText(sp)} · cobras ${usd(sp.creditUsd)} · pierdes máx. ${usd(sp.lossUsd)}${sp.earnInside && sym.er ? ` · resultados ${esc(labelOf(sym.er.d))}` : ""}</span>
-          ${sp.ok ? "" : `<span class="deal-why small">${esc(why(sp))}</span>`}
-        </button>
-      </li>`,
-    )
-    .join("");
-  const head = [
-    ["abajo", "% abajo"],
-    ["credito", "Cobras"],
-    [null, "% del ancho"],
-    ["prob", "Prob. asig."],
-    ["rentab", "Rentab."],
-    [null, "Pérdida máx."],
-    ["equilibrio", "Equilibrio"],
-  ]
-    .map(([id, label]) => (id ? `<th><button data-order="${id}" aria-pressed="${order === id}">${label}${order === id ? " ↓" : ""}</button></th>` : `<th>${label}</th>`))
-    .join("");
-  const body = shown
-    .map(
-      ({ sym, sp }) => `<tr data-open="${esc(sym.s)}" data-deal="${esc(dealKey(sp))}" class="${sp.ok ? "ok" : "no"}">
-        <td class="l"><i class="dot" aria-hidden="true"></i><b style="font-weight:500">${esc(sym.s)}</b></td>
-        <td class="l">${esc(sp.expiryLabel)} <span class="xs muted">${sp.dte} d</span></td>
-        <td class="l">${fmtStrike(sp.shortStrike)}/${fmtStrike(sp.longStrike)}</td>
-        <td>${widthText(sp)}</td>
-        <td>${pct(sp.otm, 1)}</td>
-        <td>${usd(sp.creditUsd)}</td>
-        <td>${pct(sp.creditPct)}</td>
-        <td>${probText(sp)}</td>
-        <td>${pct(sp.ret)}</td>
-        <td>${usd(sp.lossUsd)}</td>
-        <td>${kpiText(sp)}</td>
-        <td class="l small ${sp.ok ? "up" : "brass"}" style="white-space:normal;min-width:150px">${sp.ok ? "Cumple" : esc(sp.fails.join(" · "))}${sp.earnInside && sym.er && sp.ok ? ` <span class="brass">· resultados ${esc(labelOf(sym.er.d))}</span>` : ""}</td>
-      </tr>`,
-    )
-    .join("");
-  const list = shown.length
-    ? `<p class="small muted deal-head"><span>Bull put</span><span>${esc(ORDERS.find((o) => o.id === order)?.label ?? "")}</span></p>
-       <ul class="rows">${rows}</ul>
-       <div class="table-wrap"><table>
-         <thead><tr><th class="l">Nombre</th><th class="l">Vence</th><th class="l">Corto/largo</th><th>Ancho</th>${head}<th class="l">Cumple o por qué no</th></tr></thead>
-         <tbody>${body}</tbody></table></div>
-       ${deals.length > shown.length ? `<button class="btn" style="margin-top:12px" data-act="more-deals">Ver ${Math.min(60, deals.length - shown.length)} más (quedan ${deals.length - shown.length})</button>` : ""}`
-    : `<div class="empty"><h2>${!listSymbols().length ? "Esperando el primer barrido de la lista" : filtered ? "Nada con esos filtros" : "Sin bull puts cerca de tu punto"}</h2>
-        <p class="small muted" style="margin-top:8px">${!listSymbols().length ? "Sale cada media hora en horario de mercado." : filtered ? "Quita algún filtro para ver más." : "Ningún nombre tiene puts en tu plazo y dentro de tus reglas."}</p>
-        ${filtered ? '<button class="btn" style="margin-top:12px" data-act="clear-filters">Quitar filtros</button>' : ""}</div>`;
-  const chip = (attr, value, label, on) => `<button class="chip quiet" ${attr}="${esc(value)}" aria-pressed="${on}">${esc(label)}</button>`;
+  const symbols = listSymbols();
+  const key = JSON.stringify([state.scan?.at, state.hist?.at, rules, price, held, today, symbols.map((sym) => sym.s)]);
+  if (dqCache.key !== key) {
+    const out = qualityDeals(
+      symbols,
+      { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: state.hist?.symbols ?? null, held, price, maxProb: DQ_PROB_MAX, maxWidth: 10 },
+      today,
+    );
+    dqCache = { key, out };
+  }
+  return { ...dqCache.out, price, held, openNames: new Set(mine.map((d) => d.s)), rules, today };
+}
+
+// "probabilidad alta" → "prob.": los motivos de las Reglas, cortos para una etiqueta.
+const DQ_FAIL = { "probabilidad alta": "prob.", "sin dato de probabilidad": "prob.", "fuera del punto": "% abajo", "crédito corto": "cobras", "equilibrio bajo": "equilibrio" };
+const dqFail = (fail) => DQ_FAIL[fail] ?? (fail.startsWith("ancho de") ? "ancho" : fail);
+
+function dqClick(el) {
+  const act = el.dataset.dq;
+  const value = el.dataset.v ?? "";
+  if (act === "level") {
+    const l = Number(value);
+    dq.levels = dq.levels.includes(l) ? dq.levels.filter((x) => x !== l) : [...dq.levels, l].sort();
+  } else if (act === "exp") dq.exp = value;
+  else if (act === "width" && DQ_WIDTHS.includes(Number(value))) dq.width = Number(value);
+  else if (act === "margin") dq.margin = !dq.margin;
+  else if (act === "hide" && value in dq.hide) dq.hide[value] = !dq.hide[value];
+  else if (act === "one") dq.one = !dq.one;
+  else if (act === "order" && DQ_ORDERS.some(([id]) => id === value)) dq.order = value;
+  else if (act === "more") {
+    dq.more = !dq.more;
+    render();
+    return;
+  } else if (act === "variants") {
+    if (dq.open.has(value)) dq.open.delete(value);
+    else dq.open.add(value);
+    render();
+    return;
+  } else if (act === "shown") {
+    dq.shown += 40;
+    render();
+    return;
+  } else return;
+  dq.shown = 40;
+  keepDq();
+  render();
+}
+
+function viewDeals() {
+  if (!state.scan?.symbols?.length) return `<div class="deals">${header("Bull put · por calidad", "Deals")}<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado.</p></div></div>`;
+  const data = dqData();
+  const { rules, today } = data;
+  const prob = dq.prob ?? Math.min(DQ_PROB_MAX, Math.max(DQ_PROB_MIN, rules.maxProb >= PROB_OFF ? 10 : Math.round(rules.maxProb)));
+  const width = dq.width ?? nearest(DQ_WIDTHS, rules.width);
+  const expiries = [...new Set(data.deals.map((d) => d.row.expiry))].sort();
+  const exp = expiries.includes(dq.exp) ? dq.exp : "";
+  const maxLevel = rules.levelSafety === "off" ? 3 : rules.levelSafety === "margin" ? 5 : 4;
+  const blockOf = (d) => d.sym.b ?? "";
+  const list = data.deals.filter(
+    (d) =>
+      dq.levels.includes(d.level) &&
+      d.row.prob != null &&
+      d.row.prob <= prob + 1e-9 &&
+      d.row.width <= width + 1e-9 &&
+      (!exp || d.row.expiry === exp) &&
+      (!dq.margin || d.checks.safe) &&
+      (!dq.hide.earn || !(d.row.earnInside && d.sym.er)) &&
+      (!dq.hide.name || !data.openNames.has(d.sym.s)) &&
+      (!dq.hide.block || data.openNames.has(d.sym.s) || !data.held.includes(blockOf(d))) &&
+      (!dq.hide.rules || d.ok),
+  );
+  const floorOf = (d) => (d.floor == null ? -Infinity : d.floor);
+  const sorters = {
+    lv: (a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp,
+    ret: (a, b) => b.row.retExp - a.row.retExp || b.level - a.level,
+    prob: (a, b) => a.row.prob - b.row.prob || b.level - a.level || floorOf(b) - floorOf(a),
+    net: (a, b) => b.row.net - a.row.net || b.level - a.level,
+  };
+  list.sort(sorters[dq.order]);
+  const groups = [];
+  const byName = new Map();
+  for (const d of list) {
+    if (!byName.has(d.sym.s)) {
+      byName.set(d.sym.s, []);
+      groups.push(byName.get(d.sym.s));
+    }
+    byName.get(d.sym.s).push(d);
+  }
+  const count = (level) => list.filter((d) => d.level === level).length;
+  const tops = [5, 4, 3].filter((l) => l <= maxLevel);
+  const summary = [...tops.map((l) => [`Nivel ${l}`, count(l)]), ...(rules.levelSafety === "off" ? [] : [["Con margen", list.filter((d) => d.checks.safe).length]])]
+    .map(([label, n]) => `<span class="hoy-count">${label}: <b class="num">${n}</b></span>`)
+    .join('<span aria-hidden="true">·</span>');
+
+  const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-dq="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
+  const active = (width !== nearest(DQ_WIDTHS, rules.width) ? 1 : 0) + (dq.margin ? 1 : 0) + DQ_HIDES.filter(([id]) => dq.hide[id]).length;
+  const tags = (d) => {
+    const out = [];
+    if (d.row.earnInside && d.sym.er) out.push(`<span class="dq-tag red">resultados el ${esc(labelOf(d.sym.er.d))}</span>`);
+    if (data.openNames.has(d.sym.s)) out.push(`<span class="dq-tag">ya tienes un ${esc(d.sym.s)} abierto</span>`);
+    else if (data.held.includes(blockOf(d))) out.push('<span class="dq-tag">bloque que ya tienes</span>');
+    if (!d.ok) out.push(`<span class="dq-tag">fuera de tus Reglas: ${esc([...new Set(d.fails.map(dqFail))].join(", "))}</span>`);
+    for (const note of d.row.trend ?? []) out.push(`<span class="dq-tag">${esc(note)}</span>`);
+    return out.join("");
+  };
+  const row = (d, more = "", sub = false) => {
+    const r = d.row;
+    const firm = d.level >= 1 && d.level <= 3 && d.checks.safe;
+    const t = tags(d);
+    return `<li class="dq-row${sub ? " sub" : ""}">
+      <button class="dq-open" data-hoy="cell" data-s="${esc(d.sym.s)}" data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-label="${esc(d.sym.s)} ${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)} ${esc(r.expiryLabel)}: nivel ${d.level}">
+        <span class="dq-top"><span class="lv lv${d.level} dq-lv${firm ? " firm" : ""}">${d.level}</span><span class="dq-title"><b>${esc(d.sym.s)}</b> ${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)} <span class="muted">· ${esc(r.expiryLabel)} · $${num(r.width * 100, 0)} · ${num(r.otm, 1)} % abajo</span></span><span class="dq-ret num${r.retExp > 0 ? " up" : ""}">${r.retExp > 0 ? "+" : ""}${num(r.retExp, 1)} %</span></span>
+        <span class="dq-four num"><span class="up">${usdDec(r.net)}</span><span>${r.prob == null ? "—" : `${num(r.prob, 1)} %`}</span><span>${r.dte}</span><span>${usdDec(r.loss)}</span></span>
+      </button>
+      ${t || more ? `<span class="dq-tags">${t}${more}</span>` : ""}
+    </li>`;
+  };
+  let rows = "";
+  if (dq.one) {
+    for (const g of groups.slice(0, dq.shown)) {
+      const name = g[0].sym.s;
+      const open = dq.open.has(name);
+      const more = g.length > 1 ? `<button class="dq-more" data-dq="variants" data-v="${esc(name)}" aria-expanded="${open}">${open ? "ocultar ▴" : `+${g.length - 1} ${g.length === 2 ? "variante" : "variantes"} ▾`}</button>` : "";
+      rows += row(g[0], more);
+      if (open) rows += g.slice(1, 12).map((d) => row(d, "", true)).join("") + (g.length > 12 ? `<li class="dq-row sub xs muted">y ${g.length - 12} más de ${esc(name)}.</li>` : "");
+    }
+  } else rows = list.slice(0, dq.shown).map((d) => row(d)).join("");
+  const total = dq.one ? groups.length : list.length;
+  const closed = !state.scan.example && pricesOutsideMarket(state.scan.at);
+
   return `<div class="deals">
-    ${header("Bull put · lista", "Deals")}
-    ${summary ? `<p class="small" style="margin-top:12px">${summary}</p>` : ""}
-    <div class="tools">
-      <div class="chips" role="group" aria-label="Orden">
-        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === order}">${o.label}</button>`).join("")}
-      </div>
+    ${header("Bull put · por calidad", "Deals")}
+    ${closed ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y se apartan más deals.</p>' : ""}
+    <div class="filters" aria-label="Filtros" style="margin-top:12px">
+      <div class="frow" role="group" aria-label="Niveles"><span class="small muted hoy-lab">Nivel</span>${Array.from({ length: maxLevel + 1 }, (_, l) => `<button class="lv lv${l} dq-lvb" data-dq="level" data-v="${l}" aria-pressed="${dq.levels.includes(l)}">${l}</button>`).join("")}</div>
+      <div class="frow" role="group" aria-label="Prob. de asignación, de ${DQ_PROB_MIN} % a ${DQ_PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
+        <input type="range" class="range" id="dq-prob" min="${DQ_PROB_MIN}" max="${DQ_PROB_MAX}" step="1" value="${prob}" aria-label="Prob. de asignación máxima">
+        <b class="num" id="dq-prob-val" style="min-width:3.2em;text-align:right">${prob} %</b></div>
+      <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vence</span>${chip("exp", "", "Todos", !exp)}${expiries.map((e) => chip("exp", e, `${esc(labelOf(e))} · ${daysBetween(today, e)} d`, e === exp)).join("")}</div>
+      <button class="dq-more-filters" data-dq="more" aria-expanded="${dq.more}">${dq.more ? "Menos filtros ▴" : "Más filtros ▾"}${active ? ` <span>· ${active} ${active === 1 ? "activo" : "activos"}</span>` : ""}</button>
+      ${
+        dq.more
+          ? `<div class="frow" role="group" aria-label="Ancho máximo"><span class="small muted hoy-lab">Ancho hasta</span>${DQ_WIDTHS.map((w) => chip("width", w, `$${w * 100}`, width === w)).join("")}</div>
+      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span><button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${data.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${data.price === "mid"}">Mid</button></div>
+      ${rules.levelSafety === "off" ? "" : `<div class="frow" role="group" aria-label="Solo"><span class="small muted hoy-lab">Solo</span>${chip("margin", 1, "Con margen", dq.margin)}</div>`}
+      <div class="frow hoy-wrap" role="group" aria-label="Ocultar"><span class="small muted hoy-lab">Ocultar</span><div class="hoy-mine">${DQ_HIDES.map(([id, label]) => chip("hide", id, label, dq.hide[id])).join("")}</div></div>
+      ${data.price === "mid" ? '<p class="xs muted">A precio Mid: si te llenaran a precio medio. Es una hipótesis, no un precio garantizado. Se cambia también en Hoy.</p>' : ""}`
+          : ""
+      }
     </div>
-    <div class="filters" aria-label="Filtros">
-      ${
-        widths.length
-          ? `<div class="frow" role="group" aria-label="Ancho máximo del spread"><span class="flabel xs muted">Ancho</span>
-        ${chip("data-f-width", "0", "Todos", !(f.maxWidth > 0))}
-        <input type="range" class="range" id="f-width-range" min="${DW_MIN}" max="${DW_MAX}" step="1" value="${f.maxWidth > 0 ? Math.min(DW_MAX, Math.max(DW_MIN, Math.round(f.maxWidth))) : DW_MAX}" style="min-width:90px" aria-label="Ancho máximo, de ${DW_MIN} a ${DW_MAX} dólares">
-        <b class="num small" id="f-width-val" style="flex:none;min-width:5.2em;text-align:right">${f.maxWidth > 0 ? `hasta ${money0(f.maxWidth)}` : "Todos"}</b></div>`
-          : ""
-      }
-      <div class="frow" role="group" aria-label="Prob. de asignación máxima"><span class="flabel xs muted">Prob.</span>
-        ${chip("data-f-prob", "0", "Todos", !(f.maxProb > 0))}
-        <input type="range" class="range" id="f-prob-range" min="${DP_MIN}" max="${DP_MAX}" step="1" value="${f.maxProb > 0 ? f.maxProb : DP_MAX}" style="min-width:90px" aria-label="Prob. de asignación máxima, de ${DP_MIN} % a ${DP_MAX} %">
-        <b class="num small" id="f-prob-val" style="flex:none;min-width:5.2em;text-align:right">${f.maxProb > 0 ? `hasta ${f.maxProb} %` : "Todos"}</b></div>
-      ${
-        expiries.length
-          ? `<div class="frow" role="group" aria-label="Vencimiento"><span class="flabel xs muted">Vence</span>
-        ${chip("data-f-exp", "", "Todos", f.expiries.length === 0)}${expiries.map((iso) => chip("data-f-exp", iso, `${labelOf(iso)} · ${daysBetween(today, iso)} d`, f.expiries.includes(iso))).join("")}</div>`
-          : ""
-      }
-      ${
-        otmSteps.length
-          ? `<div class="frow" role="group" aria-label="Porcentaje abajo"><span class="flabel xs muted">% abajo</span>
-        ${chip("data-f-otm", "0", "Todos", !(f.minOtm > 0))}${otmSteps.map((n) => chip("data-f-otm", String(n), `desde ${n} %`, f.minOtm === n)).join("")}</div>`
-          : ""
-      }
-      <div class="frow" role="group" aria-label="Cuántos por nombre"><span class="flabel xs muted">Tope</span>
-        ${PER_NAME.map(([n, label]) => chip("data-per-name", String(n), label, state.dealsPerName === n)).join("")}</div>
+    <p class="hoy-sum" style="margin:6px 0 8px">${summary}</p>
+    <div class="dq-bar">
+      <span class="dq-count small muted">${chip("one", 1, "Uno por nombre", dq.one)} ${dq.one ? `${groups.length} ${groups.length === 1 ? "nombre" : "nombres"} · ` : ""}${list.length} ${list.length === 1 ? "deal" : "deals"}</span>
+      <span class="dq-orders" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => chip("order", id, label, dq.order === id)).join("")}</span>
     </div>
-    ${state.scan ? list : ""}
-    ${foot()}
+    ${
+      list.length
+        ? `<div class="dq-head xs muted" aria-hidden="true"><span>Cobras neto</span><span>Prob. asig.</span><span>Días</span><span>Pierdes máx.</span></div>
+      <ul class="dq-list">${rows}</ul>
+      ${total > dq.shown ? `<button class="btn" style="margin-top:12px" data-dq="shown">Ver ${Math.min(40, total - dq.shown)} más (quedan ${total - dq.shown})</button>` : ""}`
+        : `<div class="empty"><h2>${data.deals.length ? "Nada con esos filtros" : state.hist?.symbols ? "Ningún bull put del plazo se puede puntuar" : "Sin cierres diarios todavía"}</h2><p class="small muted" style="margin-top:8px">${data.deals.length ? "Prueba a encender más niveles o a subir la prob." : "Hacen falta los cierres de cada nombre para puntuar."}</p></div>`
+    }
+    <p class="xs muted" style="margin-top:14px">${data.deals.length} bull puts puntuados en el plazo de tus Reglas (${rules.minDte}–${rules.maxDte} días)${data.gated ? `; ${data.gated} apartados por horquilla ancha` : ""}. El nivel es el de Hoy: una estimación para ordenar, no una previsión ni un consejo. Toca un deal para ver su ficha.</p>
   </div>`;
 }
 
@@ -1564,6 +1657,11 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = id === "f-width-range" ? `hasta $${event.target.value}` : `hasta ${event.target.value} %`;
     return;
   }
+  if (id === "dq-prob") {
+    const label = root.querySelector("#dq-prob-val");
+    if (label) label.textContent = `${event.target.value} %`;
+    return;
+  }
   if (id === "hoy-range") {
     const label = root.querySelector("#hoy-range-val");
     if (label) label.textContent = `${event.target.value} %`;
@@ -1587,6 +1685,16 @@ root.addEventListener("change", (event) => {
     if (hoy.setProb(Number(event.target.value))) render();
     return;
   }
+  if (id === "dq-prob") {
+    const value = Number(event.target.value);
+    if (Number.isInteger(value) && value >= DQ_PROB_MIN && value <= DQ_PROB_MAX) {
+      dq.prob = value;
+      dq.shown = 40;
+      keepDq();
+      render();
+    }
+    return;
+  }
   if (event.target.id !== "eq-range") return;
   const value = Number(event.target.value);
   if (!EQ_OK.prob(value)) return;
@@ -1596,9 +1704,13 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-dq],[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
+  if (el.dataset.dq) {
+    dqClick(el);
+    return;
+  }
   if (el.dataset.hoy) {
     hoy.click(el);
     return;
