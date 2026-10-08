@@ -1076,7 +1076,7 @@ const dq = (() => {
     levels: Array.isArray(saved.levels) ? saved.levels.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [3, 4, 5],
     prob: Number.isInteger(saved.prob) && saved.prob >= DQ_PROB_MIN && saved.prob <= DQ_PROB_MAX ? saved.prob : null,
     width: DQ_WIDTHS.includes(saved.width) ? saved.width : null,
-    exp: typeof saved.exp === "string" ? saved.exp : "",
+    days: Number.isInteger(saved.days) && saved.days > 0 ? saved.days : null, // vence en N días o menos; null = todos
     margin: saved.margin === true,
     hide: Object.fromEntries(DQ_HIDES.map(([id]) => [id, hide[id] === true])),
     one: saved.one !== false,
@@ -1086,7 +1086,7 @@ const dq = (() => {
     shown: 40,
   };
 })();
-const keepDq = () => writeLocal(LS_DQ, { levels: dq.levels, prob: dq.prob, width: dq.width, exp: dq.exp, margin: dq.margin, hide: dq.hide, one: dq.one, order: dq.order });
+const keepDq = () => writeLocal(LS_DQ, { levels: dq.levels, prob: dq.prob, width: dq.width, days: dq.days, margin: dq.margin, hide: dq.hide, one: dq.one, order: dq.order });
 let dqCache = { key: "", out: null };
 
 /** Los deals puntuados (se calculan una vez por barrido, reglas, precio y bloques) y lo que hace falta para los avisos. */
@@ -1120,8 +1120,7 @@ function dqClick(el) {
   if (act === "level") {
     const l = Number(value);
     dq.levels = dq.levels.includes(l) ? dq.levels.filter((x) => x !== l) : [...dq.levels, l].sort();
-  } else if (act === "exp") dq.exp = value;
-  else if (act === "width" && DQ_WIDTHS.includes(Number(value))) dq.width = Number(value);
+  } else if (act === "width" && DQ_WIDTHS.includes(Number(value))) dq.width = Number(value);
   else if (act === "margin") dq.margin = !dq.margin;
   else if (act === "hide" && value in dq.hide) dq.hide[value] = !dq.hide[value];
   else if (act === "one") dq.one = !dq.one;
@@ -1152,7 +1151,10 @@ function viewDeals() {
   const prob = dq.prob ?? Math.min(DQ_PROB_MAX, Math.max(DQ_PROB_MIN, rules.maxProb >= PROB_OFF ? 10 : Math.round(rules.maxProb)));
   const width = dq.width ?? nearest(DQ_WIDTHS, rules.width);
   const expiries = [...new Set(data.deals.map((d) => d.row.expiry))].sort();
-  const exp = expiries.includes(dq.exp) ? dq.exp : "";
+  const dtes = expiries.map((e) => daysBetween(today, e));
+  const dMin = dtes.length ? Math.min(...dtes) : rules.minDte;
+  const dMax = dtes.length ? Math.max(...dtes) : rules.maxDte;
+  const days = dq.days == null ? dMax : Math.min(dMax, Math.max(dMin, dq.days));
   const maxLevel = rules.levelSafety === "off" ? 3 : rules.levelSafety === "margin" ? 5 : 4;
   const blockOf = (d) => d.sym.b ?? "";
   const list = data.deals.filter(
@@ -1161,7 +1163,7 @@ function viewDeals() {
       d.row.prob != null &&
       d.row.prob <= prob + 1e-9 &&
       d.row.width <= width + 1e-9 &&
-      (!exp || d.row.expiry === exp) &&
+      d.row.dte <= days &&
       (!dq.margin || d.checks.safe) &&
       (!dq.hide.earn || !(d.row.earnInside && d.sym.er)) &&
       (!dq.hide.name || !data.openNames.has(d.sym.s)) &&
@@ -1235,7 +1237,9 @@ function viewDeals() {
       <div class="frow" role="group" aria-label="Prob. de asignación, de ${DQ_PROB_MIN} % a ${DQ_PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
         <input type="range" class="range" id="dq-prob" min="${DQ_PROB_MIN}" max="${DQ_PROB_MAX}" step="1" value="${prob}" aria-label="Prob. de asignación máxima">
         <b class="num" id="dq-prob-val" style="min-width:3.2em;text-align:right">${prob} %</b></div>
-      <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vence</span>${chip("exp", "", "Todos", !exp)}${expiries.map((e) => chip("exp", e, `${esc(labelOf(e))} · ${daysBetween(today, e)} d`, e === exp)).join("")}</div>
+      <div class="frow" role="group" aria-label="Vence en ${dMin} a ${dMax} días o menos"><span class="small muted hoy-lab">Vence hasta</span>
+        <input type="range" class="range" id="dq-days" min="${dMin}" max="${dMax}" step="1" value="${days}" aria-label="Días hasta el vencimiento, como mucho">
+        <b class="num" id="dq-days-val" style="min-width:3.2em;text-align:right">${days} d</b></div>
       <button class="dq-more-filters" data-dq="more" aria-expanded="${dq.more}">${dq.more ? "Menos filtros ▴" : "Más filtros ▾"}${active ? ` <span>· ${active} ${active === 1 ? "activo" : "activos"}</span>` : ""}</button>
       ${
         dq.more
@@ -1657,6 +1661,11 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = id === "f-width-range" ? `hasta $${event.target.value}` : `hasta ${event.target.value} %`;
     return;
   }
+  if (id === "dq-days") {
+    const label = root.querySelector("#dq-days-val");
+    if (label) label.textContent = `${event.target.value} d`;
+    return;
+  }
   if (id === "dq-prob") {
     const label = root.querySelector("#dq-prob-val");
     if (label) label.textContent = `${event.target.value} %`;
@@ -1683,6 +1692,16 @@ root.addEventListener("change", (event) => {
   }
   if (id === "hoy-range") {
     if (hoy.setProb(Number(event.target.value))) render();
+    return;
+  }
+  if (id === "dq-days") {
+    const value = Number(event.target.value);
+    if (Number.isInteger(value) && value > 0) {
+      dq.days = value >= Number(event.target.max) ? null : value;
+      dq.shown = 40;
+      keepDq();
+      render();
+    }
     return;
   }
   if (id === "dq-prob") {
