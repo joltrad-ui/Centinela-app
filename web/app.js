@@ -924,6 +924,9 @@ function viewReglas() {
           <p class="small muted">${{ margin: "Lo que queda (cobras neto menos lo que se espera pagar) tiene que superar el error del cálculo. Es lo que se puede equivocar esa media: cambia con los años de historia y con la volatilidad.", both: "La historia de 5 años y la volatilidad reciente tienen que salir las dos en positivo. Corta en el cero: −0,05 y −5 cuentan igual.", off: "El nivel llega a 3. Los dos cálculos se siguen viendo en la ficha." }[state.config.rules.levelSafety]}</p>
         </div>
         ${state.config.rules.levelSafety === "margin" ? stepper("rules.levelMargin", "Margen exigido", "Cuántas veces tiene que caber el error en lo que queda. 1 es lo mínimo; más es más exigente.", 0.5, 3, 0.5, (n) => `${num(n, 1)} ${n === 1 ? "vez" : "veces"}`) : ""}
+        ${stepper("rules.errVolPct", "Error: volatilidad", "Cuánto se supone que puede variar la volatilidad reciente en el plazo del deal. ±10 % de fábrica.", 10, 40, 5, (n) => `±${n} %`)}
+        ${stepper("rules.errHistK", "Error: historia", "Por cuánto se multiplica el error de la media de 5 años. ×1 de fábrica.", 1, 3, 0.5, (n) => `×${num(n, 1)}`)}
+        <p class="small muted" style="margin:8px 0 2px">Nota: estos dos solo cambian el error (el ± de la ficha, la barra de Barras, el suelo y el punto de seguridad), no lo que se espera pagar ni el nivel 0. Medido con 5 años de los 32 nombres, la volatilidad del mes siguiente varió de verdad unos ±35 % y el error de la historia se quedó corto unas 2 veces. Si ves el mercado peor, sube a ±35 % y ×2: con el barrido del 7 oct, el nivel 4 pasaba de 37 casillas a 12.</p>
       </div>
     </section>
 

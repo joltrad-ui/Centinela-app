@@ -693,6 +693,33 @@ test("hoy: reglas del punto de seguridad", () => {
   assert.equal(normalizeRules({ levelMargin: 9 }).levelMargin, 3);
   assert.equal(normalizeRules({ levelMargin: 1.3 }).levelMargin, 1.5); // de media en media
   assert.equal(normalizeRules({ levelMargin: "x" }).levelMargin, 1);
+  // el error, ajustable: ±10 % y ×1 de fábrica
+  assert.equal(d.errVolPct, 10);
+  assert.equal(d.errHistK, 1);
+  assert.equal(normalizeRules({ errVolPct: 37 }).errVolPct, 35); // de 5 en 5
+  assert.equal(normalizeRules({ errVolPct: 90 }).errVolPct, 40);
+  assert.equal(normalizeRules({ errVolPct: 1 }).errVolPct, 10);
+  assert.equal(normalizeRules({ errHistK: 2.2 }).errHistK, 2); // de media en media
+  assert.equal(normalizeRules({ errHistK: 0 }).errHistK, 1);
+  assert.equal(normalizeRules({ errHistK: "x" }).errHistK, 1);
+});
+
+test("hoy: el error se puede ensanchar sin cambiar lo que se espera pagar", () => {
+  const opts = tightOpts();
+  // paseo aleatorio fijo (sin azar entre ejecuciones), con un 2,5 % diario de movimiento: hay ventanas que caen bajo el corto
+  let seed = 7, price = 100;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
+  const series = { d: "2021-10-05", c: Array.from({ length: 1300 }, () => (price *= Math.exp(rand() * 0.087))) };
+  const base = withHistory(equalRisk(tight(), opts, today), series, today);
+  const same = withHistory(equalRisk(tight(), opts, today), series, today, { volPct: 10, histK: 1 });
+  const wide = withHistory(equalRisk(tight(), opts, today), series, today, { volPct: 35, histK: 2 });
+  assert.equal(same.err, base.err); // de fábrica, igual que antes
+  assert.equal(wide.expected, base.expected); // lo que se espera pagar no cambia
+  assert.equal(wide.retExp, base.retExp);
+  assert.ok(base.errHist > 0);
+  assert.ok(Math.abs(wide.errHist - base.errHist * 2) <= 0.011); // ×2 (con el redondeo a céntimos)
+  assert.ok(wide.errRecent > base.errRecent * 3); // ±35 % frente a ±10 %
+  assert.ok(wide.err > base.err);
 });
 
 test("hoy: el error de la historia sale de la variación entre lotes de ventanas", () => {

@@ -136,6 +136,8 @@ export function createHoy(ctx) {
         gapPct: rules.equalGapPct,
         safety: rules.levelSafety,
         marginK: rules.levelMargin,
+        errVol: rules.errVolPct,
+        errHistK: rules.errHistK,
         hist: state.hist?.symbols ?? null,
         held: heldBlocks(),
         price: hoy.price,
@@ -147,7 +149,7 @@ export function createHoy(ctx) {
 
   /** La fila de un deal concreto, con las cuentas de "Igual riesgo", a precio natural y a precio medio. */
   function dealRows(sym, deal, opts, today) {
-    const nat = withHistory(spreadRow(sym, deal.expiry, deal.short, deal.long, opts.fee, today), opts.hist?.[sym.s], today);
+    const nat = withHistory(spreadRow(sym, deal.expiry, deal.short, deal.long, opts.fee, today), opts.hist?.[sym.s], today, { volPct: opts.errVol, histK: opts.errHistK });
     if (nat.status !== "ok") return { nat: null, mid: null, row: null, why: nat.why };
     const mid = atMid(nat, opts.fee);
     return { nat, mid, row: opts.price === "mid" && mid ? mid : nat };

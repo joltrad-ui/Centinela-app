@@ -26,6 +26,8 @@ export const DEFAULT_RULES = {
   equalFee: 1.4, // pestaña "Igual riesgo": comisión por spread al abrir, en dólares; la de salir cuenta otra vez en el coste de ida y vuelta
   levelSafety: "margin", // pestaña "Hoy": el punto de seguridad del nivel: "margin" (lo que queda supera el error del cálculo), "both" (los dos cálculos en positivo) u "off" (no cuenta)
   levelMargin: 1, // pestaña "Hoy": cuántas veces el error tiene que caber en lo que queda, de 0,5 a 3
+  errVolPct: 10, // pestaña "Hoy": cuánto se supone que puede variar la volatilidad reciente al calcular el error, en %, de 10 a 40
+  errHistK: 1, // pestaña "Hoy": por cuánto se multiplica el error de la historia de 5 años, de 1 a 3
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
   gates: {
     event: false,
@@ -124,6 +126,8 @@ export function normalizeRules(input) {
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
     levelSafety: LEVEL_SAFETY.includes(row.levelSafety) ? row.levelSafety : base.levelSafety,
     levelMargin: Math.round(clamp(row.levelMargin, 0.5, 3, base.levelMargin) * 2) / 2,
+    errVolPct: Math.round(clamp(row.errVolPct, 10, 40, base.errVolPct) / 5) * 5,
+    errHistK: Math.round(clamp(row.errHistK, 1, 3, base.errHistK) * 2) / 2,
     gates: {
       event: g.event === true,
       liquid: g.liquid === true,
@@ -829,7 +833,9 @@ export function trendNotes(closes, price) {
 
 /** Añade a una fila de "Igual riesgo" la comparación con la historia del precio.
  *  `series` = { d: primera fecha, c: [cierres] } de ese nombre. */
-export function withHistory(row, series, today = nyToday()) {
+/** `err` = { volPct, histK } (reglas `errVolPct` y `errHistK` de la pestaña Hoy): cuánto puede variar la volatilidad reciente
+ *  (±10 % de fábrica) y por cuánto se multiplica el error de la historia (×1 de fábrica). Solo cambian el error, no lo que se espera pagar. */
+export function withHistory(row, series, today = nyToday(), err = {}) {
   const closes = series?.c;
   if (row.status !== "ok" || !Array.isArray(closes) || closes.length < 2) return row;
   const sessions = sessionsBetween(today, row.expiry);
@@ -850,11 +856,12 @@ export function withHistory(row, series, today = nyToday()) {
   const marginRecent = row.net - recent;
   // Cuánto se puede equivocar cada cálculo. Historia: error de la media de 5 años de ventanas. Reciente: media diferencia entre
   // la pérdida con la volatilidad un 10 % mayor y un 10 % menor. Lo que se espera pagar es su media, y su error combina los dos.
-  const recentHigh = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * 1.1, sessions / 252);
-  const recentLow = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * 0.9, sessions / 252);
+  const band = (err.volPct ?? DEFAULT_RULES.errVolPct) / 100;
+  const recentHigh = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * (1 + band), sessions / 252);
+  const recentLow = expectedLoss(row.sym.p, row.shortStrike, row.longStrike, vol * (1 - band), sessions / 252);
   const errRecent = recentHigh == null || recentLow == null ? null : Math.abs(recentHigh - recentLow) / 2;
-  const errHist = stats.se;
-  const err = errRecent == null ? null : 0.5 * Math.sqrt(errHist * errHist + errRecent * errRecent);
+  const errHist = stats.se * (err.histK ?? DEFAULT_RULES.errHistK);
+  const errAll = errRecent == null ? null : 0.5 * Math.sqrt(errHist * errHist + errRecent * errRecent);
   return {
     ...out,
     histProb: r1(stats.prob),
@@ -865,7 +872,7 @@ export function withHistory(row, series, today = nyToday()) {
     expected: r2(expected),
     errHist: r2(errHist),
     errRecent: errRecent == null ? null : r2(errRecent),
-    err: err == null ? null : r2(err),
+    err: errAll == null ? null : r2(errAll),
     distinct: high > 3 * low,
     marginHist: r2(marginHist),
     marginRecent: r2(marginRecent),
@@ -1183,7 +1190,7 @@ export function rangeOrder(a, b, by = "left") {
 export function levelCell(sym, opts, today = nyToday()) {
   let row = equalRisk(sym, opts, today);
   if (row.status !== "ok") return { sym, state: "out", why: row.why };
-  if (opts.hist) row = withHistory(row, opts.hist[sym.s], today);
+  if (opts.hist) row = withHistory(row, opts.hist[sym.s], today, { volPct: opts.errVol, histK: opts.errHistK });
   const gate = gateReason(row, opts.gapPct);
   if (opts.price === "mid") {
     if (row.probSrc === "formula") return { sym, state: "gated", gate, row, checks: dealChecks(row, opts) };
