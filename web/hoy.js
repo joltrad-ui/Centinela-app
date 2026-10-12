@@ -212,7 +212,7 @@ export function createHoy(ctx) {
     ${
       hoy.help
         ? `<div class="eq-help small muted" style="margin-top:8px">
-        <p>Cada casilla es un bull put: el de ese nombre en ese vencimiento, con la prob. de asignación hasta el objetivo y el ancho más cercano al elegido. Las cuentas son las de la pestaña Igual riesgo.</p>
+        <p>Cada casilla es un bull put: el de ese nombre en ese vencimiento, con la prob. de asignación hasta el objetivo y el ancho más cercano al elegido.</p>
         <p>Nivel 0: la rentab. esperada no es positiva; lo cobrado no cubre lo que se espera pagar. Si es positiva, el nivel empieza en 1 y suma un punto por cada comprobación: ${
           opts.safety === "off"
             ? ""
@@ -726,7 +726,7 @@ export function createHoy(ctx) {
     const closed = state.scan && !state.scan.example && pricesOutsideMarket(state.scan.at);
     const body = hoy.view === "mis" ? viewMis() : hoy.view === "nube" ? viewNube(o) : hoy.view === "barras" ? viewBarras(o) : viewMapa(o);
     return `
-      ${ctx.header("Nuevo", "Hoy", false)}
+      ${ctx.header("Hoy", false)}
       ${closed && hoy.view !== "mis" ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.</p>' : ""}
       ${segmented()}
       ${body}
