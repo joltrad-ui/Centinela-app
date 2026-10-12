@@ -846,7 +846,8 @@ function viewReglas() {
   return `<div class="narrow">
     <header class="top">
       <h1 class="sr-only">Reglas</h1>
-      <p class="small muted">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
+      <div class="top-row"><button class="btn primary" data-act="reload" ${state.loading ? "disabled" : ""}>Actualizar</button></div>
+      <p class="small muted" style="margin-top:12px">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
     </header>
     <div class="panel">
       ${stepper("rules.minDte", "Vencimiento desde", "No mires puts que caduquen antes.", 5, 60, 1, days)}
@@ -1638,6 +1639,8 @@ root.addEventListener("click", (event) => {
     state.detailDeal = null;
     state.detailSrc = "";
     render();
+  } else if (el.dataset.act === "reload") {
+    void load().then(loadHist, loadHist);
   } else if (el.dataset.act === "real") {
     void loadReal();
   } else if (el.dataset.act === "example") {
