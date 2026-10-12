@@ -48,7 +48,6 @@ a { color: var(--brass); }
 .xs { font-size: 0.75rem; }
 
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px 120px; min-height: 100dvh; }
-.eyebrow { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brass); }
 header.top { padding: max(12px, env(safe-area-inset-top)) 0 8px; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .top-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-top: 4px; }
@@ -80,11 +79,6 @@ header.top { padding: max(12px, env(safe-area-inset-top)) 0 8px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { height: 36px; padding: 0 12px; border-radius: 10px; background: var(--surface-2); font-size: 0.875rem; }
 .chip[aria-pressed="true"] { background: var(--brass); color: var(--brass-ink); font-weight: 500; }
-.search {
-  height: 40px; flex: 1 1 160px; min-width: 0; max-width: 280px; padding: 0 12px; border-radius: 10px;
-  background: var(--surface); border: 0; box-shadow: var(--border);
-}
-.search::placeholder { color: var(--muted); }
 
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .card {
@@ -113,7 +107,6 @@ dl { margin: 0; }
 .card > *:not(.row-open) { position: relative; pointer-events: none; }
 .card .star, .card .toggle { pointer-events: auto; }
 
-.table-wrap { display: none; background: var(--surface); border-radius: 16px; box-shadow: var(--border); overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
 th, td { padding: 9px 10px; text-align: right; white-space: nowrap; }
 th { font-weight: 400; color: var(--muted); font-size: 0.75rem; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--surface); }
@@ -170,11 +163,9 @@ details dd { margin: 0; color: var(--muted); font-size: 0.875rem; }
 .frow { display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; padding: 1px; }
 .frow::-webkit-scrollbar { display: none; }
 .frow .chip { flex: none; }
-.flabel { flex: none; width: 52px; white-space: nowrap; }
 .dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; margin-right: 7px; vertical-align: middle; background: var(--brass); }
 .ok .dot { background: var(--up); }
 .deal.no .deal-kpi { color: var(--muted); }
-.deal-why { display: block; margin-top: 3px; color: var(--brass); }
 .chip.quiet { height: 32px; font-size: 0.8125rem; background: transparent; box-shadow: var(--border); color: var(--muted); }
 .chip.quiet[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); font-weight: 400; }
 .alert { padding: 12px 0; }
@@ -208,8 +199,6 @@ nav.dock svg { width: 20px; height: 20px; }
   .universo .cards { display: none; }
   .universo .cards.near { display: grid; }
   .deals .rows, .deals .deal-head { display: none; }
-  .deals .table-wrap { display: block; }
-  .universo .table-wrap { display: block; }
   .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .narrow { max-width: 720px; }
   .sheet-back { align-items: center; }
@@ -240,7 +229,6 @@ nav.dock svg { width: 20px; height: 20px; }
 /* Resultados dentro del plazo: aviso en rojo dentro de la fila */
 .tag-earn { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; border-radius: 999px; background: var(--down-dim); color: var(--down); font-weight: 500; }
 /* Solo con un cálculo: marca ámbar */
-.tag-warn { display: inline-block; padding: 1px 8px; margin: 0 2px 2px 0; border-radius: 999px; background: var(--brass-dim); color: var(--brass); font-weight: 500; }
 
 /* Ficha: rango de 52 semanas y volatilidades de un vistazo */
 .glance { display: grid; gap: 10px; margin-top: 12px; }
@@ -261,24 +249,13 @@ nav.dock svg { width: 20px; height: 20px; }
 .vol-track .long { background: var(--up); }
 
 /* Igual riesgo: fila de un vistazo (cobras / coste / pierdes arriba, píldoras y datos en líneas) */
-.eq-row { padding: 10px 0 11px; }
-.eq-row .deal-top { padding-right: 104px; }
-.eq-row .deal-kpi { font-size: 1.0625rem; }
 .deal-kpi.plus { color: var(--up); }
 .deal-kpi.minus { color: var(--down); }
 .deal-kpi small { display: block; font-size: 0.6875rem; font-weight: 400; color: var(--muted); text-align: right; margin-top: 1px; white-space: nowrap; }
-.eq-legs { display: block; margin: 1px 0 0 14px; }
 .eq-lab { font-size: 0.6875rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.eq-stakes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 6px; }
-.eq-stake { display: grid; gap: 0; }
-.eq-stake:nth-child(2) { text-align: center; }
-.eq-stake:nth-child(3) { text-align: right; }
-.eq-stake b { font-size: 1.0625rem; font-weight: 600; line-height: 1.25; }
-.eq-stake b.up { color: var(--up); }
-.eq-stake b.down { color: var(--down); }
 .eq-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
 .eq-tags > span { margin: 0; }
-.eq-tags .tag-earn, .eq-tags .tag-warn, .eq-tags .tag-note { font-size: 0.6875rem; padding: 0 7px; }
+.eq-tags .tag-earn, .eq-tags .tag-note { font-size: 0.6875rem; padding: 0 7px; }
 .tag-note { display: inline-block; padding: 1px 8px; border-radius: 999px; box-shadow: var(--border); color: var(--muted); }
 .tag-note.brass { color: var(--brass); }
 .eq-mini { display: grid; gap: 2px; margin-top: 7px; }
@@ -288,8 +265,6 @@ nav.dock svg { width: 20px; height: 20px; }
 .eq-pair { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .eq-pair .eq-lab { display: inline; overflow: visible; font-size: 0.625rem; }
 .eq-pair b { font-weight: 500; font-size: 0.8125rem; color: var(--fg); }
-.eq-pair b.eq-plus { color: var(--up); }
-.eq-pair b.eq-minus { color: var(--down); }
 .eq-help p { margin: 0 0 8px; }
 /* Pantallas estrechas: la etiqueta pasa encima del valor para que no se corte nada */
 @media (max-width: 395px) {
@@ -298,13 +273,6 @@ nav.dock svg { width: 20px; height: 20px; }
   .eq-pair .eq-lab { display: block; font-size: 0.6875rem; }
   .eq-pair .eq-lab:empty { display: none; }
 }
-.eq-pay-box { display: block; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); }
-.eq-more { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 5px; cursor: pointer; font-size: 0.8125rem; }
-.eq-more b { font-weight: 500; color: var(--fg); }
-.eq-more b.eq-plus { color: var(--up); }
-.eq-more b.eq-minus { color: var(--down); }
-.eq-chev { margin-left: auto; color: var(--muted); padding: 2px 4px; }
-.eq-line.first { margin-top: 5px; }
 
 /* ---------- Pestaña "Hoy": mapa de niveles, nube, ficha del deal y Mis deals ---------- */
 .seg { display: flex; gap: 4px; padding: 4px; margin: 4px 0 14px; border-radius: 14px; background: var(--surface); box-shadow: var(--border); }
@@ -343,7 +311,6 @@ nav.dock svg { width: 20px; height: 20px; }
 .hoy-legend .lv.firm::after, .lv.sm.firm::after { bottom: 1px; width: 3px; height: 3px; margin-left: -1.5px; }
 .lvx { color: var(--line); }
 .lv.sm { min-height: 0; width: 22px; height: 22px; font-size: 0.75rem; border-radius: 6px; vertical-align: middle; margin-right: 4px; }
-.lv.big { min-height: 0; width: 52px; height: 52px; font-size: 1.5rem; border-radius: 14px; flex: none; }
 
 .hoy-grid { display: grid; gap: 4px; align-items: stretch; }
 .hoy-exp { height: 32px; font-size: 0.75rem; color: var(--muted); border-bottom: 1px dashed var(--line); white-space: nowrap; }

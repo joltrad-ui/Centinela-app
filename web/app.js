@@ -7,17 +7,11 @@ import {
   assessSymbol,
   cboeUrl,
   daysBetween,
-  cleanSymbol,
-  commonExpiries,
   compareSpreads,
-  defaultExpiry,
-  equalRiskList,
   gateReason,
   volatilities,
   pricesOutsideMarket,
-  favoriteDeals,
   fmtStrike,
-  ivFromPut,
   labelOf,
   liquidityNotes,
   normalizeConfig,
@@ -60,12 +54,6 @@ function refreshExample(scan) {
   return scan;
 }
 
-const EQ_PROBS = [5, 8, 10];
-const EQ_WIDTHS = [1, 2, 3, 5, 10];
-const EQ_PROB_MIN = 1;
-const EQ_PROB_MAX = 15;
-const EQ_OK = { prob: (v) => Number.isInteger(v) && v >= EQ_PROB_MIN && v <= EQ_PROB_MAX, width: (v) => EQ_WIDTHS.includes(v) };
-
 const state = {
   tab: "hoy", // la pestaña nueva es la de entrada; las de siempre siguen en la barra
   scan: null,
@@ -89,9 +77,8 @@ const state = {
   dealsShown: 60,
   dealFilter: { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 },
   hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
-  eqOpen: new Set(), // filas de Igual riesgo con los tres cálculos desplegados (solo en memoria)
-  equal: loadEqual(), // pestaña de prueba "Igual riesgo": solo en el dispositivo
 };
+migrateEqualFee();
 
 
 
@@ -113,16 +100,6 @@ function migrateEqualFee() {
   writeLocal(LS_EQUAL, rest);
 }
 
-function loadEqual() {
-  migrateEqualFee();
-  const saved = readLocal(LS_EQUAL) ?? {};
-  const num = (value, ok) => (EQ_OK[ok](value) ? value : null);
-  return {
-    prob: num(saved.prob, "prob"),
-    width: num(saved.width, "width"),
-    expiry: typeof saved.expiry === "string" ? saved.expiry : null,
-  };
-}
 
 // ---------- almacenamiento ----------
 
@@ -566,6 +543,11 @@ async function fetchCboe(name, bridges, memo) {
     }
   }
   throw new Error(lastError);
+}
+
+/** Una línea del resumen de lectura: qué se leyó de un nombre (`readSummary` la enseña). */
+function logLine(sym, via) {
+  return { s: sym.s, ok: true, p: sym.p, exp: sym.x.length, puts: sym.x.reduce((sum, item) => sum + item[2].length, 0), via };
 }
 
 /** Lectura de CBOE desde el navegador (archivo descargado, sin servidor). */
@@ -1026,25 +1008,11 @@ function ghBlock() {
   </section>`;
 }
 
-/** El número que se enseña a la derecha de cada deal: el del orden elegido. */
-function orderText(sp, order) {
-  if (order === "rentab") return pct(sp.ret);
-  if (order === "prob") return probText(sp);
-  if (order === "abajo") return pct(sp.otm, 1);
-  if (order === "credito") return usd(sp.creditUsd);
-  return kpiText(sp);
-}
-
 // Deslizadores de los filtros de Deals: ancho máximo ($1 a $8) y prob. de asignación máxima (1 a 15 %).
 const DW_MIN = 1;
 const DW_MAX = 8;
 const DP_MIN = 1;
 const DP_MAX = 15;
-const PER_NAME = [
-  [3, "3 por nombre"],
-  [10, "10 por nombre"],
-  [0, "Sin tope"],
-];
 // ---------- Deals: todos los bull puts del plazo, por calidad ----------
 // Mismo nivel que la pestaña Hoy (0–5). Por defecto, de nivel 3 en adelante, uno por nombre (el mejor) y ordenados por nivel;
 // a igual nivel, el que más aguanta si el cálculo se equivoca (el suelo) y luego la rentab. esperada.
@@ -1520,9 +1488,6 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = `${event.target.value} %`;
     return;
   }
-  if (id !== "eq-range") return;
-  const label = root.querySelector("#eq-range-val");
-  if (label) label.textContent = `${event.target.value} %`;
 });
 root.addEventListener("change", (event) => {
   const id = event.target.id;
@@ -1558,16 +1523,10 @@ root.addEventListener("change", (event) => {
     }
     return;
   }
-  if (event.target.id !== "eq-range") return;
-  const value = Number(event.target.value);
-  if (!EQ_OK.prob(value)) return;
-  state.equal.prob = value;
-  writeLocal(LS_EQUAL, state.equal);
-  render();
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-dq],[data-hoy],[data-pick],[data-eq-prob],[data-eq-width],[data-eq-exp],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-dq],[data-hoy],[data-pick],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.dq) {
@@ -1578,14 +1537,7 @@ root.addEventListener("click", (event) => {
     hoy.click(el);
     return;
   }
-  if (el.dataset.eqProb || el.dataset.eqWidth || el.dataset.eqExp) {
-    const eq = state.equal;
-    if (el.dataset.eqProb) eq.prob = Number(el.dataset.eqProb);
-    if (el.dataset.eqWidth) eq.width = Number(el.dataset.eqWidth);
-    if (el.dataset.eqExp) eq.expiry = el.dataset.eqExp;
-    writeLocal(LS_EQUAL, eq);
-    render();
-  } else if (el.dataset.off) {
+  if (el.dataset.off) {
     const name = el.dataset.off;
     changeConfig((config) => {
       config.off = config.off.includes(name) ? config.off.filter((s) => s !== name) : [...config.off, name];
@@ -1642,14 +1594,6 @@ root.addEventListener("click", (event) => {
     const list = state.dealFilter.expiries;
     state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
     state.dealsShown = 60;
-    render();
-  } else if (el.dataset.act === "eq-more") {
-    const name = el.dataset.sym;
-    if (state.eqOpen.has(name)) state.eqOpen.delete(name);
-    else state.eqOpen.add(name);
-    render();
-  } else if (el.dataset.act === "eq-help") {
-    state.eqHelp = !state.eqHelp;
     render();
   } else if (el.dataset.act === "clear-filters") {
     state.dealFilter = { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 };

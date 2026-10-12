@@ -49,7 +49,6 @@ const usd2 = (n) => `$${num(n, 2)}`;
 const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usd2(n));
 const signedUsd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${dollars(Math.abs(n))}`;
 const signedPct = (n) => `${n > 0 ? "+" : ""}${num(n, 1)} %`;
-const shortMoney = (n) => `$${Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "")}`;
 const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
 const dealKey = (row) => `${row.expiry}|${row.shortStrike}|${row.longStrike}`;
 /** "0,17" o "12,5" escrito a mano → número. Acepta coma o punto. */
