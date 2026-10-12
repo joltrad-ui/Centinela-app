@@ -664,11 +664,12 @@ const ICONS = {
   favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
-  igual: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 9h14M5 15h14"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
 
-function header(eyebrow, title, showRules = true) {
+/** Sin título a la vista, para dejar sitio: el nombre de la pantalla queda para lectores de pantalla.
+ *  Sin botón de actualizar: se actualiza arrastrando hacia abajo (recarga la página, que mira si hay barrido nuevo). */
+function header(title, showRules = true) {
   const scan = state.scan;
   const times = scan ? `Barrido ${when(scan.at)}` : "";
   const status = state.loading
@@ -678,15 +679,12 @@ function header(eyebrow, title, showRules = true) {
       : "Sin barrido todavía";
   return `
     <header class="top">
-      <p class="eyebrow">${eyebrow}</p>
-      <div class="top-row">
-        <h1>${title}</h1>
-        ${
-          EMBED
-            ? `<button class="btn primary" data-act="real" ${real.busy ? "disabled" : ""}>${real.busy ? (real.total ? `Leyendo ${real.done}/${real.total}` : "Leyendo…") : "Datos reales"}</button>`
-            : `<button class="btn primary" data-act="reload" ${state.loading ? "disabled" : ""}>Actualizar</button>`
-        }
-      </div>
+      <h1 class="sr-only">${title}</h1>
+      ${
+        EMBED
+          ? `<div class="top-row"><button class="btn primary" data-act="real" ${real.busy ? "disabled" : ""}>${real.busy ? (real.total ? `Leyendo ${real.done}/${real.total}` : "Leyendo…") : "Datos reales"}</button></div>`
+          : ""
+      }
       <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
       ${showRules ? `<button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>` : ""}
     </header>
@@ -823,7 +821,7 @@ function viewFavoritos() {
     ? '<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado. Pulsa Actualizar dentro de un rato.</p></div>'
     : "";
   return `
-    ${header("Bull put", "Lista")}
+    ${header("Lista")}
     <div class="tools">
       <div class="chips" role="group" aria-label="Orden">
         ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
@@ -865,9 +863,8 @@ function viewReglas() {
   const d0 = (n) => `$${num(n, 0)}`;
   return `<div class="narrow">
     <header class="top">
-      <p class="eyebrow">Bull put</p>
-      <h1 style="margin-top:4px">Reglas</h1>
-      <p class="small muted" style="margin-top:8px">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
+      <h1 class="sr-only">Reglas</h1>
+      <p class="small muted">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
     </header>
     <div class="panel">
       ${stepper("rules.minDte", "Vencimiento desde", "No mires puts que caduquen antes.", 5, 60, 1, days)}
@@ -932,8 +929,7 @@ function viewReglas() {
     </section>
 
     <section class="block">
-      <h2>Pestaña Igual riesgo (prueba)</h2>
-      <p class="small muted">Solo cuenta ahí; Lista y Deals no cambian.</p>
+      <h2>Comisión y horquilla</h2>
       <div class="panel">
         ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste total (entrar y salir).", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
         ${stepper("rules.equalGapPct", "Horquilla máxima", "Las dos horquillas, sobre el crédito a precio medio. Por encima, la fila se aparta.", 10, 100, 5, p0)}
@@ -1145,7 +1141,7 @@ function dqClick(el) {
 }
 
 function viewDeals() {
-  if (!state.scan?.symbols?.length) return `<div class="deals">${header("Bull put · por calidad", "Deals")}<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado.</p></div></div>`;
+  if (!state.scan?.symbols?.length) return `<div class="deals">${header("Deals")}<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado.</p></div></div>`;
   const data = dqData();
   const { rules, today } = data;
   const prob = dq.prob ?? Math.min(DQ_PROB_MAX, Math.max(DQ_PROB_MIN, rules.maxProb >= PROB_OFF ? 10 : Math.round(rules.maxProb)));
@@ -1230,7 +1226,7 @@ function viewDeals() {
   const closed = !state.scan.example && pricesOutsideMarket(state.scan.at);
 
   return `<div class="deals">
-    ${header("Bull put · por calidad", "Deals")}
+    ${header("Deals")}
     ${closed ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y se apartan más deals.</p>' : ""}
     <div class="filters" aria-label="Filtros" style="margin-top:12px">
       <div class="frow" role="group" aria-label="Niveles"><span class="small muted hoy-lab">Nivel</span>${Array.from({ length: maxLevel + 1 }, (_, l) => `<button class="lv lv${l} dq-lvb" data-dq="level" data-v="${l}" aria-pressed="${dq.levels.includes(l)}">${l}</button>`).join("")}</div>
@@ -1283,9 +1279,8 @@ function viewAvisos() {
     : `<div class="alert"><p class="small muted">${isPublic() ? "Los avisos se ven en la app ntfy. El primer barrido solo toma nota; avisa cuando algo cambia." : "Sin avisos todavía. El primer barrido solo toma nota; avisa cuando algo cambia."}</p></div>`;
   return `<div class="narrow">
     <header class="top">
-      <p class="eyebrow">Bull put</p>
-      <h1 style="margin-top:4px">Avisos</h1>
-      <p class="small muted" style="margin-top:8px">${
+      <h1 class="sr-only">Avisos</h1>
+      <p class="small muted">${
         state.mode === "muestra" ? "Versión de prueba: aquí se anotarán los avisos cuando la app barra de verdad." : isPublic() ? (push ? "Avisos al móvil activos. Llegan a la app ntfy; aquí no se anotan, porque esta página la puede abrir cualquiera." : "Avisos al móvil sin configurar. Faltan los secretos NTFY_TOPIC y CENTINELA_CONFIG en GitHub.") : push ? "Avisos al móvil activos." : state.mode === "nube" ? "Avisos al móvil sin configurar: se anotan aquí, pero no llegan al teléfono. Falta el secreto NTFY_TOPIC en tu repositorio." : "Avisos al móvil sin configurar: se anotan aquí, pero no llegan al teléfono. El LEEME explica cómo activarlos con ntfy."
       }</p>
     </header>
@@ -1467,157 +1462,6 @@ const signedUsd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${dollars(Math.abs(
 /** "5 años" con la historia completa; si hay menos, lo que hay. */
 const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years * 10) / 10, 1)} años` : "lo guardado");
 
-function equalOpts(symbols) {
-  const rules = state.config.rules;
-  const eq = state.equal;
-  const expiries = commonExpiries(symbols, rules, nyToday());
-  const expiry = eq.expiry && expiries.some((item) => item.expiry === eq.expiry) ? eq.expiry : defaultExpiry(expiries);
-  return {
-    expiries,
-    opts: {
-      prob: eq.prob ?? (rules.maxProb >= PROB_OFF ? 10 : Math.min(EQ_PROB_MAX, Math.max(EQ_PROB_MIN, Math.round(rules.maxProb)))),
-      width: eq.width ?? nearest(EQ_WIDTHS, rules.width),
-      expiry,
-      fee: rules.equalFee,
-      gapPct: rules.equalGapPct,
-    },
-  };
-}
-
-function viewIgual() {
-  const symbols = listSymbols();
-  const { expiries, opts } = equalOpts(symbols);
-  const hist = state.hist?.symbols ?? null;
-  const { rows, gated, out } = opts.expiry ? equalRiskList(symbols, { ...opts, hist }, nyToday()) : { rows: [], gated: [], out: [] };
-  const withHist = rows.some((row) => row.retExp != null);
-  const balText = (row) => (row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1));
-  const expText = (row) => (row.retExp == null ? `${dec(row.ret)} %` : `${row.retExp > 0 ? "+" : ""}${dec(row.retExp)} %`);
-  const costText = (row) => (row.roundTrip == null ? "coste total sin precio medio" : `coste total ${usdDec(row.roundTrip)}`);
-  const chip = (attr, value, label, on) => `<button class="chip quiet" data-${attr}="${esc(value)}" aria-pressed="${on}">${label}</button>`;
-  const blockOf = (sym) => sym.b ?? "";
-  const widthNote = (row) => (Math.abs(row.width - opts.width) > 1e-6 ? ` <span class="muted">· ancho ${shortMoney(row.width)}</span>` : "");
-  const volText = (row) => `ahora se mueve un ${num(row.vol, 0)} %; en ${spanText(row.years)}, un ${num(row.vol5, 0)} %`;
-  // Avisos en rojo dentro de la fila: resultados dentro del plazo (la historia casi no contiene saltos de resultados)
-  // y decisión de la Fed dentro del plazo (solo bonos largos y bolsa de EE. UU.). No apartan la fila.
-  const earnTag = (row) => (row.earnInside && row.sym.er ? `<span class="tag-earn">Resultados ${esc(labelOf(row.sym.er.d))}</span> ` : "");
-  const fedTag = (row) => (row.fed?.length ? `<span class="tag-earn">Fed el ${row.fed.map((date) => esc(labelOf(date))).join(" y ")}</span> ` : "");
-  // Marcas de la fila, en píldoras: rojas (resultados, Fed), ámbar (los dos cálculos no coinciden) y discretas (el resto).
-  const pills = (row) => {
-    const notes = [];
-    // "Solo con un cálculo" es más fuerte que "estimaciones muy distintas": si se dan las dos, solo la primera.
-    if (row.distinct && !row.onlyOne) notes.push('<span class="tag-note">estimaciones muy distintas</span>');
-    if (row.shortHistory && row.histProb != null) notes.push('<span class="tag-note">poca historia</span>');
-    for (const note of row.trend ?? []) notes.push(`<span class="tag-note brass">${esc(note)}</span>`);
-    if (row.onlyOne) notes.push('<span class="tag-warn">los dos cálculos no coinciden</span>');
-    const all = `${earnTag(row)}${fedTag(row)}${notes.join("")}`;
-    return all ? `<span class="eq-tags small">${all}</span>` : "";
-  };
-  // Datos de la fila en líneas (cabecera corta + tres valores): probabilidades, volatilidades y, con cierres,
-  // lo que se espera pagar con cada cálculo, lo que queda (cobras neto − pagas) y el equilibrio.
-  const lines = (row) => {
-    const pair = (label, value, tone = "") => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num${tone}">${value}</b></span>`;
-    const line = (head, cells, cls = "") => (cells.length ? `<span class="eq-line${cls}"><span class="eq-lab">${head}</span>${cells.join("")}</span>` : "");
-    const probs = [pair("asignación", `${dec(row.prob)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
-    if (row.histProb != null) probs.push(pair("historia", `${dec(row.histProb)} %`));
-    probs.push(pair("pérd. máx.", row.longProb == null ? "—" : `${dec(row.longProb)} %`));
-    const vols = [];
-    if (row.sym.iv30 != null) vols.push(pair("impl. 30 d", `${num(row.sym.iv30, 0)} %`));
-    if (row.vol != null) vols.push(pair("ahora", `${num(row.vol, 0)} %`));
-    if (row.vol5 != null) vols.push(pair(spanText(row.years), `${num(row.vol5, 0)} %`));
-    let pay = "";
-    if (row.expected != null) {
-      const left = (value) => pair("", signedUsd(value), value < 0 ? " eq-minus" : " eq-plus");
-      const mean = Math.round((row.net - row.expected) * 100) / 100;
-      const open = state.eqOpen.has(row.sym.s);
-      // Plegado: lo que interesa de un vistazo (lo que se espera pagar, lo que queda y el equilibrio). Desplegado: los tres cálculos.
-      const head = `<span class="eq-more" role="button" tabindex="0" data-act="eq-more" data-sym="${esc(row.sym.s)}" aria-expanded="${open}">
-          <span class="eq-lab">Se espera pagar</span> <b class="num">${dollars(row.expected)}</b>
-          <span class="eq-lab">· queda</span> <b class="num">${signedUsd(mean)}</b>
-          <span class="eq-lab">· equil.</span> <b class="num">${balText(row)}</b>
-          <span class="eq-chev" aria-hidden="true">${open ? "▴" : "▾"}</span></span>`;
-      pay = `<span class="eq-pay-box">${head}${
-        open
-          ? line("Pagas", [pair("reciente", dollars(row.recentLoss)), pair("se espera", dollars(row.expected)), pair("historia", dollars(row.histLoss))], " first") +
-            line("Queda", [left(row.marginRecent), left(mean), left(row.marginHist)])
-          : ""
-      }</span>`;
-    }
-    return `<span class="eq-mini">${line("Prob.", probs)}${line("Vol.", vols)}${pay}</span>`;
-  };
-  const stakes = (row) =>
-    `<span class="eq-stakes"><span class="eq-stake"><span class="eq-lab">Cobras neto</span><b class="num up">${usdDec(row.net)}</b></span><span class="eq-stake"><span class="eq-lab">Coste total</span><b class="num">${row.roundTrip == null ? "—" : usdDec(row.roundTrip)}</b></span><span class="eq-stake"><span class="eq-lab">Pierdes máx.</span><b class="num down">${usdDec(row.loss)}</b></span></span>`;
-  const kpiTone = (row) => (row.retExp == null ? "" : row.retExp > 0 ? " plus" : " minus");
-  const item = (row) => `<li>
-        <button class="deal ok eq-row" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
-          <span class="deal-top"><i class="dot" aria-hidden="true"></i><b>${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))}</span>
-            <span class="eq-legs">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)} <span class="muted">· ${dec(row.otm)} % abajo</span></span>
-            <span class="deal-kpi num${kpiTone(row)}">${expText(row)}<small>${row.retExp == null ? "Rentab. neta" : "Rentab. esperada"}</small></span></span>
-          ${stakes(row)}
-          ${pills(row)}
-          ${lines(row)}
-        </button>
-      </li>`;
-  const list = rows.map(item).join("");
-  const gatedList = gated
-    .map(
-      (row) => `<li style="opacity:.7">
-        <button class="deal" data-open="${esc(row.sym.s)}" data-deal="${esc(dealKey(row))}" data-src="igual">
-          <span class="deal-top"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="muted">${esc(blockOf(row.sym))} ·</span> ${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}${widthNote(row)}</span>
-          <span class="deal-sub small muted">${earnTag(row)}${fedTag(row)}${esc(row.gate)} · cobras neto ${usdDec(row.net)} · ${costText(row)}</span>
-        </button>
-      </li>`,
-    )
-    .join("");
-  const rest = out
-    .map(
-      (row) => `<li class="muted" style="padding:9px 0;opacity:.7"><b style="font-weight:500">${esc(row.sym.s)}</b> <span class="small">${esc(blockOf(row.sym))} · ${esc(row.why)}</span></li>`,
-    )
-    .join("");
-  const empty = !symbols.length
-    ? "Esperando el primer barrido de la lista."
-    : !opts.expiry
-      ? "Ningún vencimiento cae dentro del plazo de Reglas."
-      : "";
-  const closed = state.scan && !state.scan.example && pricesOutsideMarket(state.scan.at);
-  const noneCovers = withHist && rows.length > 0 && !rows.some((row) => row.retExp != null && row.retExp > 0);
-  return `
-    ${header("Prueba", "Igual riesgo", false)}
-    ${closed ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos filas.</p>' : ""}
-    <div class="filters">
-      <div class="frow" role="group" aria-label="Prob. objetivo"><span class="small muted">Prob. objetivo</span>${EQ_PROBS.map((n) => chip("eq-prob", n, `${n} %`, opts.prob === n)).join("")}</div>
-      <div class="frow" role="group" aria-label="Prob. objetivo, de ${EQ_PROB_MIN} % a ${EQ_PROB_MAX} %"><span class="small muted">${EQ_PROB_MIN} %</span>
-        <input type="range" class="range" id="eq-range" min="${EQ_PROB_MIN}" max="${EQ_PROB_MAX}" step="1" value="${opts.prob}" aria-label="Prob. objetivo">
-        <span class="small muted">${EQ_PROB_MAX} %</span><b class="num" id="eq-range-val" style="min-width:3.2em;text-align:right">${opts.prob} %</b></div>
-      ${opts.prob < 5 ? '<p class="small muted" style="margin:0 0 6px">Por debajo del 5 % hay muy pocos casos en la historia y los precios son de céntimos: la comparación es poco fiable.</p>' : ""}
-      <div class="frow" role="group" aria-label="Ancho"><span class="small muted">Ancho</span>${EQ_WIDTHS.map((n) => chip("eq-width", n, `$${n}`, opts.width === n)).join("")}</div>
-      <div class="frow" role="group" aria-label="Vencimiento"><span class="small muted">Vencimiento</span>${expiries.map((item) => chip("eq-exp", item.expiry, esc(item.label), opts.expiry === item.expiry)).join("") || '<span class="small muted">ninguno en el plazo</span>'}</div>
-      <button class="rules-line small" data-tab="reglas">Comisión por spread al abrir ${usdDec(opts.fee)} · horquilla máxima ${opts.gapPct} % · se cambian en Reglas</button>
-    </div>
-    <button class="rules-line small" style="margin:0 0 10px" data-act="eq-help" aria-expanded="${state.eqHelp ? "true" : "false"}">Cómo se ordena y cómo se lee ${state.eqHelp ? "▴" : "▾"}</button>
-    ${
-      state.eqHelp
-        ? `<div class="eq-help small muted">
-      <p>Una fila por nombre: prob. de asignación hasta el objetivo, mismo vencimiento y el ancho más cercano al elegido. Antes de ordenar se apartan las filas que no se pueden comparar: horquilla ancha (más del ${opts.gapPct} % del crédito; se cambia en Reglas) y cobro que no cubre el coste de salir. Las que tienen resultados dentro del plazo se quedan en la lista, marcadas en rojo: la historia casi no contiene saltos de resultados, así que su número es menos fiable.</p>
-      <p>${
-        withHist
-          ? `Orden: rentab. esperada = (cobras neto − lo que se espera pagar) ÷ pierdes máx. Lo que se espera pagar es la media de dos cálculos: 5 años de precios y la volatilidad reciente. Por encima de 0, lo cobrado supera lo que se espera pagar. Es una estimación para ordenar, no una previsión. Cierres hasta el ${esc(labelOf(state.hist.last))}${state.hist.example ? " (de ejemplo)" : ""}.`
-          : "Orden: rentab. neta. Todavía no hay cierres diarios guardados para comparar con la historia."
-      }</p>
-      ${withHist ? "<p>«Pagas» es lo que se espera pagar de media, con tres cálculos: «reciente» (la volatilidad de las últimas semanas), «historia» (5 años de precios) y «se espera» (la media de las dos, la que ordena). «Queda» = cobras neto − pagas. «Equil.» (equilibrio) = cobras neto ÷ se espera.</p>" : ""}
-    </div>`
-        : ""
-    }
-    ${noneCovers ? '<p class="banner small">Hoy ninguno cubre lo que se espera pagar. La lista enseña el orden, no candidatos.</p>' : ""}
-    ${
-      empty
-        ? `<div class="empty"><h2>${empty}</h2></div>`
-        : `<div class="deal-head small muted"><span>${rows.length} ${rows.length === 1 ? "fila" : "filas"}</span><span>${withHist ? "Rentab. esperada" : "Rentab. neta"}</span></div><ul class="rows">${list}</ul>
-    ${gatedList ? `<p class="small muted" style="margin:16px 0 2px">Apartadas: no se pueden comparar</p><ul class="rows">${gatedList}</ul>` : ""}
-    ${rest ? `<p class="small muted" style="margin:14px 0 2px">Sin fila</p><ul class="rows">${rest}</ul>` : ""}`
-    }
-    ${foot()}`;
-}
-
 // La pestaña "Hoy" (mapa, nube, ficha del deal y Mis deals) vive en hoy.js.
 const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
 
@@ -1625,15 +1469,15 @@ function dock() {
   const seen = Number(readLocal(LS_SEEN) ?? 0);
   const unseen = state.alerts.filter((alert) => alert.at > seen).length;
   const item = (id, label) =>
-    `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "igual" ? '<span class="tag">prueba</span>' : ""}${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
+    `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("hoy", "Hoy")}${item("favoritos", "Lista")}${item("deals", "Deals")}${item("igual", "Igual")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("favoritos", "Lista")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? viewDeals() : state.tab === "igual" ? viewIgual() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
+    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}${sheet()}`;
@@ -1850,8 +1694,6 @@ root.addEventListener("click", (event) => {
     state.detailDeal = null;
     state.detailSrc = "";
     render();
-  } else if (el.dataset.act === "reload") {
-    void load().then(loadHist, loadHist);
   } else if (el.dataset.act === "real") {
     void loadReal();
   } else if (el.dataset.act === "example") {
