@@ -3,7 +3,8 @@
 //   1. Mapa   — nombres por vencimientos, cada casilla con su nivel de 0 a 4: ¿hay algo hoy?
 //   2. Nube   — los deals de un vencimiento, coste frente a rentab. esperada: ¿cuál?
 //      Barras — los mismos deals, una fila cada uno: lo que cobra, lo que se espera pagar y lo que queda con su error.
-//   3. Ficha  — las cuatro comprobaciones, lo que queda con cada cálculo y los avisos: ¿me lo creo?
+//   3. Ficha  — una sola para Hoy, Deals y Lista: el ticket (cobras, apartas, te queda), avisos, cinco bloques plegables
+//      (por qué ese nivel, precio y volatilidad, rentabilidad, probabilidades, al bróker) y los deals puntuados del nombre: ¿me lo creo?
 //   4. Resumen para el bróker — texto para copiar. La app no envía órdenes ni sabe de ningún bróker.
 //   5. Mis deals — lo abierto y lo cerrado, con el nivel que tenía cada uno: vigilar y aprender.
 //
@@ -27,10 +28,12 @@ import {
   num,
   nyToday,
   pricesOutsideMarket,
+  qualityDeals,
   rangeOf,
   rangeOrder,
   returnsOf,
   spreadRow,
+  volatilities,
   withHistory,
   yearRange,
 } from "./engine.js";
@@ -42,6 +45,8 @@ const PROB_MIN = 3; // la barra de prob. va de 3 a 12 % en pasos de 1 punto: "X 
 const PROB_MAX = 12;
 const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
+const FL_PROBS = [5, 8, 10, 15]; // filtro de prob. de la lista de deals de la ficha
+const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
 const VIEWS = ["mapa", "nube", "barras", "mis"];
 const MAX_DEALS = 300;
 
@@ -71,9 +76,10 @@ export function createHoy(ctx) {
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
     barSort: saved.barSort === "floor" ? "floor" : "left", // orden de la vista Barras: por lo que queda o por el suelo
-    yieldOpen: saved.yieldOpen === true, // la tabla de rendimiento de la ficha: plegada (solo "Con comisión") o con las tres filas
+    folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
-    deal: null, // ficha abierta: { s, expiry, short, long }
+    deal: null, // ficha abierta: { s, expiry, short, long } o { s, none: true } si el nombre no tiene deals puntuados
+    fl: { lv: [0, 1, 2, 3, 4, 5], exp: null, w: null, pr: null, hide: false, ord: "lv", shown: 30 }, // filtros de la lista de deals de la ficha
     heldOpen: false,
     mapExp: null, // el mapa enfocado en un vencimiento (null = todas las fechas)
     legendOpen: false, // la leyenda del mapa, plegada al final de la matriz
@@ -83,7 +89,7 @@ export function createHoy(ctx) {
     copied: "",
     confirm: null, // id del deal que se va a borrar
   };
-  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, yieldOpen: hoy.yieldOpen, barSort: hoy.barSort });
+  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort });
 
   const cleanDeal = (row) => {
     if (!row || typeof row !== "object" || typeof row.id !== "string" || typeof row.s !== "string" || typeof row.expiry !== "string") return null;
@@ -457,36 +463,9 @@ export function createHoy(ctx) {
       ${help(o.opts)}`;
   }
 
-  // ---------- 3 y 4. ficha del deal y resumen para el bróker ----------
+  // ---------- 3 y 4. ficha única, deals del nombre y resumen para el bróker ----------
 
-  /** Lo que queda con cada cálculo, en una barra: de un extremo al otro y el cero. Corta y a la derecha del cero es firme. */
-  function marginBar(row) {
-    if (row.expected == null) return "";
-    const a = row.marginRecent, b = row.marginHist, m = Math.round((row.net - row.expected) * 100) / 100;
-    const lo = Math.min(a, b, 0), hi = Math.max(a, b, 0);
-    const pad = Math.max((hi - lo) * 0.14, 1);
-    const W = 320, L = 8, R = 8;
-    const x = (v) => L + ((v - (lo - pad)) / (hi - lo + 2 * pad)) * (W - L - R);
-    const tone = a > 0 && b > 0 ? "plus" : a <= 0 && b <= 0 ? "minus" : "mixed";
-    const anchor = (px) => (px < 62 ? "start" : px > W - 62 ? "end" : "middle");
-    const xa = x(a), xb = x(b);
-    // Tres alturas para que nada se pise: arriba lo reciente, en medio la barra y el cero, abajo la historia.
-    return `<div class="hoy-bar">
-      <p class="small">Queda, de media, <b class="num ${m > 0 ? "up" : "down"}">${signedUsd(m)}</b>${row.err != null ? ` <span class="num muted">± ${dollars(row.err)}</span>` : ""} <span class="muted">· cobras neto menos lo que se espera pagar</span></p>
-      <svg viewBox="0 0 ${W} 82" role="img" aria-label="Con la volatilidad reciente queda ${signedUsd(a)}; con 5 años de precios, ${signedUsd(b)}">
-        <line x1="${L}" x2="${W - R}" y1="38" y2="38" class="grid"/>
-        <line x1="${x(0).toFixed(1)}" x2="${x(0).toFixed(1)}" y1="25" y2="51" class="zero"/>
-        <text x="${x(0).toFixed(1)}" y="62" text-anchor="middle" class="tick">0</text>
-        <line x1="${Math.min(xa, xb).toFixed(1)}" x2="${Math.max(xa, xb).toFixed(1)}" y1="38" y2="38" class="span ${tone}"/>
-        <circle cx="${xa.toFixed(1)}" cy="38" r="4" class="end ${tone}"/><circle cx="${xb.toFixed(1)}" cy="38" r="4" class="end ${tone}"/>
-        <circle cx="${x(m).toFixed(1)}" cy="38" r="6.5" class="mean"/>
-        <text x="${xa.toFixed(1)}" y="13" text-anchor="${anchor(xa)}" class="lab">reciente ${signedUsd(a)}</text>
-        <text x="${xb.toFixed(1)}" y="77" text-anchor="${anchor(xb)}" class="lab">historia ${signedUsd(b)}</text>
-      </svg>
-    </div>`;
-  }
-
-  /** El punto de seguridad en la ficha, según la regla. Apagado no sale: queda la barra de los dos cálculos. */
+  /** El punto de seguridad en la ficha, según la regla. Apagado no sale. */
   function safetyItem(item, checks, row, opts, both, anyOne) {
     const calcs = `Con lo reciente ${signedUsd(row.marginRecent)} · con la historia ${signedUsd(row.marginHist)}.`;
     if (opts.safety === "off") return "";
@@ -497,32 +476,55 @@ export function createHoy(ctx) {
     return item(
       checks.safe,
       checks.safe ? "Lo que queda supera el error del cálculo" : left > 0 ? "Lo que queda no supera el error del cálculo" : "No queda nada tras lo que se espera pagar",
-      `Queda <b class="num">${signedUsd(left)}</b> y el cálculo se puede equivocar en ±${dollars(row.err)}: ${num(Math.max(0, checks.room), 1)} ${checks.room === 1 ? "vez" : "veces"}. Pides ${k}. ${calcs}`,
+      `Queda <b class="num">${signedUsd(left)}</b> y el cálculo se puede equivocar en ±${dollars(row.err)}: ${num(Math.max(0, checks.room), 1)} ${checks.room === 1 ? "vez" : "veces"}. Pides ${k}.`,
     );
   }
+
+  // Una sola ficha para todas las pantallas (Hoy, Deals y Lista): arriba el deal elegido (el ticket: lo que cobras,
+  // lo que apartas para pérdidas y lo que te queda), después cinco bloques plegables y, al final, todos los deals
+  // puntuados del mismo nombre con sus filtros. Tocar uno de la lista lo carga arriba.
+
+  /** Los deals puntuados de un nombre (nivel 0–5), los mismos que Deals pero solo de ese nombre. Se guardan hasta que cambie algo. */
+  let nameCache = { key: "", deals: [] };
+  function nameDeals(sym, o) {
+    const rules = o.rules;
+    const key = JSON.stringify([state.scan?.at, state.hist?.at, rules, hoy.price, o.opts.held, o.today, sym.s]);
+    if (nameCache.key !== key) {
+      const out = qualityDeals(
+        [sym],
+        { rules, fee: o.opts.fee, gapPct: o.opts.gapPct, safety: o.opts.safety, marginK: o.opts.marginK, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: o.opts.hist, held: o.opts.held, price: hoy.price, maxProb: 20, maxWidth: 10 },
+        o.today,
+      );
+      nameCache = { key, deals: out.deals };
+    }
+    return nameCache.deals;
+  }
+
+  const FAIL_SHORT = { "probabilidad alta": "prob.", "sin dato de probabilidad": "prob.", "fuera del punto": "% abajo", "crédito corto": "cobras", "equilibrio bajo": "equilibrio" };
+  const failShort = (fail) => FAIL_SHORT[fail] ?? (fail.startsWith("ancho de") ? "ancho" : fail);
+  const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years * 10) / 10, 1)} años` : "lo guardado");
+  /** Dólares con céntimos y signo: aquí cada céntimo cuenta. */
+  const usdS = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}$${num(Math.abs(n), 2)}`;
+  const tone = (n) => (n > 0 ? "up" : n < 0 ? "down" : "");
 
   /** Lo que rinde el deal: sin comisión, con comisión y tras lo que se espera pagar. Cada fila, en dólares, por día, sobre lo que arriesgas y sobre lo que arriesgas por día. */
   function yieldTable(row, fee) {
     const r = returnsOf(row, fee);
     if (!r) return "";
     const pct = (n, d) => (n == null ? "—" : `${n < 0 ? "−" : ""}${num(Math.abs(n), d)} %`);
-    const usd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}$${num(Math.abs(n), 2)}`; // siempre con céntimos: aquí importan
-    const cls = (n) => (n > 0 ? "up" : n < 0 ? "down" : "");
     const line = (label, sub, v) =>
       v
-        ? `<tbody>${label ? `<tr class="lab"><th scope="rowgroup" colspan="4">${label}${sub ? ` <small>${sub}</small>` : ""}</th></tr>` : ""}
-          <tr><td class="num ${cls(v.gain)}">${usd(v.gain)}</td><td class="num ${cls(v.perDay)}">${usd(v.perDay)}</td><td class="num ${cls(v.onRisk)}">${pct(v.onRisk, 2)}</td><td class="num ${cls(v.onRiskPerDay)}">${pct(v.onRiskPerDay, 3)}</td></tr></tbody>`
+        ? `<tbody><tr class="lab"><th scope="rowgroup" colspan="4">${label}${sub ? ` <small>${sub}</small>` : ""}</th></tr>
+          <tr><td class="num ${tone(v.gain)}">${usdS(v.gain)}</td><td class="num ${tone(v.perDay)}">${usdS(v.perDay)}</td><td class="num ${tone(v.onRisk)}">${pct(v.onRisk, 2)}</td><td class="num ${tone(v.onRiskPerDay)}">${pct(v.onRiskPerDay, 3)}</td></tr></tbody>`
         : "";
-    const open = hoy.yieldOpen;
-    return `<div class="hoy-yield">
-      <button class="hoy-yield-head" data-hoy="yield" aria-expanded="${open}"><span class="muted">${r.days} ${r.days === 1 ? "día" : "días"} al vencimiento</span><span class="muted">${open ? "Ocultar ▴" : "Ver más ▾"}</span></button>
+    return `<div class="fi-yield">
       <table>
         <thead><tr><th scope="col" title="Gano">G</th><th scope="col" title="Gano por día">G/D</th><th scope="col" title="Gano sobre lo que arriesgas">G/S</th><th scope="col" title="Gano sobre lo que arriesgas, por día">G/S/D</th></tr></thead>
-        ${open ? line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross) : ""}
-        ${line(open ? "Con comisión" : "", "", r.net)}
-        ${open ? line("Esperada", "tras lo que se espera pagar", r.expected) : ""}
+        ${line("Sin comisión", hoy.price === "mid" ? "a precio medio" : "a precio visible", r.gross)}
+        ${line("Con comisión", "", r.net)}
+        ${line("Esperada", "tras lo que se espera pagar", r.expected)}
       </table>
-      <p class="xs muted hoy-yield-key">Comisión de abrir: ${usd2(fee)}.${open ? " G = gano · D = día · S = spread, lo que arriesgas («pierdes máx.»). Por contrato." : ""}</p>
+      <p class="xs muted">${r.days} ${r.days === 1 ? "día" : "días"} al vencimiento. G = gano · D = día · S = spread, lo que arriesgas («pierdes máx.»). Por contrato. Comisión de abrir: ${usd2(fee)}; entrar y salir cuesta ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}.</p>
     </div>`;
   }
 
@@ -538,41 +540,161 @@ export function createHoy(ctx) {
     return lines.join("\n");
   }
 
+  /** Un bloque plegable: título, una frase a la derecha y un chevron. Cerrado de fábrica; lo abierto se recuerda en el dispositivo. */
+  const fold = (id, title, sub, body) => {
+    const open = hoy.folds.includes(id);
+    return `<section class="fi-fold"><button class="fi-fold-h" data-hoy="fold" data-v="${id}" aria-expanded="${open}"><span class="fi-fold-t">${title}</span>${sub ? `<span class="fi-fold-s">${sub}</span>` : ""}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>${open ? `<div class="fi-fold-b">${body}</div>` : ""}</section>`;
+  };
+
+  const fiHead = (sym) => {
+    const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
+    const chg = typeof sym.c === "number" && Number.isFinite(sym.c) ? `<span class="fi-chg num ${tone(sym.c)}">${sym.c > 0 ? "+" : sym.c < 0 ? "−" : ""}${num(Math.abs(sym.c), 2)} %</span>` : "";
+    return `<div class="fi-head">
+        <div class="fi-id"><h2>${esc(sym.s)}</h2><b class="fi-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</b>${chg}</div>
+        <button class="fi-x" data-hoy="close" aria-label="Cerrar">✕</button>
+      </div>
+      <p class="small muted fi-sub">${esc(name)}</p>`;
+  };
+
+  /** Todos los deals puntuados del nombre, con sus filtros. La fila elegida lleva una barra a la izquierda. */
+  function dealsSection(sym, o, selectedKey) {
+    const all = nameDeals(sym, o);
+    const f = hoy.fl;
+    const benefit = (d) => (d.row.net > 0 ? ((d.row.net - d.row.expected) / d.row.net) * 100 : null);
+    const exps = [...new Set(all.map((d) => d.row.expiry))].sort();
+    let list = all.filter(
+      (d) => f.lv.includes(d.level) && (!f.exp || d.row.expiry === f.exp) && (!f.w || d.row.width <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
+    );
+    if (f.ord === "ben") list = [...list].sort((a, b) => (benefit(b) ?? -Infinity) - (benefit(a) ?? -Infinity));
+    else if (f.ord === "prob") list = [...list].sort((a, b) => (a.row.prob ?? 100) - (b.row.prob ?? 100));
+    const shown = list.slice(0, f.shown);
+    const chipRow = (label, chips) => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c">${chips}</div></div>`;
+    const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
+    const filters = `<div class="fi-filters">
+        ${chipRow("Nivel", lvChips)}
+        ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
+        ${chipRow("Ancho hasta", chip("fl-w", "0", "Todos", !f.w) + WIDTHS.map((n) => chip("fl-w", n, `$${n}`, f.w === n)).join(""))}
+        ${chipRow("Prob. hasta", chip("fl-pr", "0", "Todas", !f.pr) + FL_PROBS.map((n) => chip("fl-pr", n, `${n} %`, f.pr === n)).join(""))}
+        ${chipRow("Orden", chip("fl-ord", "lv", "Nivel", f.ord === "lv") + chip("fl-ord", "ben", "Beneficio", f.ord === "ben") + chip("fl-ord", "prob", "Prob.", f.ord === "prob"))}
+        ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
+      </div>`;
+    const rowHtml = (d) => {
+      const r = d.row;
+      const left = r.net - r.expected;
+      const p = benefit(d);
+      const key = dealKey(r);
+      const out = d.ok ? "" : `<small class="xs fi-out">fuera de Reglas${d.fails.length ? `: ${esc([...new Set(d.fails.map(failShort))].join(", "))}` : ""}</small>`;
+      return `<li><button class="fi-dr${key === selectedKey ? " on" : ""}" data-hoy="pick" data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-pressed="${key === selectedKey}">
+          <span class="lv lv${d.level} fi-dr-lv">${d.level}</span>
+          <span class="fi-dr-m"><span class="fi-dr-t"><b class="num">${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)}</b> <span class="muted">· ${esc(r.expiryLabel)}</span></span>
+            <small class="xs muted num">prob. ${r.prob == null ? "—" : `${num(r.prob, 1)} %`} · ancho $${num(r.width * 100, 0)}</small>${out}</span>
+          <span class="fi-dr-r num"><span class="fi-dr-v"><b class="${tone(left)}">${usdS(left)}</b>${p == null ? "" : ` <span class="${tone(left)}">${p < 0 ? "−" : ""}${num(Math.abs(p), 0)} %</span>`}</span><small class="xs muted">queda</small></span>
+        </button></li>`;
+    };
+    return `<section class="fi-deals">
+        <div class="fi-deals-h"><h3>Deals de ${esc(sym.s)}</h3><span class="small muted num">${list.length} de ${all.length}</span></div>
+        ${all.length ? filters : ""}
+        ${
+          all.length === 0
+            ? `<p class="small muted">Ahora no hay ningún bull put puntuado de ${esc(sym.s)} en el plazo de Reglas.</p>`
+            : list.length === 0
+              ? `<p class="small muted">Ningún deal con estos filtros.</p><button class="btn quiet" data-hoy="fl-reset">Quitar filtros</button>`
+              : `<ul class="fi-dlist">${shown.map(rowHtml).join("")}</ul>${list.length > shown.length ? `<button class="btn quiet fi-more" data-hoy="fl-more">Ver más (${list.length - shown.length})</button>` : ""}`
+        }
+      </section>`;
+  }
+
   function sheet() {
     if (!hoy.deal) return "";
     const o = options();
     const sym = (state.scan?.symbols ?? []).find((item) => item.s === hoy.deal.s);
     if (!sym) return "";
+    const wrap = (inner) => `<div class="sheet-back" data-hoy="close"><div class="sheet fi-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">${inner}</div></div>`;
+    if (hoy.deal.none) {
+      return wrap(`${fiHead(sym)}<p class="small muted" style="margin-top:16px">Ahora no hay ningún bull put puntuado de ${esc(sym.s)} en el plazo de Reglas.</p>`);
+    }
     const rows = dealRows(sym, hoy.deal, o.opts, o.today);
-    const closes = state.hist?.symbols?.[sym.s]?.c;
-    const year = yearRange(closes, sym.p), month = monthRange(closes, sym.p);
-    // Un rango (52 semanas, 1 mes): mínimo y máximo en gris y una barra fina con el precio de ahora como punto.
-    const ends = (label, r) => {
-      if (!r) return "";
-      const at = r.max > r.min && sym.p > 0 ? Math.min(100, Math.max(0, Math.round(((sym.p - r.min) / (r.max - r.min)) * 100))) : 50;
-      return `<div class="hoy-ends" role="img" aria-label="${label}: mínimo ${usd2(r.min)}, máximo ${usd2(r.max)}"><span class="muted">${label}</span><span class="num">${usd2(r.min)}</span><span class="hoy-ends-bar"><i style="left:${at}%"></i></span><span class="num">${usd2(r.max)}</span></div>`;
-    };
-    const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
-    const head = `<div class="sheet-head hoy-top">
-        <div class="hoy-id"><h2>${esc(sym.s)}</h2><b class="hoy-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</b></div>
-        <button class="btn quiet" data-hoy="close">Cerrar</button>
-      </div>
-      <p class="small muted" style="margin-top:4px">${esc(name)}</p>
-      <div class="hoy-quote">
-        ${ends(year && year.sessions > 250 ? "52 sem." : year ? `${year.sessions} ses.` : "", year)}${ends("1 mes", month)}
-      </div>`;
     if (!rows.row) {
-      return `<div class="sheet-back" data-hoy="close"><div class="sheet hoy-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">${head}
-        <p class="small muted" style="margin-top:14px">Ese bull put ya no tiene precio${rows.why ? `: ${esc(rows.why.toLowerCase())}` : ""}.</p></div></div>`;
+      return wrap(`${fiHead(sym)}<p class="small muted" style="margin-top:16px">Ese bull put ya no tiene precio${rows.why ? `: ${esc(rows.why.toLowerCase())}` : ""}.</p>${dealsSection(sym, o, null)}`);
     }
     const row = rows.row;
+    const key = dealKey(row);
     const checks = dealChecks(row, o.opts);
     const gate = gateReason(rows.nat, o.opts.gapPct);
     const apart = hoy.price === "nat" && gate;
     const both = row.marginHist > 0 && row.marginRecent > 0;
     const anyOne = row.marginHist > 0 || row.marginRecent > 0;
-    const item = (ok, text, sub = "") => `<li class="${ok ? "yes" : "no"}"><i aria-hidden="true">${ok ? "✓" : "✕"}</i><span>${text}${sub ? `<small>${sub}</small>` : ""}</span></li>`;
+    const entry = nameDeals(sym, o).find((d) => dealKey(d.row) === key);
     const maxLevel = o.opts.safety === "off" ? 3 : o.opts.safety === "margin" ? 5 : 4;
+    const cob = row.net;
+    const ap = row.expected;
+    const scored = checks.scored && ap != null;
+    const left = scored ? cob - ap : null;
+    const share = scored && cob > 0 ? (left / cob) * 100 : null;
+    const worst = scored ? Math.min(row.marginRecent, row.marginHist) : null;
+    const worstPct = worst != null && cob > 0 ? (worst / cob) * 100 : null;
+
+    // El deal: nivel, strikes, vencimiento, días y ancho por contrato.
+    const deal = `<div class="fi-deal">
+        ${apart ? `<span class="lv lvh mid" role="img" aria-label="Apartada de la comparación">H</span>` : `<span class="lv lv${checks.level} mid" role="img" aria-label="Nivel ${checks.level} de ${maxLevel}">${checks.level}</span>`}
+        <div class="fi-deal-t"><b class="num">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} · ${esc(row.expiryLabel)} · ${row.dte} ${row.dte === 1 ? "día" : "días"}</b>
+          <span class="small muted">ancho $${num(row.width * 100, 0)} por contrato${hoy.price === "mid" ? " · precio medio: hipótesis" : ""}</span></div>
+      </div>
+      ${apart ? `<p class="xs muted" style="margin-top:8px">Apartada de la comparación: ${esc(gate.toLowerCase())}. A precio visible no se puntúa.</p>` : ""}`;
+
+    // El ticket, el protagonista: cobras, apartas para pérdidas y lo que te queda, con una barra y el peor cálculo.
+    const bar = scored && cob > 0 ? Math.min(100, Math.max(0, (ap / cob) * 100)) : null;
+    const ticket = scored
+      ? `<div class="fi-ticket">
+          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num bl">${usdS(cob)}</b></div>
+          <div class="fi-line"><span class="fi-lab">Apartas para pérdidas</span><b class="fi-mid num down">−$${num(Math.abs(ap), 2)}</b></div>
+          <hr class="fi-dash">
+          <div class="fi-total"><span class="fi-lab-big">Tu beneficio</span><span class="fi-total-n"><b class="fi-huge num ${tone(left)}">${usdS(left)}</b>${share == null ? "" : `<b class="fi-pct num ${tone(left)}">${share < 0 ? "−" : ""}${num(Math.abs(share), 0)} %</b>`}</span></div>
+          ${bar == null ? "" : `<div class="fi-bar" role="img" aria-label="De lo que cobras, ${num(bar, 0)} % se aparta para pérdidas y ${num(100 - bar, 0)} % es tuyo"><i class="r" style="width:${bar.toFixed(1)}%"></i><i class="g" style="width:${(100 - bar).toFixed(1)}%"></i></div>`}
+          <p class="fi-cap small muted">${share == null ? "" : left > 0 ? `De cada ${usd2(cob)} que cobras, el ${num(share, 0)} % es tuyo.` : "Lo que cobras no cubre lo que se espera pagar."}</p>
+          <p class="fi-short small"><span class="muted">Si el cálculo se queda corto</span> <b class="num ${tone(worst)}">${usdS(worst)}</b>${worstPct == null ? "" : ` <span class="num ${tone(worst)}">${worstPct < 0 ? "−" : ""}${num(Math.abs(worstPct), 0)} %</span>`}</p>
+        </div>`
+      : `<div class="fi-ticket">
+          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num bl">${usdS(cob)}</b></div>
+          <p class="small muted" style="margin-top:10px">Sin cierres diarios de este nombre no se puede calcular lo que apartas ni lo que te queda.</p>
+        </div>`;
+
+    const bePct = sym.p > 0 ? ((sym.p - row.breakeven) / sym.p) * 100 : null;
+    const boxes = `<div class="fi-boxes">
+        <div class="fi-box"><span class="fi-lab">Prob. asignación</span><b class="num">${row.prob == null ? "—" : `${num(row.prob, 1)} %`}</b></div>
+        <div class="fi-box"><span class="fi-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></div>
+        <div class="fi-box wide"><span class="fi-lab">Pierdes si ${esc(sym.s)} baja de</span><b class="num">${usd2(row.breakeven)}</b>
+          <span class="small muted">Ahora está en ${usd2(sym.p)}${bePct == null ? "" : ` · ${num(bePct, 1)} % abajo`}</span></div>
+      </div>`;
+
+    // Avisos: en ámbar lo que conviene mirar; en rojo lo que baja el nivel.
+    const pills = [];
+    const am = (text) => pills.push(`<span class="fi-pill am">${text}</span>`);
+    const rd = (text) => pills.push(`<span class="fi-pill rd">${text}</span>`);
+    if (row.earnInside && sym.er) am(`Resultados ${esc(labelOf(sym.er.d))}`);
+    if (row.fed?.length) am(`Fed el ${row.fed.map((date) => esc(labelOf(date))).join(" y ")}`);
+    for (const note of row.trend ?? []) am(esc(note));
+    if (row.shortHistory && row.histProb != null) am("poca historia");
+    if (row.onlyOne) am("los dos cálculos no coinciden");
+    else if (row.distinct) am("estimaciones muy distintas");
+    if (entry && !entry.ok) am(`fuera de Reglas${entry.fails.length ? `: ${esc([...new Set(entry.fails.map(failShort))].join(", "))}` : ""}`);
+    const lowers = [];
+    if (checks.scored && checks.positive) {
+      if (o.opts.safety !== "off" && !checks.safe) lowers.push(o.opts.safety === "both" ? "un cálculo en negativo" : "poco margen");
+      if (!checks.cheap) lowers.push(checks.costShare == null ? "coste sin medir" : `coste ${checks.costShare} %`);
+      if (!checks.fresh) lowers.push("bloque repetido");
+    }
+    for (const text of lowers) rd(esc(text));
+    const pillRow = pills.length ? `<div class="fi-pills">${pills.join("")}</div>` : "";
+
+    // 1. Por qué este nivel
+    const item = (ok, text, sub = "") => `<li class="${ok ? "yes" : "no"}"><i aria-hidden="true">${ok ? "✓" : "✕"}</i><span>${text}${sub ? `<small>${sub}</small>` : ""}</span></li>`;
+    const calcs = `Cálculo con lo reciente <b class="num ${tone(row.marginRecent)}">${row.marginRecent == null ? "—" : usdS(row.marginRecent)}</b> · con la historia de ${spanText((state.hist?.symbols?.[sym.s]?.c?.length ?? 0) / 252)} <b class="num ${tone(row.marginHist)}">${row.marginHist == null ? "—" : usdS(row.marginHist)}</b>`;
+    let whyText = "";
+    if (!scored) whyText = "Sin cierres diarios de este nombre no se puede puntuar.";
+    else if (!checks.positive) whyText = `Lo que cobras (${usd2(cob)}) no cubre lo que se espera pagar (${usd2(ap)}). Por eso es nivel 0.`;
+    else
+      whyText = `Te quedan <b class="num">${usd2(left)}</b> de ${usd2(cob)} y ${worst > 0 ? "aguanta aunque el cálculo falle" : "no aguanta si el cálculo falla"} (<b class="num ${tone(worst)}">${usdS(worst)}</b>).${lowers.length ? ` Lo baja: ${esc(lowers.join(" y "))}.` : ""}`;
     const list = checks.scored
       ? `<ul class="hoy-checks">
         ${item(checks.positive, `Rentab. esperada <b class="num">${signedPct(row.retExp)}</b>`, checks.positive ? "Lo cobrado supera lo que se espera pagar." : "Lo cobrado no cubre lo que se espera pagar. Sin esto, nivel 0.")}
@@ -580,24 +702,41 @@ export function createHoy(ctx) {
         ${item(checks.cheap, checks.costShare == null ? "Coste sin precio medio" : `Coste de ida y vuelta: <b class="num">${checks.costShare} %</b> de lo cobrado`, `Tope para el punto: ${LEVEL_COST_PCT} %. Entrar y salir cuesta ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}.`)}
         ${item(checks.fresh, checks.fresh ? `Bloque nuevo: ${esc(sym.b ?? "sin bloque")}` : `Repite un bloque que ya tienes: ${esc(sym.b ?? "")}`)}
       </ul>`
-      : '<p class="small muted" style="margin-top:12px">Sin cierres diarios de este nombre no se puede puntuar.</p>';
-    const pills = [];
-    if (row.earnInside && sym.er) pills.push(`<span class="tag-earn">Resultados ${esc(labelOf(sym.er.d))}</span>`);
-    if (row.fed?.length) pills.push(`<span class="tag-earn">Fed el ${row.fed.map((date) => esc(labelOf(date))).join(" y ")}</span>`);
-    for (const note of row.trend ?? []) pills.push(`<span class="tag-note brass">${esc(note)}</span>`);
-    if (row.shortHistory && row.histProb != null) pills.push('<span class="tag-note">poca historia</span>');
-    if (row.distinct && !row.onlyOne) pills.push('<span class="tag-note">estimaciones muy distintas</span>');
-    // El nivel (solo la casilla) y, al lado, los datos del bull put en etiquetas. El ancho va en dólares por contrato.
-    const chips = [`${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)}`, esc(row.expiryLabel), `ancho $${num(row.width * 100, 0)}`, `${num(row.otm, 1)} % abajo`];
-    const badge = `<div class="hoy-deal">
-        ${apart ? `<span class="lv lvh mid" role="img" aria-label="Apartada de la comparación">H</span>` : `<span class="lv lv${checks.level} mid" role="img" aria-label="Nivel ${checks.level} de ${maxLevel}">${checks.level}</span>`}
-        <span class="hoy-chips chosen-title">${chips.map((text) => `<span class="hoy-chip num">${text}</span>`).join("")}${hoy.price === "mid" ? '<span class="hoy-chip brass">precio medio: hipótesis</span>' : ""}</span>
-      </div>
-      ${apart ? `<p class="xs muted" style="margin-top:8px">Apartada de la comparación: ${esc(gate.toLowerCase())}. A precio visible no se puntúa.</p>` : ""}`;
-    const pair = (label, value) => `<span class="eq-pair"><span class="eq-lab">${label}</span> <b class="num">${value}</b></span>`;
-    const probs = [pair("asignación", row.prob == null ? "—" : `${num(row.prob, 1)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`)];
-    if (row.histProb != null) probs.push(pair("historia", `${num(row.histProb, 1)} %`));
-    probs.push(pair("pérd. máx.", row.longProb == null ? "—" : `${num(row.longProb, 1)} %`));
+      : "";
+    const why = `<p class="small">${whyText}</p>${list}${scored ? `<p class="xs muted fi-calcs">${calcs}</p>` : ""}`;
+
+    // 2. Precio y volatilidad
+    const closes = state.hist?.symbols?.[sym.s]?.c;
+    const year = yearRange(closes, sym.p), month = monthRange(closes, sym.p);
+    const ends = (label, r) => {
+      if (!r) return "";
+      const at = r.max > r.min && sym.p > 0 ? Math.min(100, Math.max(0, Math.round(((sym.p - r.min) / (r.max - r.min)) * 100))) : 50;
+      return `<div class="hoy-ends" role="img" aria-label="${label}: mínimo ${usd2(r.min)}, máximo ${usd2(r.max)}"><span class="muted">${label}</span><span class="num">${usd2(r.min)}</span><span class="hoy-ends-bar"><i style="left:${at}%"></i></span><span class="num">${usd2(r.max)}</span></div>`;
+    };
+    const vols = volatilities(closes);
+    const volRows = [];
+    if (sym.iv30 != null) volRows.push(["Implícita 30 d", sym.iv30, "implied"]);
+    if (vols?.recentPct != null && vols.longPct != null) {
+      volRows.push(["Ahora", vols.recentPct, "recent"]);
+      volRows.push([spanText(closes.length / 252), vols.longPct, "long"]);
+    }
+    const volMax = Math.max(1, ...volRows.map((r) => r[1])) * 1.1;
+    const ratio = vols?.recentPct != null && vols.longPct > 0 ? vols.recentPct / vols.longPct : null;
+    const volNote = ratio == null ? "" : ratio < 0.75 ? "Ahora se mueve bastante menos que de costumbre: el cálculo reciente es el optimista." : ratio > 1.33 ? "Ahora se mueve bastante más que de costumbre." : "";
+    const vol = `${ends(year && year.sessions > 250 ? "52 sem." : year ? `${year.sessions} ses.` : "", year)}${ends("1 mes", month)}
+      ${
+        volRows.length
+          ? `<p class="xs muted" style="margin:12px 0 0">Volatilidad: cuánto se mueve al año</p>${volRows.map(([label, value, kind]) => `<div class="vol-row"><span class="vol-label">${esc(label)}</span><span class="vol-track"><i class="${kind}" style="width:${((value / volMax) * 100).toFixed(1)}%"></i></span><b class="num">${num(value, 0)} %</b></div>`).join("")}${volNote ? `<p class="xs muted" style="margin-top:6px">${volNote}</p>` : ""}`
+          : ""
+      }`;
+
+    // 4. Probabilidades
+    const kv = (label, value, note) => `<div class="fi-kv"><div><span>${label}</span><small class="xs muted">${note}</small></div><b class="num">${value}</b></div>`;
+    const probs = `${kv("Mercado", row.prob == null ? "—" : `${num(row.prob, 1)} %${row.probSrc === "formula" ? " (fórmula)" : ""}`, "Lo que descuentan los precios de las opciones: acabar bajo el corto.")}
+      ${row.histProb != null ? kv("Historia", `${num(row.histProb, 1)} %`, "Veces que, en los cierres guardados, acabó bajo el corto.") : ""}
+      ${kv("Pérdida máx.", row.longProb == null ? "—" : `${num(row.longProb, 1)} %`, "Acabar bajo el largo: pierdes todo el ancho menos lo cobrado.")}`;
+
+    // 5. Al bróker
     const text = orderText(sym, row, rows);
     const form =
       hoy.form === "abrir"
@@ -610,32 +749,25 @@ export function createHoy(ctx) {
             <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" type="submit">Apuntar</button><button class="btn" type="button" data-hoy="form-cancel">Cancelar</button></div>
             <p class="xs muted" style="margin-top:8px">Se apunta en Mis deals con el nivel de ahora (${apart ? "apartada" : checks.level}). Solo en este dispositivo.</p>
           </form>`
-        : `<div class="hoy-actions"><button class="btn" data-hoy="form-open">La he abierto</button><button class="btn" data-hoy="name" data-s="${esc(sym.s)}" data-k="${esc(dealKey(row))}">Ver todo de ${esc(sym.s)}</button></div>`;
-    return `<div class="sheet-back" data-hoy="close">
-      <div class="sheet hoy-sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">
-        ${head}
-        ${badge}
-        <span class="hoy-four" style="margin-top:12px">
-          <span><span class="eq-lab">Cobras neto</span><b class="num up">${usd2(row.net)}</b></span>
-          <span><span class="eq-lab">Prob. asig.</span><b class="num">${row.prob == null ? "—" : `${num(row.prob, 1)} %`}</b></span>
-          <span><span class="eq-lab">Días</span><b class="num">${row.dte}</b></span>
-          <span><span class="eq-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></span>
-        </span>
-        <span class="hoy-under small" style="margin-top:10px"><span class="eq-tags">${pills.join("")}</span><span class="xs muted num">Coste total ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}</span></span>
-        ${yieldTable(row, o.opts.fee)}
-        ${list}
-        ${marginBar(row)}
-        <span class="eq-mini" style="margin-top:12px"><span class="eq-line"><span class="eq-lab">Prob.</span>${probs.join("")}</span></span>
-        <p class="small muted" style="margin-top:8px">Pierdes por debajo de ${usd2(row.breakeven)}. El precio está en ${usd2(sym.p)}.</p>
-        <div class="hoy-order">
-          <p class="small"><b style="font-weight:500">Resumen para tu bróker</b></p>
-          <pre class="small" id="hoy-order">${esc(text)}</pre>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn quiet" data-hoy="copy">Copiar</button>${hoy.copied ? `<span class="xs muted" role="status">${esc(hoy.copied)}</span>` : ""}</div>
-          <p class="xs muted" style="margin-top:6px">La app no envía órdenes. No es una orden ni un consejo, y los precios van con retraso: compruébalos en tu bróker.</p>
-        </div>
-        ${form}
+        : `<div class="hoy-actions"><button class="btn" data-hoy="form-open">La he abierto</button></div>`;
+    const bro = `<pre class="small" id="hoy-order">${esc(text)}</pre>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn quiet" data-hoy="copy">Copiar</button>${hoy.copied ? `<span class="xs muted" role="status">${esc(hoy.copied)}</span>` : ""}</div>
+      ${form}
+      <p class="xs muted" style="margin-top:8px">La app no envía órdenes. No es una orden ni un consejo, y los precios van con retraso: compruébalos en tu bróker.</p>`;
+
+    return wrap(`${fiHead(sym)}
+      ${deal}
+      ${ticket}
+      ${boxes}
+      ${pillRow}
+      <div class="fi-folds">
+        ${fold("why", apart ? "Por qué está apartada" : `Por qué nivel ${checks.level}`, "", why)}
+        ${fold("vol", "Precio y volatilidad", "", vol)}
+        ${fold("ren", "Rentabilidad por día y costes", "", yieldTable(row, o.opts.fee))}
+        ${fold("prob", "Probabilidades", "", probs)}
+        ${fold("bro", "Al bróker", "", bro)}
       </div>
-    </div>`;
+      ${dealsSection(sym, o, key)}`);
   }
 
   // ---------- 5. mis deals ----------
@@ -761,9 +893,42 @@ export function createHoy(ctx) {
     } else if (act === "bsort") {
       hoy.barSort = value === "floor" ? "floor" : "left";
       keep();
-    } else if (act === "yield") {
-      hoy.yieldOpen = !hoy.yieldOpen;
+    } else if (act === "fold" && FOLDS.includes(value)) {
+      hoy.folds = hoy.folds.includes(value) ? hoy.folds.filter((id) => id !== value) : [...hoy.folds, value];
       keep();
+    } else if (act === "pick") {
+      // Un deal de la lista de la ficha: se carga arriba y la ficha vuelve al principio.
+      const [short, long] = String(el.dataset.k ?? "").split("|").map(Number);
+      if (!hoy.deal || !Number.isFinite(short) || !Number.isFinite(long)) return;
+      hoy.deal = { s: hoy.deal.s, expiry: el.dataset.e, short, long };
+      hoy.form = null;
+      hoy.error = "";
+      hoy.copied = "";
+      ctx.render();
+      document.querySelector(".fi-sheet")?.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    } else if (act === "fl-lv") {
+      const l = Number(value);
+      hoy.fl.lv = hoy.fl.lv.includes(l) ? hoy.fl.lv.filter((x) => x !== l) : [...hoy.fl.lv, l].sort();
+      hoy.fl.shown = 30;
+    } else if (act === "fl-exp") {
+      hoy.fl.exp = value || null;
+      hoy.fl.shown = 30;
+    } else if (act === "fl-w") {
+      hoy.fl.w = WIDTHS.includes(Number(value)) ? Number(value) : null;
+      hoy.fl.shown = 30;
+    } else if (act === "fl-pr") {
+      hoy.fl.pr = FL_PROBS.includes(Number(value)) ? Number(value) : null;
+      hoy.fl.shown = 30;
+    } else if (act === "fl-ord") {
+      hoy.fl.ord = value === "ben" || value === "prob" ? value : "lv";
+    } else if (act === "fl-hide") {
+      hoy.fl.hide = !hoy.fl.hide;
+      hoy.fl.shown = 30;
+    } else if (act === "fl-more") {
+      hoy.fl.shown += 30;
+    } else if (act === "fl-reset") {
+      hoy.fl = { lv: [0, 1, 2, 3, 4, 5], exp: null, w: null, pr: null, hide: false, ord: hoy.fl.ord, shown: 30 };
     } else if (act === "mexp") {
       // En el mapa, tocar una fecha no saca de la matriz: la enfoca en ese vencimiento (y la nube y las barras abrirán en él).
       hoy.mapExp = value || null;
@@ -808,12 +973,6 @@ export function createHoy(ctx) {
     } else if (act === "form-cancel") {
       hoy.form = null;
       hoy.error = "";
-    } else if (act === "name") {
-      // La ficha de siempre, con todos los bull puts del nombre.
-      hoy.deal = null;
-      state.detail = el.dataset.s;
-      state.detailDeal = el.dataset.k ?? null;
-      state.detailSrc = "igual";
     } else if (act === "deal-close") {
       hoy.form = { close: el.dataset.id };
       hoy.error = "";
@@ -896,6 +1055,19 @@ export function createHoy(ctx) {
     return true;
   }
 
+  /** Abre la ficha de un nombre (desde Lista) con su mejor deal puntuado: el de más nivel que cumple las Reglas o, si ninguno, el de más nivel. */
+  function openName(name) {
+    const sym = (state.scan?.symbols ?? []).find((item) => item.s === name);
+    if (!sym) return;
+    const all = nameDeals(sym, options());
+    const best = all.find((d) => d.ok) ?? all[0];
+    hoy.deal = best ? { s: sym.s, expiry: best.row.expiry, short: best.row.shortStrike, long: best.row.longStrike } : { s: sym.s, none: true };
+    hoy.form = null;
+    hoy.error = "";
+    hoy.copied = "";
+    ctx.render();
+  }
+
   /** La barra de prob.: al soltar, se aplica. */
   function setProb(value) {
     if (!probOk(value)) return false;
@@ -904,5 +1076,5 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb };
+  return { view, sheet, click, submit, escape, setProb, openName };
 }

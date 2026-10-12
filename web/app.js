@@ -8,22 +8,16 @@ import {
   cboeUrl,
   daysBetween,
   compareSpreads,
-  gateReason,
-  volatilities,
   pricesOutsideMarket,
   fmtStrike,
   labelOf,
-  liquidityNotes,
   normalizeConfig,
   num,
   nyToday,
   readCboeChain,
   rulesLine,
   spreadLine,
-  spreadRow,
   statusLabel,
-  withHistory,
-  yearRange,
   qualityDeals,
 } from "./engine.js";
 import { createHoy } from "./hoy.js";
@@ -65,9 +59,6 @@ const state = {
   checking: false, // enseñando lo guardado mientras se mira si hay barrido nuevo
   offline: false,
   error: null,
-  detail: null,
-  detailDeal: null, // bull put elegido en la ficha: "vencimiento|corto|largo"
-  detailSrc: "", // "igual" si la ficha se abrió desde Igual riesgo
   sync: { state: "idle", message: "" },
   gh: loadGh(),
   showGh: false,
@@ -1330,160 +1321,10 @@ function foot() {
   return `<p class="foot xs muted">${failed ? `Sin lectura en el último barrido: ${failed} nombres. ` : ""}${kept ? `Con datos del barrido anterior: ${kept} nombres. ` : ""}Un bull put puede perder el ancho menos el crédito. No es una orden ni un consejo, y los datos van con retraso.</p>`;
 }
 
-const dealKey = (sp) => `${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`;
-
-/** Ficha de un nombre: arriba el nombre, después el bull put elegido y abajo la lista de
- *  bull puts del nombre. Pulsar una fila de la lista vuelca ese bull put en la zona de arriba.
- *  Abierta desde "Igual riesgo" enseña las cuentas de esa pestaña (neto de comisión, historia). */
-function sheet() {
-  if (!state.detail) return "";
-  const sym = (state.scan?.symbols ?? []).find((item) => item.s === state.detail);
-  if (!sym) return "";
-  const today = nyToday();
-  const res = assessSymbol(sym, state.config.rules, state.config.order, today);
-  const igual = state.detailSrc === "igual";
-  const stat = (label, value, kpi = false) => `<div class="metric${kpi ? " kpi" : ""}"><dt>${label}</dt><dd>${value}</dd></div>`;
-  const sub = (text) => `<span class="xs muted" style="display:block;font-weight:400">${text}</span>`;
-
-  // El bull put elegido: el pulsado y, si no hay o ya no existe, el mejor según las reglas.
-  let sp = null; // con las cuentas de las reglas (Lista y Deals)
-  let row = null; // con las cuentas de "Igual riesgo"
-  const wanted = state.detailDeal ?? (res.best ? dealKey(res.best) : null);
-  if (igual && wanted) {
-    const [expiry, short, long] = wanted.split("|");
-    const made = withHistory(spreadRow(sym, expiry, Number(short), Number(long), state.config.rules.equalFee, today), state.hist?.symbols?.[sym.s], today);
-    row = made.status === "ok" ? made : null;
-  } else if (wanted) {
-    sp = res.all.find((idea) => dealKey(idea) === wanted) ?? res.best;
-  }
-  const chosen = row ?? sp;
-  const chosenKey = chosen ? dealKey(chosen) : null;
-
-  const notes = [];
-  if (sp?.fails.length) notes.push(`No pasa: ${sp.fails.join(" · ")}`);
-  if (chosen) {
-    const liquid = liquidityNotes(chosen, state.config.rules.gates).filter((note) => !(sp?.fails ?? []).includes(note));
-    if (liquid.length) notes.push(`Aviso: ${liquid.join(" · ")}`);
-    if (chosen.earnInside && sym.er) notes.push(`Resultados ${labelOf(sym.er.d)} · dentro del plazo`);
-    if (row?.shortHistory && row.histProb != null) notes.push("Poca historia: menos de 2 años de cierres");
-    if (row?.onlyOne) notes.push(`Solo con un cálculo: con historia ${signedUsd(row.marginHist)} · con lo reciente ${signedUsd(row.marginRecent)}. La media esconde que solo sale bien con uno de los dos`);
-    else if (row?.distinct) notes.push("Estimaciones muy distintas: 5 años de precios y volatilidad reciente no se parecen");
-    if (row?.trend?.length) notes.push(`Tendencia: ${row.trend.join(" · ")}`);
-    if (row?.fed?.length) notes.push(`Fed el ${row.fed.map((date) => labelOf(date)).join(" y ")} · dentro del plazo`);
-    if (row && gateReason(row, state.config.rules.equalGapPct)) notes.push(`Apartada de la comparación: ${gateReason(row, state.config.rules.equalGapPct)}`);
-  }
-  const title = chosen
-    ? `${fmtStrike(chosen.shortStrike)}/${fmtStrike(chosen.longStrike)} · ${esc(chosen.expiryLabel)} · ${chosen.dte} d · ancho ${widthText(chosen)}`
-    : "";
-  const tiles = row
-    ? `${stat("% abajo", `${dec(row.otm)} %`)}
-       ${stat("Cobras neto", usdDec(row.net))}
-       ${stat("Pérdida máx.", usdDec(row.loss))}
-       ${stat("Prob. asignación", `${row.prob == null ? "—" : `${dec(row.prob)} %`}${row.probSrc === "formula" ? sub("por fórmula") : ""}${row.histProb != null ? sub(`historia ${dec(row.histProb)} %`) : ""}`)}
-       ${stat("Rentab. neta", `${dec(row.ret)} %`)}
-       ${stat(row.balanceHist != null ? "Equilibrio con historia" : "Equilibrio", row.balanceHist == null ? "—" : row.balanceHist > 99 ? ">99" : dec(row.balanceHist, 1), true)}`
-    : sp
-      ? `${stat("% abajo", pct(sp.otm, 1))}
-       ${stat("Cobras", usd(sp.creditUsd))}
-       ${stat("Pérdida máx.", usd(sp.lossUsd))}
-       ${stat("Prob. asignación", `${probText(sp)}${sp.probSrc === "formula" ? sub("por fórmula") : ""}`)}
-       ${stat("Rentabilidad", pct(sp.ret))}
-       ${stat("Equilibrio", kpiText(sp), true)}`
-      : "";
-  const lose = row
-    ? `Pierdes por debajo de ${usdDec(row.breakeven)}. Cobras ya con la comisión de ${usdDec(state.config.rules.equalFee)}.`
-    : sp
-      ? `Pierdes por debajo de ${money(sp.breakeven)}.`
-      : "";
-  const chosenBlock = chosen
-    ? `<div class="chosen">
-        <p class="chosen-title">${title}</p>
-        <dl class="stats">${tiles}</dl>
-        <p class="small" style="margin-top:8px">${lose}</p>
-        ${notes.map((note) => `<p class="small brass" style="margin-top:4px">${esc(note)}</p>`).join("")}
-      </div>`
-    : `<p class="small muted" style="margin-top:14px">${igual && wanted ? "Ese bull put ya no tiene precio." : "No hay ningún bull put cerca de tu punto en tu plazo."}</p>`;
-
-  const year = yearRange(state.hist?.symbols?.[sym.s]?.c, sym.p);
-  const vols = volatilities(state.hist?.symbols?.[sym.s]?.c);
-  // De un vistazo: dónde está el precio dentro de su rango de 52 semanas y cuánto se mueve (tres volatilidades en la misma escala).
-  const spread = year && year.max > year.min ? year.max - year.min : 0;
-  const at = spread ? Math.min(100, Math.max(0, ((sym.p - year.min) / spread) * 100)) : null;
-  const rangeBlock =
-    year && at != null
-      ? `<div class="glance-block">
-        <div class="glance-head"><span>${year.sessions > 250 ? "52 semanas" : `Últimas ${year.sessions} sesiones`}</span><b class="num">${num(at, 0)} % del rango</b></div>
-        <div class="range-bar" role="img" aria-label="El precio está al ${num(at, 0)} % entre el mínimo y el máximo"><i style="left:${at.toFixed(1)}%"></i></div>
-        <div class="glance-ends"><span class="num"><b>${money(year.min)}</b> mín.</span><span class="num">máx. <b>${money(year.max)}</b></span></div>
-      </div>`
-      : "";
-  const volRows = [];
-  if (sym.iv30 != null) volRows.push(["Implícita 30 d", sym.iv30, "implied"]);
-  if (vols?.recentPct != null && vols.longPct != null) {
-    volRows.push(["Ahora", vols.recentPct, "recent"]);
-    volRows.push([spanText(state.hist.symbols[sym.s].c.length / 252), vols.longPct, "long"]);
-  }
-  const volMax = Math.max(1, ...volRows.map((row) => row[1])) * 1.1;
-  const ratio = vols?.recentPct != null && vols.longPct > 0 ? vols.recentPct / vols.longPct : null;
-  const volNote = ratio == null ? "" : ratio < 0.75 ? "Ahora se mueve bastante menos que de costumbre: el cálculo reciente es el optimista." : ratio > 1.33 ? "Ahora se mueve bastante más que de costumbre." : "";
-  const volBlock = volRows.length
-    ? `<div class="glance-block">
-        <div class="glance-head"><span>Volatilidad: cuánto se mueve al año</span></div>
-        ${volRows.map(([label, value, kind]) => `<div class="vol-row"><span class="vol-label">${esc(label)}</span><span class="vol-track"><i class="${kind}" style="width:${((value / volMax) * 100).toFixed(1)}%"></i></span><b class="num">${num(value, 0)} %</b></div>`).join("")}
-        ${volNote ? `<p class="xs brass" style="margin-top:6px">${volNote}</p>` : ""}
-      </div>`
-    : "";
-  const glance = rangeBlock || volBlock ? `<div class="glance">${rangeBlock}${volBlock}</div>` : "";
-  const byOrder = (a, b) => compareSpreads(a, b, state.config.order);
-  const okIdeas = res.all.filter((idea) => idea.ok).sort(byOrder);
-  const otherIdeas = res.all.filter((idea) => !idea.ok).sort((a, b) => b.stage - a.stage || byOrder(a, b));
-  const MAX_OK = 40;
-  const MAX_OTHER = 12;
-  const ideaRow = (idea) => `<li class="${dealKey(idea) === chosenKey ? "watched" : ""}">
-      <button data-pick="${esc(dealKey(idea))}" aria-pressed="${dealKey(idea) === chosenKey}">
-      <p class="small">${esc(idea.expiryLabel)} · ${fmtStrike(idea.shortStrike)}/${fmtStrike(idea.longStrike)} · ancho ${widthText(idea)} · ${pct(idea.otm, 1)} abajo · cobras ${usd(idea.creditUsd)}</p>
-      <p class="small muted">prob. ${probText(idea)} · rentab. ${pct(idea.ret)} · equilibrio ${kpiText(idea)}${idea.ok ? "" : ` · ${esc(idea.fails.join(" · "))}`}</p>
-      </button>
-    </li>`;
-  return `<div class="sheet-back" data-close>
-    <div class="sheet" role="dialog" aria-modal="true" aria-label="${esc(sym.s)}">
-      <div class="sheet-head">
-        <div style="min-width:0">
-          <h2 style="font-size:2rem">${esc(sym.s)} <span class="pill ${res.status}" style="vertical-align:middle;font-family:var(--sans)">${statusLabel(res.status)}</span></h2>
-          <p class="small muted">${esc(nameOf(sym))}</p>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center"><button class="btn quiet" data-close>Cerrar</button></div>
-      </div>
-      <p style="margin-top:10px"><span class="num" style="font-size:1.75rem;font-weight:500">${money(sym.p)}</span>
-        <span class="num ${sym.c >= 0 ? "up" : "down"}" style="margin-left:8px">${signed(sym.c)}</span></p>
-      ${glance}
-      ${chosenBlock}
-      ${
-        res.all.length
-          ? `<h3 style="font-size:1.25rem;margin-top:18px">Bull puts de ${esc(sym.s)}</h3>
-        <p class="small muted" style="margin-top:4px">Pulsa uno para verlo arriba.</p>
-        <div class="chips" role="group" aria-label="Orden" style="margin-top:8px">
-          ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
-        </div>
-        <p class="small muted" style="margin-top:10px">Cumplen ${okIdeas.length}${okIdeas.length > MAX_OK ? `, se ven los ${MAX_OK} primeros` : ""}.</p>
-        ${okIdeas.length ? `<ul class="ideas">${okIdeas.slice(0, MAX_OK).map(ideaRow).join("")}</ul>` : ""}
-        ${otherIdeas.length ? `<p class="small muted" style="margin-top:12px">No cumplen, los más cercanos:</p><ul class="ideas">${otherIdeas.slice(0, MAX_OTHER).map(ideaRow).join("")}</ul>` : ""}`
-          : ""
-      }
-    </div>
-  </div>`;
-}
-
 // ---------- Igual riesgo (pestaña de prueba) ----------
 
 const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
-const dec = (n, d = 1) => num(n, d);
-const usdDec = (n) => `$${dec(n, 2)}`;
-/** Dólares: enteros desde $10, con céntimos por debajo. Con signo en `signedUsd`. */
-const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usdDec(n));
-const signedUsd = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${dollars(Math.abs(n))}`;
-/** "5 años" con la historia completa; si hay menos, lo que hay. */
-const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years * 10) / 10, 1)} años` : "lo guardado");
+const usdDec = (n) => `$${num(n, 2)}`;
 
 // La pestaña "Hoy" (mapa, nube, ficha del deal y Mis deals) vive en hoy.js.
 const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
@@ -1503,7 +1344,7 @@ function render() {
     state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
-  root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}${sheet()}`;
+  root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}`;
   // Al pulsar dentro de la ficha (otro bull put, otro orden) se queda donde estaba.
   const after = root.querySelector(".sheet");
   if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
@@ -1581,7 +1422,7 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-dq],[data-hoy],[data-pick],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open],[data-close]");
+  const el = event.target.closest("[data-dq],[data-hoy],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.dq) {
@@ -1676,23 +1517,11 @@ root.addEventListener("click", (event) => {
     render();
   } else if (el.dataset.tab) {
     state.tab = el.dataset.tab;
-    state.detail = null;
     if (state.tab === "avisos") writeLocal(LS_SEEN, Date.now());
     window.scrollTo(0, 0);
     render();
-  } else if (el.dataset.pick) {
-    state.detailDeal = el.dataset.pick;
-    render();
   } else if (el.dataset.open) {
-    state.detail = el.dataset.open;
-    state.detailDeal = el.dataset.deal ?? null;
-    state.detailSrc = el.dataset.src ?? "";
-    render();
-  } else if (el.dataset.close != null) {
-    state.detail = null;
-    state.detailDeal = null;
-    state.detailSrc = "";
-    render();
+    hoy.openName(el.dataset.open); // la ficha única, con el mejor deal puntuado del nombre
   } else if (el.dataset.act === "reload") {
     void load().then(loadHist, loadHist);
   } else if (el.dataset.act === "real") {
@@ -1744,11 +1573,7 @@ window.addEventListener("keydown", (event) => {
     hoy.click(event.target);
     return;
   }
-  if (event.key === "Escape" && !state.detail && hoy.escape()) return;
-  if (event.key === "Escape" && state.detail) {
-    state.detail = null;
-    render();
-  }
+  if (event.key === "Escape") hoy.escape();
 });
 
 if (!EMBED && "serviceWorker" in navigator && window.location.protocol !== "file:") {
