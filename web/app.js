@@ -1471,7 +1471,7 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("hoy", "Hoy")}${item("favoritos", "Lista")}${item("deals", "Deals")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("deals", "Deals")}${item("favoritos", "Lista")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
