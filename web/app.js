@@ -77,6 +77,7 @@ const state = {
   dealsShown: 60,
   dealFilter: { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 },
   hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
+  refresh: null, // última comprobación del barrido: { at, result: "nuevo" | "igual" | "sin-conexion" | "error" | "leido" }
 };
 migrateEqualFee();
 
@@ -237,6 +238,8 @@ async function loadPublic() {
     render();
   }
   let offline = false;
+  let downloaded = false;
+  let fetchFailed = false;
   try {
     let stamp = 0;
     try {
@@ -247,8 +250,10 @@ async function loadPublic() {
     if (!scan?.symbols?.length || (stamp > 0 && scan.at !== stamp)) {
       try {
         scan = await fetchAndKeep(SCAN_FILE, stamp || Date.now());
+        downloaded = true;
       } catch (error) {
         if (!error?.status) throw error;
+        fetchFailed = true;
       }
     }
   } catch {
@@ -259,6 +264,7 @@ async function loadPublic() {
   state.scan = scan?.symbols?.length ? scan : null;
   state.error = state.scan ? null : offline ? "No se pudo leer el barrido. Comprueba la conexión." : "Todavía no hay ningún barrido publicado.";
   state.offline = offline && Boolean(state.scan);
+  state.refresh = { at: Date.now(), result: !state.scan ? "error" : offline ? "sin-conexion" : fetchFailed ? "error" : downloaded ? "nuevo" : "igual" };
   render();
 }
 
@@ -359,6 +365,7 @@ async function load() {
     writeLocal(LS_CONFIG, pub);
   }
   state.loading = false;
+  state.refresh = { at: Date.now(), result: state.scan ? "leido" : "error" };
   render();
 }
 
@@ -634,6 +641,52 @@ const signed = (n) => `${n > 0 ? "+" : ""}${num(n, 2)} %`;
 const shortMoney = (n) => `$${Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "")}`;
 const whenFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (ms) => whenFmt.format(new Date(ms));
+const hourFmt = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
+/** "hace 5 min", "hace 3 h", "hace 2 días". */
+function ago(ms) {
+  const min = Math.max(0, Math.round((Date.now() - ms) / 60_000));
+  if (min < 1) return "hace un momento";
+  if (min < 60) return `hace ${min} min`;
+  if (min < 48 * 60) return `hace ${Math.round(min / 60)} h`;
+  return `hace ${Math.round(min / 1440)} días`;
+}
+
+/** Lo que pasó al actualizar y de cuándo son los datos: el barrido, los cierres y si el mercado está abierto. */
+function refreshBox() {
+  const scan = state.scan;
+  const busy = state.loading || state.checking;
+  const r = state.refresh;
+  const at = r ? hourFmt.format(new Date(r.at)) : "";
+  const result = busy
+    ? "Comprobando si hay un barrido nuevo…"
+    : !r
+      ? ""
+      : {
+          nuevo: `Última comprobación, a las ${at}: había un barrido nuevo y se ha cargado.`,
+          igual: `Última comprobación, a las ${at}: no hay barrido nuevo; tienes el último publicado.`,
+          leido: `Última comprobación, a las ${at}: se ha leído el barrido otra vez.`,
+          "sin-conexion": `Última comprobación, a las ${at}: no se pudo comprobar, sin conexión. Se sigue con el último barrido guardado.`,
+          error: `Última comprobación, a las ${at}: no se pudo leer el barrido.`,
+        }[r.result];
+  const warn = !busy && (r?.result === "sin-conexion" || r?.result === "error");
+  const lines = [];
+  if (scan?.at) {
+    const source = scan.example ? "datos de ejemplo" : scan.source ? esc(scan.source) : "";
+    lines.push(`Precios de las opciones: barrido del ${when(scan.at)} (${ago(scan.at)})${source ? `, ${source}` : ""}.${!scan.example && pricesOutsideMarket(scan.at) ? " Son de fuera de horario: las horquillas son más anchas." : ""}`);
+  } else {
+    lines.push("Todavía no hay ningún barrido cargado.");
+  }
+  if (state.hist?.last) lines.push(`Cierres diarios, para la historia de 5 años: hasta el ${esc(labelOf(state.hist.last))}.`);
+  lines.push(
+    pricesOutsideMarket(Date.now())
+      ? "El mercado está cerrado ahora: no hay barridos nuevos hasta que abra, así que los datos son los del último barrido."
+      : "El mercado está abierto: el barrido se repite cada media hora y los precios llevan 15 minutos de retraso.",
+  );
+  return `<div class="readbox small${warn ? " warn" : ""}" role="status" aria-live="polite">
+    ${result ? `<p><b>${result}</b></p>` : ""}
+    <ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>
+  </div>`;
+}
 const nameOf = (sym) => (sym.n && sym.n !== sym.s ? sym.n : "");
 const kpiText = (sp) => (sp.balance == null ? "—" : num(sp.balance, 2));
 const widthText = (sp) => shortMoney(sp.width);
@@ -846,7 +899,8 @@ function viewReglas() {
   return `<div class="narrow">
     <header class="top">
       <h1 class="sr-only">Reglas</h1>
-      <div class="top-row"><button class="btn primary" data-act="reload" ${state.loading ? "disabled" : ""}>Actualizar</button></div>
+      <div class="top-row"><button class="btn primary" data-act="reload" ${state.loading || state.checking ? "disabled" : ""}>${state.loading || state.checking ? "Actualizando…" : "Actualizar"}</button></div>
+      ${refreshBox()}
       <p class="small muted" style="margin-top:12px">Filtran tu lista al instante en este dispositivo. ${esc(syncLine())}</p>
     </header>
     <div class="panel">
