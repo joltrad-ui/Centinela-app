@@ -22,6 +22,8 @@ import { createConexion } from "./conexion.js";
 const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
 const LS_SEEN = "centinela.avisos.vistos";
+const LS_TAB = "centinela.pestana.v1";
+const TABS = ["hoy", "buscador", "avisos", "reglas"];
 const LS_COPIED = "centinela.secreto.copiado";
 const LS_EQUAL = "centinela.igual.v1";
 const root = document.getElementById("app");
@@ -46,7 +48,7 @@ function refreshExample(scan) {
 }
 
 const state = {
-  tab: "hoy", // la pestaña nueva es la de entrada; las de siempre siguen en la barra
+  tab: "hoy", // se abre en la última que usaste (`restoreTab`); la primera vez, Hoy
   scan: null,
   alerts: [],
   config: normalizeConfig(DEFAULT_CONFIG),
@@ -686,7 +688,7 @@ function header(title, showRules = true) {
   const status = state.loading
     ? "Leyendo el barrido…"
     : scan
-      ? `${times} · ${esc(scan.source)}${state.checking ? " · comprobando si hay uno nuevo…" : state.offline ? " · sin conexión: es el último guardado" : ""}`
+      ? `${times} · ${esc(scan.source)}${state.checking ? " · comprobando si hay uno nuevo…" : ""}`
       : "Sin barrido todavía";
   return `
     <header class="top">
@@ -699,6 +701,7 @@ function header(title, showRules = true) {
       <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
       ${showRules ? `<button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>` : ""}
     </header>
+    ${state.offline && scan ? notice("info", `Sin conexión: se enseña el último barrido guardado, del ${when(scan.at)} (${ago(scan.at)}).`) : ""}
     ${scan?.example ? notice("watch", 'Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer la lista.') : ""}
     ${scan?.real ? readSummary(scan) : ""}
     ${real.error ? notice("bad", esc(real.error)) : ""}
@@ -838,6 +841,7 @@ root.addEventListener("click", (event) => {
   if (reglas.click(el) || avisos.click(el) || conexion.click(el)) return;
   if (el.dataset.tab) {
     state.tab = el.dataset.tab;
+    writeLocal(LS_TAB, state.tab);
     if (state.tab === "avisos") writeLocal(LS_SEEN, Date.now());
     window.scrollTo(0, 0);
     render();
@@ -868,6 +872,22 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "Escape") hoy.escape();
+});
+
+// Abrir donde lo dejaste, y enterarse solo de que vuelve o se va la conexión.
+const lastTab = readLocal(LS_TAB);
+if (TABS.includes(lastTab)) {
+  state.tab = lastTab;
+  if (lastTab === "avisos") writeLocal(LS_SEEN, Date.now());
+}
+window.addEventListener("online", () => {
+  state.offline = false;
+  void load().then(loadHist, loadHist);
+});
+window.addEventListener("offline", () => {
+  if (!state.scan) return;
+  state.offline = true;
+  render();
 });
 
 if (!EMBED && "serviceWorker" in navigator && window.location.protocol !== "file:") {
