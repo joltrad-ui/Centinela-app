@@ -13,6 +13,7 @@ import {
   rulesLine,
 } from "./engine.js";
 import { createHoy } from "./hoy.js";
+import { notice, sectionHead } from "./ui.js";
 import { createBuscador } from "./buscador.js";
 
 const LS_CONFIG = "centinela.config.v1";
@@ -695,10 +696,10 @@ function header(title, showRules = true) {
       <p class="status small muted">${real.busy && real.note ? esc(real.note) : status}</p>
       ${showRules ? `<button class="rules-line small" data-tab="reglas">${esc(rulesLine(state.config.rules))}</button>` : ""}
     </header>
-    ${scan?.example ? '<p class="banner small">Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer la lista.</p>' : ""}
+    ${scan?.example ? notice("watch", 'Datos de ejemplo. No son precios de mercado. Pulsa "Datos reales" para leer la lista.') : ""}
     ${scan?.real ? readSummary(scan) : ""}
-    ${real.error ? `<p class="banner err small">${esc(real.error)}</p>` : ""}
-    ${state.error && !state.loading ? `<p class="banner err small">${esc(state.error)}</p>` : ""}`;
+    ${real.error ? notice("bad", esc(real.error)) : ""}
+    ${state.error && !state.loading ? notice("bad", esc(state.error)) : ""}`;
 }
 
 /** Resumen de la última lectura real: qué se leyó, si quedó guardada y el detalle por nombre. */
@@ -811,7 +812,7 @@ function viewReglas() {
     </div>
 
     <section class="block">
-      <h2>Si lo enciendes</h2>
+      ${sectionHead("Si lo enciendes")}
       <p class="small muted">Apagado, no cuenta. Encendido, el nombre deja de cumplir y la lista dice por qué.</p>
       <div class="panel">
         ${gate("event", "Sin resultados en el plazo", "Hasta dos días después del vencimiento.")}
@@ -834,7 +835,7 @@ function viewReglas() {
     </section>
 
     <section class="block">
-      <h2>Pestaña Hoy</h2>
+      ${sectionHead("Pestaña Hoy")}
       <p class="small muted">Solo cuenta ahí. Usa la comisión y la horquilla de la sección de abajo.</p>
       <div class="panel">
         <div class="field" style="display:block">
@@ -852,7 +853,7 @@ function viewReglas() {
     </section>
 
     <section class="block">
-      <h2>Comisión y horquilla</h2>
+      ${sectionHead("Comisión y horquilla")}
       <div class="panel">
         ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste total (entrar y salir).", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
         ${stepper("rules.equalGapPct", "Horquilla máxima", "Las dos horquillas, sobre el crédito a precio medio. Por encima, la fila se aparta.", 10, 100, 5, p0)}
@@ -860,7 +861,7 @@ function viewReglas() {
     </section>
 
     <section class="block">
-      <h2>Cómo se calcula</h2>
+      ${sectionHead("Cómo se calcula")}
       <div class="panel">
         <details>
           <summary>Las columnas, una a una</summary>
@@ -900,7 +901,7 @@ function secretBlock() {
       ? "Has cambiado las reglas después de la última copia: los avisos siguen con las anteriores."
       : "Los avisos usan lo que copiaste por última vez desde este dispositivo.";
   return `<section class="block">
-    <h2>Avisos al móvil</h2>
+    ${sectionHead("Avisos al móvil")}
     <p class="small muted">Tus reglas se guardan solo en este dispositivo; no se publican. Para que los avisos las sigan, copia la configuración y pégala en GitHub como secreto <b>CENTINELA_CONFIG</b>. Repítelo cuando cambies las reglas.</p>
     <div class="panel"><div class="form">
       <p class="small${stale ? "" : " muted"}">${status}</p>
@@ -914,7 +915,7 @@ function secretBlock() {
 function bridgeBlock() {
   const own = String(readLocal(LS_BRIDGE) ?? "");
   return `<section class="block">
-    <h2>Puente de datos</h2>
+    ${sectionHead("Puente de datos")}
     <p class="small muted">Este archivo prueba a leer CBOE directamente y, si no puede, por tres puentes gratuitos de terceros. Si tienes un puente propio, pon aquí su dirección y será el primero que pruebe.</p>
     <div class="panel"><div class="form">
       <form data-bridge>
@@ -928,7 +929,7 @@ function bridgeBlock() {
 function ghBlock() {
   const ready = ghReady();
   return `<section class="block">
-    <h2>Tu repositorio privado</h2>
+    ${sectionHead("Tu repositorio privado")}
     <p class="small muted">${ready ? "Conectada. Los barridos, las reglas y los favoritos se leen y se guardan en tu repositorio privado." : "La app necesita tu usuario, el nombre del repositorio y una llave de acceso para leer tus barridos. La llave se queda solo en este dispositivo."}</p>
     <div class="panel">
       <div class="form">
@@ -980,7 +981,7 @@ function viewAvisos() {
     </div>
     <p class="small muted" style="margin-top:8px">${esc(syncLine())}</p>
     <section class="block">
-      <h2>Bitácora</h2>
+      ${sectionHead("Bitácora")}
       <div class="panel">${items}</div>
     </section>
     ${foot()}
