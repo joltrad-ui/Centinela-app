@@ -10,8 +10,9 @@
   --brass-dim: #2e2818;
   --up: #3faf86;
   --up-dim: #143128;
-  --down: #e06a56;
-  --down-dim: #3a1f1b;
+  --down: #e0625a; /* texto rojo */
+  --down-solid: #cf3f37; /* rellenos rojos: barras, puntos; más oscuro que el verde, así se distingue también en blanco y negro */
+  --down-dim: #3a1d1b;
   --border: 0 0 0 1px rgba(232, 239, 233, 0.08);
   --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --display: "Newsreader", ui-serif, Georgia, serif;
@@ -384,12 +385,12 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .dq-four .up { color: var(--up); }
 .dq-tags { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; padding: 5px 0 0 34px; }
 .dq-tag { font-size: 0.6875rem; line-height: 18px; padding: 0 7px; border-radius: 999px; white-space: nowrap; color: var(--muted); box-shadow: var(--border); }
-.dq-tag.red { color: var(--down); box-shadow: 0 0 0 1px rgba(224, 112, 95, 0.35); }
+.dq-tag.red { color: var(--down); box-shadow: 0 0 0 1px rgba(224, 98, 90, 0.35); }
 .dq-more { font-size: 0.6875rem; color: var(--muted); padding: 0 2px; }
 
 /* ---------- Ficha única (Hoy, Deals y Lista): ticket, avisos, cinco bloques plegables y los deals del nombre ----------
    Color solo en los números; las etiquetas, neutras. Paleta más honda que el verde y el rojo de las listas. */
-.fi-sheet { --fi-gn: #34b07f; --fi-rd: #ec6652; --fi-bl: #6aa5f2; --fi-am: #e2a43a; padding: 16px 16px 44px; }
+.fi-sheet { --fi-gn: #34b07f; --fi-rd: var(--down); --fi-bl: #6aa5f2; --fi-am: #e2a43a; padding: 16px 16px 44px; }
 .fi-sheet .up { color: var(--fi-gn); }
 .fi-sheet .down { color: var(--fi-rd); }
 .fi-sheet .bl { color: var(--fi-bl); }
@@ -416,7 +417,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-huge { font-size: 1.625rem; font-weight: 600; line-height: 1.1; }
 .fi-pct { font-size: 0.9375rem; font-weight: 500; }
 .fi-bar { display: flex; height: 6px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
-.fi-bar .r { background: var(--fi-rd); }
+.fi-bar .r { background: var(--down-solid); }
 .fi-bar .g { background: var(--fi-gn); }
 .fi-cap { margin: 8px 0 0; }
 .fi-short { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -432,8 +433,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-pill::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; }
 .fi-pill.am { background: rgba(226, 164, 58, 0.16); }
 .fi-pill.am::before { background: var(--fi-am); }
-.fi-pill.rd { background: rgba(236, 102, 82, 0.16); }
-.fi-pill.rd::before { background: var(--fi-rd); }
+.fi-pill.rd { background: rgba(207, 63, 55, 0.18); }
+.fi-pill.rd::before { background: var(--down-solid); }
 
 .fi-folds { margin-top: 16px; border-top: 1px solid var(--line); }
 .fi-fold { border-bottom: 1px solid var(--line); }
