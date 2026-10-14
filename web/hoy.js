@@ -80,7 +80,7 @@ export function createHoy(ctx) {
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
-    fOpen: saved.fOpen !== false, // los filtros de arriba, desplegados o comprimidos
+    fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
     barSort: saved.barSort === "floor" ? "floor" : "left", // orden de la vista Barras: por lo que queda o por el suelo
     folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
@@ -181,17 +181,20 @@ export function createHoy(ctx) {
     const blocks = ctx.blockOrder();
     const held = o.opts.held;
     const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
-    const summary = `Prob. ≤ ${o.opts.prob} % · Ancho ≤ $${Math.round(o.opts.width * 100)} · ${hoy.price === "mid" ? "Mid" : "Bid/Ask"}${held.length ? ` · Ya tengo ${held.length}` : ""}`;
-    const head = `<div class="fhead"><button class="fhead-b" data-hoy="filters-open" aria-expanded="${hoy.fOpen}">${hoy.fOpen ? "Menos filtros ▴" : "Filtros ▾"}</button>${hoy.fOpen ? "" : `<span class="small muted">${summary}</span>`}</div>`;
-    if (!hoy.fOpen) return head;
-    return `${head}<div class="filters">
+    const nAct = (hoy.price === "mid" ? 1 : 0) + (held.length ? 1 : 0);
+    const head = `<div class="fhead"><button class="fhead-b" data-hoy="filters-open" aria-expanded="${hoy.fOpen}">${hoy.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${nAct ? `${nAct} ${nAct === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
+    return `<div class="filters">
       <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
         <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
         <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
       <div class="frow" role="group" aria-label="Ancho máximo, en dólares por contrato"><span class="small muted hoy-lab">Ancho hasta</span>
         <input type="range" class="range" id="hoy-w-range" min="${FL_W_MIN}" max="${FL_W_MAX}" step="${FL_W_STEP}" value="${Math.min(FL_W_MAX, Math.max(FL_W_MIN, Math.round((o.opts.width * 100) / FL_W_STEP) * FL_W_STEP))}" aria-label="Ancho máximo del spread">
         <b class="num" id="hoy-w-range-val" style="min-width:3.2em;text-align:right">$${Math.round(o.opts.width * 100)}</b></div>
-      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
+      ${head}
+      ${
+        !hoy.fOpen
+          ? ""
+          : `      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
       ${
         hoy.heldOpen
           ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
@@ -201,6 +204,7 @@ export function createHoy(ctx) {
           : `<div class="frow" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="false">Ya tengo ▾</button>${held
               .map((name) => `<button class="chip quiet" data-hoy="held-open" aria-pressed="true">${esc(name)}</button>`)
               .join("")}${held.length ? "" : '<button class="chip quiet" data-hoy="held-open">ninguno</button>'}</div>`
+      }`
       }
     </div>`;
   }
