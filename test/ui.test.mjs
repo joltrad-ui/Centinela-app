@@ -170,3 +170,50 @@ test("estados vacíos con el mismo bloque y alturas de las tres escalas", { skip
   for (const [name, value] of Object.entries(heights)) assert.ok([-1, 32, 36, 44].includes(value), `${name} mide ${value}`);
   await page.close();
 });
+
+test("Reglas y Avisos: pasos, interruptores, avisos y restaurar funcionan", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Reglas");
+  await page.locator('[data-act="reset"]').first().click(); // reglas de fábrica, sea cual sea la configuración guardada
+  await page.waitForTimeout(300);
+  const before = await page.locator("#app").innerText();
+  await page.locator("[data-step]").first().click();
+  await page.waitForTimeout(300);
+  await page.locator("[data-rule-switch]").first().click();
+  await page.waitForTimeout(300);
+  assert.notEqual(await page.locator("#app").innerText(), before, "los controles de Reglas no cambian nada");
+  await page.locator('[data-act="reset"]').first().click();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator("#app").innerText(), before, "Restaurar debe volver a las reglas de fábrica");
+  await goTab(page, "Avisos");
+  const alerts = page.locator("[data-alert]");
+  if (await alerts.count()) {
+    const was = await alerts.first().getAttribute("aria-checked");
+    await alerts.first().click();
+    await page.waitForTimeout(300);
+    assert.notEqual(await page.locator("[data-alert]").first().getAttribute("aria-checked"), was);
+  }
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("Hoy: las barras de ancho y prob. cambian el contador", { skip }, async () => {
+  const page = await open(390);
+  const sum = async () => (await page.locator(".stats").first().innerText()).replace(/\s+/g, " ");
+  const set = async (id, value) => {
+    await page.$eval(`#${id}`, (e, v) => {
+      e.value = v;
+      e.dispatchEvent(new Event("input", { bubbles: true }));
+      e.dispatchEvent(new Event("change", { bubbles: true }));
+    }, value);
+    await page.waitForTimeout(500);
+  };
+  const a = await sum();
+  await set("hoy-w-range", 200);
+  assert.equal(await page.locator("#hoy-w-range-val").innerText(), "$200");
+  assert.notEqual(await sum(), a);
+  await set("hoy-range", 30);
+  assert.equal(await page.locator("#hoy-range-val").innerText(), "30 %");
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
