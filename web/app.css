@@ -472,6 +472,9 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-f-c { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 1px; }
 .fi-f-c::-webkit-scrollbar { display: none; }
 .fi-f-c > * { flex: none; }
+.fi-f-c.sl { flex: 1 1 auto; align-items: center; }
+.fi-f-c.sl > .range { flex: 1 1 auto; min-width: 0; }
+.fi-range-v { min-width: 3.2em; text-align: right; }
 .fi-lvb { min-height: 0; width: 34px; height: 32px; font-size: 0.875rem; border-radius: 8px; }
 .fi-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
 .fi-sort { margin-top: 4px; }
