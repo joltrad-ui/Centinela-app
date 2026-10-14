@@ -198,8 +198,8 @@ export function createBuscador(ctx) {
   function levelSummary(d0) {
     const pool = filtered(d0, true);
     const by = (l) => pool.filter((d) => d.level === l).length;
-    const cell = (label, n) => `<div class="bs-stat"><b class="num">${n}</b><span class="xs muted">${label}</span></div>`;
-    return `<div class="bs-stats" role="group" aria-label="Deals por nivel">${cell("Nivel 5", by(5))}${cell("Nivel 4", by(4))}${cell("Nivel 3", by(3))}${cell("Con margen", pool.filter((d) => d.checks.safe).length)}</div>`;
+    const cell = (label, n) => `<div class="bs-stat"><span class="xs muted">${label}</span><b class="num">${n}</b></div>`;
+    return `<div class="bs-stats" role="group" aria-label="Deals por nivel">${cell("Nivel 5", by(5))}${cell("Nivel 4", by(4))}${cell("Nivel 3", by(3))}${cell("Margen", pool.filter((d) => d.checks.safe).length)}</div>`;
   }
 
   function listHtml(d0) {
