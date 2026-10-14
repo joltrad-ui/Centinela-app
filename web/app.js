@@ -1048,9 +1048,14 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = `${event.target.value} %`;
     return;
   }
-  if (id === "fi-w-range" || id === "fi-pr-range") {
+  if (id === "hoy-w-range") {
+    const label = root.querySelector("#hoy-w-range-val");
+    if (label) label.textContent = `$${event.target.value}`;
+    return;
+  }
+  if (id === "fi-w-range" || id === "fi-pr-range" || id === "fi-days-range") {
     const label = root.querySelector(`#${id}-val`);
-    if (label) label.textContent = id === "fi-w-range" ? `$${event.target.value}` : `${event.target.value} %`;
+    if (label) label.textContent = id === "fi-w-range" ? `$${event.target.value}` : id === "fi-days-range" ? `${event.target.value} d` : `${event.target.value} %`;
     return;
   }
 });
@@ -1060,8 +1065,12 @@ root.addEventListener("change", (event) => {
     if (hoy.setProb(Number(event.target.value))) render();
     return;
   }
-  if (id === "fi-w-range" || id === "fi-pr-range") {
-    if (hoy.setFl(id === "fi-w-range" ? "w" : "pr", Number(event.target.value))) render();
+  if (id === "hoy-w-range") {
+    if (hoy.setWidth(Number(event.target.value))) render();
+    return;
+  }
+  if (id === "fi-w-range" || id === "fi-pr-range" || id === "fi-days-range") {
+    if (hoy.setFl(id === "fi-w-range" ? "w" : id === "fi-days-range" ? "days" : "pr", Number(event.target.value), Number(event.target.max))) render();
     return;
   }
   if (id === "bs-w-range" || id === "bs-pr-range" || id === "bs-days-range") {
