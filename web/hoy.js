@@ -187,12 +187,12 @@ export function createHoy(ctx) {
     const nAct = (hoy.price === "mid" ? 1 : 0) + (held.length ? 1 : 0);
     const head = `<div class="fhead"><button class="fhead-b" data-hoy="filters-open" aria-expanded="${hoy.fOpen}">${hoy.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${nAct ? `${nAct} ${nAct === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
     return `<div class="filters">
-      <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
-        <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
-        <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
       <div class="frow" role="group" aria-label="Ancho máximo, en dólares por contrato"><span class="small muted hoy-lab">Ancho hasta</span>
         <input type="range" class="range" id="hoy-w-range" min="${FL_W_MIN}" max="${FL_W_MAX}" step="${FL_W_STEP}" value="${Math.min(FL_W_MAX, Math.max(FL_W_MIN, Math.round((o.opts.width * 100) / FL_W_STEP) * FL_W_STEP))}" aria-label="Ancho máximo del spread">
         <b class="num" id="hoy-w-range-val" style="min-width:3.2em;text-align:right">$${Math.round(o.opts.width * 100)}</b></div>
+      <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
+        <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
+        <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
       ${head}
       ${
         !hoy.fOpen

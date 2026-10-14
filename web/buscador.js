@@ -186,9 +186,9 @@ export function createBuscador(ctx) {
     const head = `<div class="fhead"><button class="fhead-b" data-bs="filters-open" aria-expanded="${bs.fOpen}">${bs.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
     return `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
-        ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
-        ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
         ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
+        ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
+        ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${head}
         ${bs.fOpen ? rest : ""}
         ${bs.fOpen && n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
