@@ -1393,6 +1393,11 @@ root.addEventListener("input", (event) => {
     if (label) label.textContent = `${event.target.value} %`;
     return;
   }
+  if (id === "fi-w-range" || id === "fi-pr-range") {
+    const label = root.querySelector(`#${id}-val`);
+    if (label) label.textContent = id === "fi-w-range" ? `$${event.target.value}` : `${event.target.value} %`;
+    return;
+  }
 });
 root.addEventListener("change", (event) => {
   const id = event.target.id;
@@ -1406,6 +1411,10 @@ root.addEventListener("change", (event) => {
   }
   if (id === "hoy-range") {
     if (hoy.setProb(Number(event.target.value))) render();
+    return;
+  }
+  if (id === "fi-w-range" || id === "fi-pr-range") {
+    if (hoy.setFl(id === "fi-w-range" ? "w" : "pr", Number(event.target.value))) render();
     return;
   }
   if (id === "dq-days") {

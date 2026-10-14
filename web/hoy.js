@@ -45,7 +45,11 @@ const PROB_MIN = 3; // la barra de prob. va de 3 a 20 % en pasos de 1 punto: "X 
 const PROB_MAX = 20;
 const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
-const FL_PROBS = [5, 8, 10, 15]; // filtro de prob. de la lista de deals de la ficha
+// Filtros de ancho y de prob. de la lista de deals de la ficha: barras que filtran "hasta"; al máximo no filtran.
+const FL_W_MIN = 1;
+const FL_W_MAX = 10;
+const FL_PR_MIN = 3;
+const FL_PR_MAX = 20;
 const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
 const VIEWS = ["mapa", "nube", "barras", "mis"];
 const MAX_DEALS = 300;
@@ -576,13 +580,14 @@ export function createHoy(ctx) {
       list = [...list].sort((a, b) => perDay(b) - perDay(a) || b.level - a.level);
     }
     const shown = list.slice(0, f.shown);
-    const chipRow = (label, chips) => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c">${chips}</div></div>`;
+    const chipRow = (label, chips, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${chips}</div></div>`;
+    const slider = (id, min, max, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const filters = `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
         ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
-        ${chipRow("Ancho hasta", chip("fl-w", "0", "Todos", !f.w) + WIDTHS.map((n) => chip("fl-w", n, `$${n}`, f.w === n)).join(""))}
-        ${chipRow("Prob. hasta", chip("fl-pr", "0", "Todas", !f.pr) + FL_PROBS.map((n) => chip("fl-pr", n, `${n} %`, f.pr === n)).join(""))}
+        ${chipRow("Ancho hasta", slider("fi-w-range", FL_W_MIN, FL_W_MAX, f.w ?? FL_W_MAX, "Ancho máximo", (v) => `$${v}`), " sl")}
+        ${chipRow("Prob. hasta", slider("fi-pr-range", FL_PR_MIN, FL_PR_MAX, f.pr ?? FL_PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
@@ -923,12 +928,6 @@ export function createHoy(ctx) {
     } else if (act === "fl-exp") {
       hoy.fl.exp = value || null;
       hoy.fl.shown = 30;
-    } else if (act === "fl-w") {
-      hoy.fl.w = WIDTHS.includes(Number(value)) ? Number(value) : null;
-      hoy.fl.shown = 30;
-    } else if (act === "fl-pr") {
-      hoy.fl.pr = FL_PROBS.includes(Number(value)) ? Number(value) : null;
-      hoy.fl.shown = 30;
     } else if (act === "fl-ord") {
       hoy.fl.ord = ["ben", "prob", "floor", "day"].includes(value) ? value : "lv";
     } else if (act === "fl-hide") {
@@ -1085,5 +1084,15 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb, openName };
+  /** Barras de ancho y de prob. de la ficha: "hasta" ese valor; el máximo de la barra no filtra. */
+  function setFl(kind, value) {
+    if (!Number.isInteger(value)) return false;
+    if (kind === "w" && value >= FL_W_MIN && value <= FL_W_MAX) hoy.fl.w = value >= FL_W_MAX ? null : value;
+    else if (kind === "pr" && value >= FL_PR_MIN && value <= FL_PR_MAX) hoy.fl.pr = value >= FL_PR_MAX ? null : value;
+    else return false;
+    hoy.fl.shown = 30;
+    return true;
+  }
+
+  return { view, sheet, click, submit, escape, setProb, setFl, openName };
 }
