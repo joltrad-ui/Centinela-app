@@ -2,14 +2,15 @@
 // Sustituye a Lista y a Deals. Todo lo que se elige aquí vive solo en el dispositivo (`localStorage`):
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
-import { qualityDeals, nyToday, labelOf } from "./engine.js";
+import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
 const LS_HOY = "centinela.hoy.v1";
 const LS_MISDEALS = "centinela.misdeals.v1";
-const W_MIN = 1; // ancho hasta: de $1 a $10; el máximo no filtra
-const W_MAX = 10;
+const W_MIN = 100; // ancho hasta, en dólares por contrato (como "ancho $600" en las filas): de $100 a $1000; el máximo no filtra
+const W_MAX = 1000;
+const W_STEP = 50;
 const PR_MIN = 3; // prob. hasta: de 3 a 30 %; el máximo no filtra
 const PR_MAX = 30;
 const SHOW = 40;
@@ -19,11 +20,6 @@ const ORDERS = [
   ["prob", "Prob."],
   ["floor", "Suelo"],
   ["day", "Por día"],
-];
-const TENGO = [
-  ["all", "Todas"],
-  ["hide", "Ocultar"],
-  ["only", "Solo"],
 ];
 const DEFAULT_LV = [3, 4, 5];
 const norm = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -35,9 +31,9 @@ export function createBuscador(ctx) {
   const bs = {
     q: "",
     lv: Array.isArray(saved.lv) ? saved.lv.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [...DEFAULT_LV],
-    exp: typeof saved.exp === "string" ? saved.exp : null,
+    days: Number.isInteger(saved.days) && saved.days > 0 ? saved.days : null, // vence en N días o menos; null = todos
     blocks: Array.isArray(saved.blocks) ? saved.blocks.filter((b) => typeof b === "string").slice(0, 40) : [],
-    w: Number.isInteger(saved.w) && saved.w >= W_MIN && saved.w < W_MAX ? saved.w : null,
+    w: Number.isInteger(saved.w) && saved.w >= W_MIN && saved.w < W_MAX && saved.w % W_STEP === 0 ? saved.w : null,
     pr: Number.isInteger(saved.pr) && saved.pr >= PR_MIN && saved.pr < PR_MAX ? saved.pr : null,
     hide: saved.hide === true, // ocultar los que están fuera de Reglas
     earn: saved.earn === true, // ocultar los que tienen resultados dentro del plazo
@@ -48,9 +44,10 @@ export function createBuscador(ctx) {
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
     shown: SHOW,
     namesOpen: false,
+    more: false, // "Más filtros" desplegado
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
-  const keep = () => writeLocal(LS, { lv: bs.lv, exp: bs.exp, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord });
+  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord });
 
   let tengoList = (Array.isArray(readLocal(LS_TENGO)) ? readLocal(LS_TENGO) : []).filter((s) => typeof s === "string").slice(0, 200);
   const keepTengo = () => writeLocal(LS_TENGO, tengoList);
@@ -86,18 +83,24 @@ export function createBuscador(ctx) {
     return q.split(/\s+/).every((word) => hay.includes(word));
   }
 
-  function filtered(d0) {
+  /** Los días máximos de la barra "Vence hasta": los de las Reglas. */
+  const daysRange = () => {
+    const rules = state.config.rules;
+    return { min: rules.minDte, max: Math.max(rules.minDte + 1, rules.maxDte) };
+  };
+  const activeDays = () => (bs.days != null && bs.days >= daysRange().min && bs.days < daysRange().max ? bs.days : null);
+
+  function filtered(d0, skipLevel = false) {
     const q = norm(bs.q.trim());
     const tengo = tengoSet(d0.openNames);
-    const exps = [...new Set(d0.deals.map((d) => d.row.expiry))];
-    const exp = exps.includes(bs.exp) ? bs.exp : null;
+    const days = activeDays();
     return d0.deals.filter(
       (d) =>
         matches(d.sym, q) &&
-        bs.lv.includes(d.level) &&
-        (!exp || d.row.expiry === exp) &&
+        (skipLevel || bs.lv.includes(d.level)) &&
+        (!days || d.row.dte <= days) &&
         (!bs.blocks.length || bs.blocks.includes(d.sym.b ?? "")) &&
-        (!bs.w || d.row.width <= bs.w + 1e-6) &&
+        (!bs.w || d.row.width * 100 <= bs.w + 1e-6) &&
         (!bs.pr || (d.row.prob ?? 100) <= bs.pr + 1e-9) &&
         !(bs.hide && !d.ok) &&
         !(bs.earn && d.row.earnInside && d.sym.er) &&
@@ -110,7 +113,7 @@ export function createBuscador(ctx) {
   // ---------- pintado ----------
   const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-bs="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
   const chipRow = (label, inner, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${inner}</div></div>`;
-  const slider = (id, min, max, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
+  const slider = (id, min, max, step, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
   const bar = (act, options, current, label) => `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button data-bs="${act}" data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`;
 
   function namesPanel(d0) {
@@ -147,30 +150,39 @@ export function createBuscador(ctx) {
     </div>`;
   }
 
+  /** Cuántos filtros hay puestos (el nivel de fábrica no cuenta). */
+  function activeFilters() {
+    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin, bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
+  }
+
+  /** Los filtros, en el orden de la pantalla Deals de antes: lo que más se toca arriba (nivel y las tres barras) y el resto plegado. */
   function filters(d0) {
-    const exps = [...new Set(d0.deals.map((d) => d.row.expiry))].sort();
-    const exp = exps.includes(bs.exp) ? bs.exp : null;
     const present = new Set(d0.deals.map((d) => d.sym.b ?? ""));
     const blocks = blockOrder().filter((b) => present.has(b));
+    const days = daysRange();
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-bs="lv" data-v="${l}" aria-pressed="${bs.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
+    const n = activeFilters();
+    const rest = bs.more
+      ? `${blocks.length > 1 ? chipRow("Bloque", chip("blk", "", "Todos", !bs.blocks.length) + blocks.map((b) => chip("blk", b, esc(b), bs.blocks.includes(b))).join(""), " wrap") : ""}
+        ${chipRow("Solo", chip("margin", "", "Con margen", bs.margin) + chip("tengo-only", "", "Las que tengo", bs.tengo === "only"), " wrap")}
+        ${chipRow("Ocultar", chip("earn", "", "Resultados", bs.earn) + chip("trend", "", "Tendencia", bs.trend) + chip("hide", "", "Fuera de Reglas", bs.hide) + chip("tengo-hide", "", "Las que tengo", bs.tengo === "hide"), " wrap")}
+        ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`
+      : "";
     return `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
-        ${blocks.length > 1 ? chipRow("Bloque", chip("blk", "", "Todos", !bs.blocks.length) + blocks.map((b) => chip("blk", b, esc(b), bs.blocks.includes(b))).join("")) : ""}
-        ${exps.length > 1 ? chipRow("Vence", chip("exp", "", "Todos", !exp) + exps.map((e) => chip("exp", e, esc(labelOf(e)), exp === e)).join("")) : ""}
-        ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, bs.w ?? W_MAX, "Ancho máximo", (v) => `$${v}`), " sl")}
-        ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
-        ${chipRow("Las que tengo", bar("tengo", TENGO, bs.tengo, "Las acciones que tengo"), " sl")}
-        ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}
-        ${chipRow(
-          "Filtros",
-          chip("hide", "", "Ocultar fuera de Reglas", bs.hide) +
-            chip("earn", "", "Ocultar con resultados", bs.earn) +
-            chip("trend", "", "Sin avisos de tendencia", bs.trend) +
-            chip("margin", "", "Solo con margen", bs.margin) +
-            chip("one", "", "Uno por nombre", bs.one),
-          " wrap",
-        )}
+        ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
+        ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
+        ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
+        <div class="bs-more"><button class="bs-more-b" data-bs="more-filters" aria-expanded="${bs.more}">${bs.more ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">${n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo"}</span>${n ? `<button class="btn quiet" data-bs="reset">Quitar filtros</button>` : ""}</div>
+        ${rest}
       </div>`;
+  }
+
+  /** "Nivel 5: 2 · Nivel 4: 0 · Nivel 3: 9 · Con margen: 9", como en Hoy: cuántos hay de cada nivel con los demás filtros puestos. */
+  function levelSummary(d0) {
+    const pool = filtered(d0, true);
+    const by = (l) => pool.filter((d) => d.level === l).length;
+    return `<p class="hoy-sum">Nivel 5: <b>${by(5)}</b> · Nivel 4: <b>${by(4)}</b> · Nivel 3: <b>${by(3)}</b> · Con margen: <b>${pool.filter((d) => d.checks.safe).length}</b></p>`;
   }
 
   function listHtml(d0) {
@@ -190,11 +202,17 @@ export function createBuscador(ctx) {
       }
     }
     const shown = rows.slice(0, bs.shown);
-    const count = bs.one ? `${rows.length} ${rows.length === 1 ? "nombre" : "nombres"} · ${list.length} ${list.length === 1 ? "deal" : "deals"}` : `${list.length} ${list.length === 1 ? "deal" : "deals"}`;
-    const head = `<div class="bs-count small muted num">${count} · de ${d0.deals.length}</div>`;
-    if (!rows.length) return `${head}<p class="small muted">Ningún deal con estos filtros.</p><button class="btn quiet" data-bs="reset">Quitar filtros</button>`;
-    const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more">Ver más (${rows.length - shown.length})</button>` : "";
-    return `${head}<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : "" })).join("")}</ul>${more}`;
+    if (!rows.length) return `<p class="small muted">Ningún deal con estos filtros.</p><button class="btn quiet" data-bs="reset">Quitar filtros</button>`;
+    const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more-rows">Ver más (${rows.length - shown.length})</button>` : "";
+    return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : "" })).join("")}</ul>${more}`;
+  }
+
+  /** La barra de encima de la lista: "Uno por nombre" y cuántos hay. Se repinta al escribir en la caja. */
+  function countHtml(d0) {
+    const list = filtered(d0);
+    const names = new Set(list.map((d) => d.sym.s)).size;
+    const count = bs.one ? `${names} ${names === 1 ? "nombre" : "nombres"} · ${list.length} ${list.length === 1 ? "deal" : "deals"}` : `${list.length} ${list.length === 1 ? "deal" : "deals"}`;
+    return `${chip("one", "", "Uno por nombre", bs.one)}<span class="small muted num">${count} · de ${d0.deals.length}</span>`;
   }
 
   function view() {
@@ -205,6 +223,8 @@ export function createBuscador(ctx) {
       <div class="bs-search"><input id="bs-q" class="bs-q" type="search" placeholder="Buscar acción: COST, Costco, energía…" value="${esc(bs.q)}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar acción"></div>
       ${namesPanel(d0)}
       ${filters(d0)}
+      <div id="bs-sum">${levelSummary(d0)}</div>
+      <div class="bs-bar" id="bs-bar">${countHtml(d0)}</div>
       <div class="fi-sort sortbar eq" role="group" aria-label="Orden">${ORDERS.map(([id, label]) => `<button data-bs="ord" data-v="${id}" aria-pressed="${bs.ord === id}">${label}</button>`).join("")}</div>
       <div id="bs-list">${listHtml(d0)}</div>
       ${foot()}
@@ -216,15 +236,21 @@ export function createBuscador(ctx) {
   function setQuery(value) {
     bs.q = String(value ?? "").slice(0, 60);
     bs.shown = SHOW;
-    const box = root.querySelector("#bs-list");
-    if (box && state.tab === "buscador") box.innerHTML = listHtml(data());
+    if (state.tab !== "buscador") return;
+    const d0 = data();
+    for (const [id, html] of [["#bs-sum", levelSummary(d0)], ["#bs-bar", countHtml(d0)], ["#bs-list", listHtml(d0)]]) {
+      const box = root.querySelector(id);
+      if (box) box.innerHTML = html;
+    }
   }
 
-  /** Barras de ancho y de prob.: "hasta" ese valor; el máximo de la barra no filtra. */
+  /** Las tres barras: "hasta" ese valor; el máximo de la barra no filtra. */
   function setRange(kind, value) {
     if (!Number.isInteger(value)) return false;
+    const days = daysRange();
     if (kind === "w" && value >= W_MIN && value <= W_MAX) bs.w = value >= W_MAX ? null : value;
     else if (kind === "pr" && value >= PR_MIN && value <= PR_MAX) bs.pr = value >= PR_MAX ? null : value;
+    else if (kind === "days" && value >= days.min && value <= days.max) bs.days = value >= days.max ? null : value;
     else return false;
     bs.shown = SHOW;
     keep();
@@ -258,21 +284,22 @@ export function createBuscador(ctx) {
       const l = Number(value);
       if (Number.isInteger(l) && l >= 0 && l <= 5) bs.lv = toggleIn(bs.lv, l).sort();
     } else if (act === "blk") bs.blocks = value ? toggleIn(bs.blocks, value) : [];
-    else if (act === "exp") bs.exp = value || null;
-    else if (act === "tengo") bs.tengo = TENGO.some(([id]) => id === value) ? value : "all";
+    else if (act === "more-filters") bs.more = !bs.more;
+    else if (act === "tengo-only") bs.tengo = bs.tengo === "only" ? "all" : "only";
+    else if (act === "tengo-hide") bs.tengo = bs.tengo === "hide" ? "all" : "hide";
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
     else if (act === "margin") bs.margin = !bs.margin;
     else if (act === "one") bs.one = !bs.one;
     else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : "lv";
-    else if (act === "more") {
+    else if (act === "more-rows") {
       bs.shown += SHOW;
       return true;
     } else if (act === "reset") {
-      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], exp: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: false, tengo: "all" });
+      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: false, tengo: "all" });
     } else touched = false;
-    if (touched && act !== "names" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
+    if (touched && act !== "names" && act !== "more-filters" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;
       keep();
     }

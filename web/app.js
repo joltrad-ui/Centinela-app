@@ -1038,9 +1038,9 @@ root.addEventListener("input", (event) => {
     buscador.setQuery(event.target.value);
     return;
   }
-  if (id === "bs-w-range" || id === "bs-pr-range") {
+  if (id === "bs-w-range" || id === "bs-pr-range" || id === "bs-days-range") {
     const label = root.querySelector(`#${id}-val`);
-    if (label) label.textContent = id === "bs-w-range" ? `$${event.target.value}` : `${event.target.value} %`;
+    if (label) label.textContent = id === "bs-w-range" ? `$${event.target.value}` : id === "bs-days-range" ? `${event.target.value} d` : `${event.target.value} %`;
     return;
   }
   if (id === "hoy-range") {
@@ -1064,8 +1064,8 @@ root.addEventListener("change", (event) => {
     if (hoy.setFl(id === "fi-w-range" ? "w" : "pr", Number(event.target.value))) render();
     return;
   }
-  if (id === "bs-w-range" || id === "bs-pr-range") {
-    if (buscador.setRange(id === "bs-w-range" ? "w" : "pr", Number(event.target.value))) render();
+  if (id === "bs-w-range" || id === "bs-pr-range" || id === "bs-days-range") {
+    if (buscador.setRange(id === "bs-w-range" ? "w" : id === "bs-days-range" ? "days" : "pr", Number(event.target.value))) render();
     return;
   }
 });
