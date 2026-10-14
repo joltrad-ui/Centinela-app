@@ -1075,6 +1075,8 @@ const DQ_ORDERS = [
   ["ret", "Rentab."],
   ["prob", "Prob."],
   ["net", "Cobras"],
+  ["floor", "Suelo"],
+  ["day", "Por día"],
 ];
 const DQ_HIDES = [
   ["earn", "Resultados"],
@@ -1184,8 +1186,12 @@ function viewDeals() {
       (!dq.hide.rules || d.ok),
   );
   const floorOf = (d) => (d.floor == null ? -Infinity : d.floor);
+  // Por día: la rentab. esperada repartida entre los días hasta el vencimiento, para comparar plazos distintos.
+  const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
   const sorters = {
     lv: (a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp,
+    floor: (a, b) => floorOf(b) - floorOf(a) || b.level - a.level || b.row.retExp - a.row.retExp,
+    day: (a, b) => perDay(b) - perDay(a) || b.level - a.level || floorOf(b) - floorOf(a),
     ret: (a, b) => b.row.retExp - a.row.retExp || b.level - a.level,
     prob: (a, b) => a.row.prob - b.row.prob || b.level - a.level || floorOf(b) - floorOf(a),
     net: (a, b) => b.row.net - a.row.net || b.level - a.level,

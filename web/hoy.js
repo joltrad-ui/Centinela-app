@@ -569,6 +569,12 @@ export function createHoy(ctx) {
     );
     if (f.ord === "ben") list = [...list].sort((a, b) => (benefit(b) ?? -Infinity) - (benefit(a) ?? -Infinity));
     else if (f.ord === "prob") list = [...list].sort((a, b) => (a.row.prob ?? 100) - (b.row.prob ?? 100));
+    else if (f.ord === "floor") list = [...list].sort((a, b) => (b.floor ?? -Infinity) - (a.floor ?? -Infinity) || b.level - a.level);
+    else if (f.ord === "day") {
+      // Rentab. esperada repartida entre los días hasta el vencimiento.
+      const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
+      list = [...list].sort((a, b) => perDay(b) - perDay(a) || b.level - a.level);
+    }
     const shown = list.slice(0, f.shown);
     const chipRow = (label, chips) => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c">${chips}</div></div>`;
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
@@ -580,7 +586,7 @@ export function createHoy(ctx) {
         ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
-    const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
+    const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."], ["floor", "Suelo"], ["day", "Por día"]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
     const rowHtml = (d) => {
       const r = d.row;
       const left = r.net - r.expected;
@@ -924,7 +930,7 @@ export function createHoy(ctx) {
       hoy.fl.pr = FL_PROBS.includes(Number(value)) ? Number(value) : null;
       hoy.fl.shown = 30;
     } else if (act === "fl-ord") {
-      hoy.fl.ord = value === "ben" || value === "prob" ? value : "lv";
+      hoy.fl.ord = ["ben", "prob", "floor", "day"].includes(value) ? value : "lv";
     } else if (act === "fl-hide") {
       hoy.fl.hide = !hoy.fl.hide;
       hoy.fl.shown = 30;
