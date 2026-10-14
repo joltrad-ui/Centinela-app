@@ -444,7 +444,7 @@ export function createHoy(ctx) {
       // El orden va una sola vez, encima de la lista: a la izquierda cuántos son y a la derecha por qué van ordenados (tocar lo cambia).
       head = `<div class="hoy-sort small">
           <span class="muted">${pts.length} ${pts.length === 1 ? "deal" : "deals"}</span>
-          <span class="sortbar sm" role="group" aria-label="Orden de las barras">
+          <span class="sortbar eq" role="group" aria-label="Orden de las barras">
             <button data-hoy="bsort" data-v="left" aria-pressed="${!floor}">Por lo que queda</button>
             <button data-hoy="bsort" data-v="floor" aria-pressed="${floor}">Por el suelo</button>
           </span>
