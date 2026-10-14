@@ -824,6 +824,9 @@ function toggle(symbol, on) {
   return `<button class="chip quiet toggle" data-off="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar" : "Poner"} ${esc(symbol)} ${on ? "de" : "en"} mi lista">${on ? "Quitar" : "Poner"}</button>`;
 }
 
+/** Nombres cortos de los órdenes de Lista, para que la barra quepa en una fila (el nombre completo va en `aria-label`). */
+const ORDER_SHORT = { equilibrio: "Equil.", rentab: "Rentab.", prob: "Prob. asig.", abajo: "% abajo", credito: "Crédito" };
+
 function viewFavoritos() {
   const today = nyToday();
   const everyone = allListSymbols();
@@ -849,8 +852,8 @@ function viewFavoritos() {
   return `
     ${header("Lista")}
     <div class="tools">
-      <div class="chips" role="group" aria-label="Orden">
-        ${ORDERS.map((o) => `<button class="chip" data-order="${o.id}" aria-pressed="${o.id === state.config.order}">${o.label}</button>`).join("")}
+      <div class="sortbar" role="group" aria-label="Orden">
+        ${ORDERS.map((o) => `<button data-order="${o.id}" aria-pressed="${o.id === state.config.order}" aria-label="${esc(o.label)}">${ORDER_SHORT[o.id] ?? o.label}</button>`).join("")}
       </div>
     </div>
     <p class="small muted" style="margin:-6px 0 4px">${esc(order?.hint ?? "")}</p>
@@ -1264,7 +1267,7 @@ function viewDeals() {
     <p class="hoy-sum" style="margin:6px 0 8px">${summary}</p>
     <div class="dq-bar">
       <span class="dq-count small muted">${chip("one", 1, "Uno por nombre", dq.one)} ${dq.one ? `${groups.length} ${groups.length === 1 ? "nombre" : "nombres"} · ` : ""}${list.length} ${list.length === 1 ? "deal" : "deals"}</span>
-      <span class="dq-orders" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => chip("order", id, label, dq.order === id)).join("")}</span>
+      <span class="sortbar sm" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => `<button data-dq="order" data-v="${esc(id)}" aria-pressed="${dq.order === id}">${label}</button>`).join("")}</span>
     </div>
     ${
       list.length

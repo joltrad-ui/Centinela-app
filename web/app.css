@@ -290,8 +290,6 @@ nav.dock svg { width: 20px; height: 20px; }
 .hoy-cloud g[data-hoy]:focus-visible .lab { fill: var(--brass); }
 
 .hoy-sort { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 4px 8px; border-top: 1px solid var(--line); }
-.hoy-sort button { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; color: var(--fg); font-weight: 500; }
-.hoy-sort svg { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .hoy-bars { background: var(--surface); box-shadow: var(--border); border-radius: 16px; padding: 8px 12px 2px; margin-top: 4px; }
 .hoy-bars ul { list-style: none; margin: 0; padding: 0; }
 .hoy-bars li { border-top: 1px solid var(--line); }
@@ -357,13 +355,12 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .dq-lvb { min-height: 0; width: 34px; height: 30px; font-size: 0.875rem; border-radius: 8px; flex: none; }
 .dq-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
 /* El 0 no tiene color propio: encendido, un gris oscuro neutro con texto claro, para que se note frente al contorno de apagado. */
-.dq-lvb.lv0[aria-pressed="true"] { background: #3a3a3a; color: #ededed; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
+.dq-lvb.lv0[aria-pressed="true"], .fi-lvb.lv0[aria-pressed="true"] { background: #3a3a3a; color: #ededed; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
 .dq-more-filters { justify-self: start; font-size: 0.8125rem; color: var(--brass); padding: 2px 0; }
 .dq-more-filters span { color: var(--fg); }
 .dq-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dq-count { display: inline-flex; align-items: center; gap: 6px; }
-.dq-orders { display: flex; gap: 4px; }
-.dq-orders .chip, .dq-count .chip { height: 28px; padding: 0 9px; }
+.dq-count .chip { height: 28px; padding: 0 9px; }
 .dq-head { display: grid; grid-template-columns: 1.25fr 1fr 0.6fr 1.25fr; gap: 4px; padding: 12px 0 6px 34px; }
 .dq-head span:nth-child(2), .dq-head span:nth-child(3) { text-align: center; }
 .dq-head span:last-child { text-align: right; }
@@ -472,6 +469,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-f-c { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 1px; }
 .fi-f-c::-webkit-scrollbar { display: none; }
 .fi-f-c > * { flex: none; }
+.fi-f-c > .sortbar { flex: 1 1 auto; }
 .fi-lvb { min-height: 0; width: 34px; height: 32px; font-size: 0.875rem; border-radius: 8px; }
 .fi-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
 .fi-dlist { list-style: none; margin: 8px 0 0; padding: 0; }
@@ -487,3 +485,12 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-dr-v { white-space: nowrap; }
 .fi-dr-r b { font-weight: 600; }
 .fi-more { margin-top: 8px; }
+
+/* Barra de ordenación (la misma en toda la app): contenedor gris y, en la opción activa, una píldora más oscura con el texto más claro. */
+.sortbar { display: flex; width: 100%; gap: 2px; padding: 3px; border-radius: 14px; background: #262624; overflow-x: auto; scrollbar-width: none; }
+.sortbar::-webkit-scrollbar { display: none; }
+.sortbar button { flex: 1 1 auto; height: 32px; padding: 0 6px; border-radius: 11px; font-size: 0.75rem; font-weight: 600; color: #b5b3aa; white-space: nowrap; }
+.sortbar button[aria-pressed="true"] { background: #1e1e1c; color: #ecebe5; }
+.sortbar button:focus-visible { outline-offset: -2px; }
+.sortbar.sm { display: inline-flex; width: auto; padding: 2px; border-radius: 12px; }
+.sortbar.sm button { height: 26px; padding: 0 9px; border-radius: 10px; }
