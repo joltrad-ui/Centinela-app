@@ -169,6 +169,8 @@ export function createHoy(ctx) {
   // ---------- piezas ----------
 
   const chip = (action, value, label, on) => `<button class="chip quiet" data-hoy="${action}" data-v="${esc(value)}" aria-pressed="${on}">${label}</button>`;
+  /** Los recuentos de una línea (Hoy y Buscador): rótulo apagado y número, sin caja. items = [[rótulo, n], ...] */
+  const stats = (items, label = "Recuentos") => `<div class="stats" role="group" aria-label="${label}">${items.map(([name, n]) => `<span class="stat"><span class="xs muted">${name}</span><b class="num">${n}</b></span>`).join("")}</div>`;
   const levelTag = (level, extra = "") => `<span class="lv lv${level}${extra}">${level}</span>`;
 
   function segmented() {
@@ -278,16 +280,13 @@ export function createHoy(ctx) {
     const scored = grid.names.flatMap((name) => name.cells).filter((c) => c.state === "level");
     const count = (level) => scored.filter((c) => c.level === level).length;
     const tops = o.opts.safety === "off" ? [3] : o.opts.safety === "margin" ? [5, 4, 3] : [4, 3];
-    const line = !s.withHistory
-      ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar."
-      : s.positive === 0
-        ? "Hoy ninguna casilla cubre lo que se espera pagar."
-        : [...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [[o.opts.safety === "both" ? "Los dos cálculos en positivo" : "Con margen", s.firm]]), ["Comparables", s.comparable]]
-            .map(([label, n]) => `<span class="hoy-count">${label}: <b class="num">${n}</b></span>`)
-            .join('<span aria-hidden="true">·</span>');
+    const msg = !s.withHistory ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar." : s.positive === 0 ? "Hoy ninguna casilla cubre lo que se espera pagar." : "";
+    const line = msg
+      ? `<p class="hoy-sum none">${msg}</p>`
+      : stats([...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [[o.opts.safety === "both" ? "Los dos cálculos en positivo" : "Con margen", s.firm]]), ["Comparables", s.comparable]], "Casillas por nivel");
     return `${controls(o)}
       ${expChips}
-      <p class="hoy-sum${s.withHistory && s.positive > 0 ? "" : " none"}">${line}</p>
+      ${line}
       <div class="hoy-grid${focus ? " one" : ""}" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:${focus ? "54px 56px minmax(0,1fr)" : `54px repeat(${grid.expiries.length},minmax(0,1fr))`}">
         ${focus ? "" : `<span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="mexp" data-v="${exp.expiry}" aria-label="Ver solo el ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}`}
         ${rows}
@@ -608,6 +607,10 @@ export function createHoy(ctx) {
     const dtes = all.map((d) => d.row.dte).filter(Number.isFinite);
     const dMin = dtes.length ? Math.min(...dtes) : 0;
     const dMax = dtes.length ? Math.max(...dtes) : 0;
+    const rest = (d) => (!f.days || d.row.dte <= f.days) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok);
+    const pool = all.filter(rest);
+    const by = (l) => pool.filter((d) => d.level === l).length;
+    const sum = stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Con margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
     let list = all.filter(
       (d) => f.lv.includes(d.level) && (!f.days || d.row.dte <= f.days) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
     );
@@ -628,7 +631,7 @@ export function createHoy(ctx) {
     const rowHtml = (d) => dealRow(d, { selectedKey });
     return `<section class="fi-deals">
         <div class="fi-deals-h"><h3>Deals de ${esc(sym.s)}</h3><span class="small muted num">${list.length} de ${all.length}</span></div>
-        ${all.length ? filters + sortBar : ""}
+        ${all.length ? filters + sum + sortBar : ""}
         ${
           all.length === 0
             ? `<p class="small muted">Ahora no hay ningún bull put puntuado de ${esc(sym.s)} en el plazo de Reglas.</p>`
@@ -1121,5 +1124,5 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb, setWidth, setFl, openName, dealRow, sortDeals };
+  return { view, sheet, click, submit, escape, setProb, setWidth, setFl, openName, dealRow, sortDeals, stats };
 }
