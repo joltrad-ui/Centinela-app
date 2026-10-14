@@ -76,7 +76,7 @@ export function createHoy(ctx) {
   const hoy = {
     view: VIEWS.includes(saved.view) ? saved.view : "mapa",
     prob: probOk(saved.prob) ? saved.prob : null,
-    width: WIDTHS.includes(saved.width) ? saved.width : null,
+    width: Number.isFinite(saved.width) && saved.width >= FL_W_MIN / 100 && saved.width <= FL_W_MAX / 100 ? saved.width : null,
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
@@ -84,7 +84,7 @@ export function createHoy(ctx) {
     folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long } o { s, none: true } si el nombre no tiene deals puntuados
-    fl: { lv: [0, 1, 2, 3, 4, 5], exp: null, w: null, pr: null, hide: false, ord: "lv", shown: 30 }, // filtros de la lista de deals de la ficha
+    fl: { lv: [0, 1, 2, 3, 4, 5], days: null, w: null, pr: null, hide: false, ord: "lv", shown: 30 }, // filtros de la lista de deals de la ficha
     heldOpen: false,
     mapExp: null, // el mapa enfocado en un vencimiento (null = todas las fechas)
     legendOpen: false, // la leyenda del mapa, plegada al final de la matriz
@@ -184,7 +184,9 @@ export function createHoy(ctx) {
       <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
         <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
         <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
-      <div class="frow" role="group" aria-label="Ancho máximo"><span class="small muted hoy-lab">Ancho hasta</span>${WIDTHS.map((n) => chip("width", n, `$${n}`, o.opts.width === n)).join("")}</div>
+      <div class="frow" role="group" aria-label="Ancho máximo, en dólares por contrato"><span class="small muted hoy-lab">Ancho hasta</span>
+        <input type="range" class="range" id="hoy-w-range" min="${FL_W_MIN}" max="${FL_W_MAX}" step="${FL_W_STEP}" value="${Math.min(FL_W_MAX, Math.max(FL_W_MIN, Math.round((o.opts.width * 100) / FL_W_STEP) * FL_W_STEP))}" aria-label="Ancho máximo del spread">
+        <b class="num" id="hoy-w-range-val" style="min-width:3.2em;text-align:right">$${Math.round(o.opts.width * 100)}</b></div>
       <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
       ${
         hoy.heldOpen
@@ -595,9 +597,11 @@ export function createHoy(ctx) {
   function dealsSection(sym, o, selectedKey) {
     const all = nameDeals(sym, o);
     const f = hoy.fl;
-    const exps = [...new Set(all.map((d) => d.row.expiry))].sort();
+    const dtes = all.map((d) => d.row.dte).filter(Number.isFinite);
+    const dMin = dtes.length ? Math.min(...dtes) : 0;
+    const dMax = dtes.length ? Math.max(...dtes) : 0;
     let list = all.filter(
-      (d) => f.lv.includes(d.level) && (!f.exp || d.row.expiry === f.exp) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
+      (d) => f.lv.includes(d.level) && (!f.days || d.row.dte <= f.days) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
     );
     list = sortDeals(list, f.ord);
     const shown = list.slice(0, f.shown);
@@ -606,10 +610,10 @@ export function createHoy(ctx) {
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const filters = `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
-        ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
+        ${dMax > dMin ? chipRow("Vence hasta", slider("fi-days-range", dMin, dMax, Math.min(dMax, f.days ?? dMax), "Vence en estos días o menos", (v) => `${v} d`), " sl") : ""}
         ${chipRow("Ancho hasta", slider("fi-w-range", FL_W_MIN, FL_W_MAX, f.w ?? FL_W_MAX, "Ancho máximo", (v) => `$${v}`, FL_W_STEP), " sl")}
         ${chipRow("Prob. hasta", slider("fi-pr-range", FL_PR_MIN, FL_PR_MAX, f.pr ?? FL_PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
-        ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
+        ${chipRow("Ocultar", chip("fl-hide", "", "Fuera de Reglas", f.hide))}
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
     const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."], ["floor", "Suelo"], ["day", "Por día"]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
@@ -898,9 +902,6 @@ export function createHoy(ctx) {
       hoy.confirm = null;
       keep();
       window.scrollTo(0, 0);
-    } else if (act === "width" && WIDTHS.includes(Number(value))) {
-      hoy.width = Number(value);
-      keep();
     } else if (act === "price") {
       hoy.price = value === "mid" ? "mid" : "nat";
       keep();
@@ -934,9 +935,6 @@ export function createHoy(ctx) {
       const l = Number(value);
       hoy.fl.lv = hoy.fl.lv.includes(l) ? hoy.fl.lv.filter((x) => x !== l) : [...hoy.fl.lv, l].sort();
       hoy.fl.shown = 30;
-    } else if (act === "fl-exp") {
-      hoy.fl.exp = value || null;
-      hoy.fl.shown = 30;
     } else if (act === "fl-ord") {
       hoy.fl.ord = ["ben", "prob", "floor", "day"].includes(value) ? value : "lv";
     } else if (act === "fl-hide") {
@@ -945,7 +943,7 @@ export function createHoy(ctx) {
     } else if (act === "fl-more") {
       hoy.fl.shown += 30;
     } else if (act === "fl-reset") {
-      hoy.fl = { lv: [0, 1, 2, 3, 4, 5], exp: null, w: null, pr: null, hide: false, ord: hoy.fl.ord, shown: 30 };
+      hoy.fl = { lv: [0, 1, 2, 3, 4, 5], days: null, w: null, pr: null, hide: false, ord: hoy.fl.ord, shown: 30 };
     } else if (act === "mexp") {
       // En el mapa, tocar una fecha no saca de la matriz: la enfoca en ese vencimiento (y la nube y las barras abrirán en él).
       hoy.mapExp = value || null;
@@ -1093,15 +1091,24 @@ export function createHoy(ctx) {
     return true;
   }
 
+  /** Barra de ancho de Hoy: "hasta" ese ancho, en dólares por contrato (se guarda en puntos). */
+  function setWidth(dollars) {
+    if (!(dollars >= FL_W_MIN && dollars <= FL_W_MAX)) return false;
+    hoy.width = dollars / 100;
+    keep();
+    return true;
+  }
+
   /** Barras de ancho y de prob. de la ficha: "hasta" ese valor; el máximo de la barra no filtra. */
-  function setFl(kind, value) {
+  function setFl(kind, value, max) {
     if (!Number.isInteger(value)) return false;
     if (kind === "w" && value >= FL_W_MIN && value <= FL_W_MAX) hoy.fl.w = value >= FL_W_MAX ? null : value;
+    else if (kind === "days" && value >= 0 && value <= max) hoy.fl.days = value >= max ? null : value;
     else if (kind === "pr" && value >= FL_PR_MIN && value <= FL_PR_MAX) hoy.fl.pr = value >= FL_PR_MAX ? null : value;
     else return false;
     hoy.fl.shown = 30;
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb, setFl, openName, dealRow, sortDeals };
+  return { view, sheet, click, submit, escape, setProb, setWidth, setFl, openName, dealRow, sortDeals };
 }
