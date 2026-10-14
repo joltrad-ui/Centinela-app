@@ -41,8 +41,8 @@ import {
 const LS_HOY = "centinela.hoy.v1";
 const LS_DEALS = "centinela.misdeals.v1";
 const PROBS = [5, 8, 10];
-const PROB_MIN = 3; // la barra de prob. va de 3 a 12 % en pasos de 1 punto: "X % o menos"
-const PROB_MAX = 12;
+const PROB_MIN = 3; // la barra de prob. va de 3 a 20 % en pasos de 1 punto: "X % o menos" (20 % es el mismo tope que usa Deals)
+const PROB_MAX = 20;
 const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
 const FL_PROBS = [5, 8, 10, 15]; // filtro de prob. de la lista de deals de la ficha
