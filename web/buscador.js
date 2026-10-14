@@ -2,6 +2,7 @@
 // Sustituye a Lista y a Deals. Todo lo que se elige aquí vive solo en el dispositivo (`localStorage`):
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
+import { emptyBox } from "./ui.js";
 import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
@@ -218,7 +219,7 @@ export function createBuscador(ctx) {
       }
     }
     const shown = rows.slice(0, bs.shown);
-    if (!rows.length) return `<p class="small muted">Ningún deal con estos filtros.</p><button class="btn quiet" data-bs="reset">Quitar filtros</button>`;
+    if (!rows.length) return emptyBox("Ningún deal con estos filtros.", "", { attrs: 'data-bs="reset"', label: "Quitar filtros" });
     const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more-rows">Ver más (${rows.length - shown.length})</button>` : "";
     return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : "" })).join("")}</ul>${more}`;
   }
@@ -232,7 +233,7 @@ export function createBuscador(ctx) {
   }
 
   function view() {
-    if (!state.scan?.symbols?.length) return `<div class="bs">${header("Buscador", false)}<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado.</p></div></div>`;
+    if (!state.scan?.symbols?.length) return `<div class="bs">${header("Buscador", false)}${emptyBox("Esperando el primer barrido de la lista.", "Sale cada media hora en horario de mercado.")}</div>`;
     const d0 = data();
     return `<div class="bs">
       ${header("Buscador", false)}

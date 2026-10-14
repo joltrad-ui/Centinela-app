@@ -12,6 +12,7 @@
 // Las cuentas son las de "Igual riesgo"; el nivel y el mapa están en el motor (`levelGrid`, `dealChecks`).
 // No toca Lista, Deals, Igual riesgo, Avisos ni Reglas.
 
+import { emptyBox, notice, sectionHead } from "./ui.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -212,7 +213,7 @@ export function createHoy(ctx) {
   }
 
   /** Los avisos de abajo del todo: si el precio es una hipótesis y qué reglas mandan. Van al final para no empujar lo importante. */
-  const notes = (o) => `${hoy.price === "mid" ? '<p class="banner small" style="margin-top:14px">A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.</p>' : ""}
+  const notes = (o) => `${hoy.price === "mid" ? notice("watch", "A precio medio: es una hipótesis. Nadie garantiza que te llenen a ese precio.", "margin-top:14px") : ""}
     <button class="rules-line small" style="margin-top:${hoy.price === "mid" ? 8 : 14}px" data-tab="reglas">Plazo ${o.rules.minDte}–${o.rules.maxDte} días · comisión ${usd2(o.opts.fee)} · horquilla máxima ${o.opts.gapPct} % · se cambian en Reglas</button>`;
 
   // Cómo se llama el punto de seguridad según la regla (Reglas > Pestaña Hoy).
@@ -230,10 +231,8 @@ export function createHoy(ctx) {
       <span class="hoy-pair"><span class="lv lvx">–</span>sin fila</span>
     </p>`;
 
-  const help = (opts) => `<button class="rules-line small" style="margin:10px 0 0" data-hoy="help" aria-expanded="${hoy.help}">Cómo se puntúa y cómo se lee ${hoy.help ? "▴" : "▾"}</button>
-    ${
-      hoy.help
-        ? `<div class="eq-help small muted" style="margin-top:8px">
+  const help = (opts) =>
+    foldBlock("help", "", "Cómo se puntúa y cómo se lee", "", hoy.help, `<div class="eq-help small muted">
         <p>Cada casilla es un bull put: el de ese nombre en ese vencimiento, con la prob. de asignación hasta el objetivo y el ancho más cercano al elegido.</p>
         <p>Nivel 0: la rentab. esperada no es positiva; lo cobrado no cubre lo que se espera pagar. Si es positiva, el nivel empieza en 1 y suma un punto por cada comprobación: ${
           opts.safety === "off"
@@ -244,15 +243,13 @@ export function createHoy(ctx) {
         }el coste de ida y vuelta no pasa del ${LEVEL_COST_PCT} % de lo cobrado; el bloque no es uno que ya tengas abierto.${opts.safety === "off" ? " El punto de seguridad está apagado en Reglas, así que el nivel llega a 3." : " El punto de seguridad se cambia en Reglas."}${opts.safety === "margin" ? ` Un 4 que además deja ${opts.marginK === 1 ? "el doble" : `${num(2 * opts.marginK, 1)} veces`} el error es un 5: todo a favor y firme. El punto bajo el número solo sale en 1, 2 y 3: dice que lo que falta no es el margen.` : ""}</p>
         <p>Es un nivel y no una nota porque las cuentas no dan para afinar más. A igual nivel, las listas ponen primero el que más aguanta si el cálculo se equivoca (el suelo: lo que queda menos el error). «H» es un deal con precio pero con la horquilla demasiado ancha para fiarse. Con «Precio: Mid» se ve qué nivel tendría si te llenaran a precio medio (la mitad entre bid y ask); es una hipótesis, no un precio garantizado.</p>
         <p>Es una estimación para ordenar, no una previsión, y no es un consejo.</p>
-      </div>`
-        : ""
-    }`;
+      </div>`);
 
   // ---------- 1. mapa ----------
 
   function viewMapa(o) {
-    if (!o.symbols.length) return `<div class="empty"><h2>Esperando el primer barrido de la lista.</h2></div>`;
-    if (!o.expiries.length) return `${controls(o)}<div class="empty"><h2>Ningún vencimiento cae dentro del plazo de Reglas.</h2></div>`;
+    if (!o.symbols.length) return emptyBox("Esperando el primer barrido de la lista.", "Sale cada media hora en horario de mercado.");
+    if (!o.expiries.length) return `${controls(o)}${emptyBox("Ningún vencimiento cae dentro del plazo de Reglas.", "Cambia el plazo en Reglas.", { attrs: 'data-tab="reglas"', label: "Abrir Reglas" })}`;
     // Enfocado en una fecha: la misma matriz con una sola columna, ordenada por ese vencimiento, y el deal de cada casilla al lado.
     const focus = o.expiries.includes(hoy.mapExp) ? hoy.mapExp : null;
     const grid = levelGrid(o.symbols, focus ? { ...o.opts, expiries: [focus] } : o.opts, o.today);
@@ -293,8 +290,7 @@ export function createHoy(ctx) {
       </div>
       ${hidden.length ? `<p class="xs muted" style="margin-top:10px">${focus ? "Sin fila en esta fecha" : "Sin fila en ningún vencimiento"}: ${hidden.map((name) => esc(name.sym.s)).join(", ")}.</p>` : ""}
       <p class="xs muted" style="margin-top:8px">Toca una casilla para ver el deal. ${focus ? "Toca «Todas» para volver a ver todas las fechas." : "Toca una fecha para ver solo los de ese vencimiento."}</p>
-      <button class="rules-line small" style="margin:10px 0 0" data-hoy="legend" aria-expanded="${hoy.legendOpen}">Qué significa cada casilla ${hoy.legendOpen ? "▴" : "▾"}</button>
-      ${hoy.legendOpen ? legend(o.opts) : ""}
+      ${foldBlock("legend", "", "Qué significa cada casilla", "", hoy.legendOpen, legend(o.opts))}
       ${notes(o)}
       ${help(o.opts)}`;
   }
@@ -302,8 +298,8 @@ export function createHoy(ctx) {
   // ---------- 2. nube ----------
 
   function viewNube(o) {
-    if (!o.symbols.length) return `<div class="empty"><h2>Esperando el primer barrido de la lista.</h2></div>`;
-    if (!o.expiries.length) return `${controls(o)}<div class="empty"><h2>Ningún vencimiento cae dentro del plazo de Reglas.</h2></div>`;
+    if (!o.symbols.length) return emptyBox("Esperando el primer barrido de la lista.", "Sale cada media hora en horario de mercado.");
+    if (!o.expiries.length) return `${controls(o)}${emptyBox("Ningún vencimiento cae dentro del plazo de Reglas.", "Cambia el plazo en Reglas.", { attrs: 'data-tab="reglas"', label: "Abrir Reglas" })}`;
     const expiry = o.expiries.includes(hoy.expiry) ? hoy.expiry : o.expiries.at(-1);
     const grid = levelGrid(o.symbols, { ...o.opts, expiries: [expiry] }, o.today);
     const cells = grid.names.map((name) => name.cells[0]);
@@ -381,7 +377,7 @@ export function createHoy(ctx) {
       ${
         pts.length
           ? `${chart}<div class="deal-head small muted" style="margin-top:14px"><span>${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}</span><span>Rentab. esperada</span></div><ul class="rows">${list}</ul>`
-          : `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`
+          : emptyBox(`Ningún deal comparable el ${esc(labelOf(expiry))}.`)
       }
       ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
       ${notes(o)}
@@ -393,8 +389,8 @@ export function createHoy(ctx) {
   /** Los mismos deals que la nube, una fila cada uno y todos en la misma escala (% de lo que se arriesga):
    *  el rombo es lo que cobra, el punto lo que queda de media, la barra su error y la línea de puntos lo que se espera pagar. */
   function viewBarras(o) {
-    if (!o.symbols.length) return `<div class="empty"><h2>Esperando el primer barrido de la lista.</h2></div>`;
-    if (!o.expiries.length) return `${controls(o)}<div class="empty"><h2>Ningún vencimiento cae dentro del plazo de Reglas.</h2></div>`;
+    if (!o.symbols.length) return emptyBox("Esperando el primer barrido de la lista.", "Sale cada media hora en horario de mercado.");
+    if (!o.expiries.length) return `${controls(o)}${emptyBox("Ningún vencimiento cae dentro del plazo de Reglas.", "Cambia el plazo en Reglas.", { attrs: 'data-tab="reglas"', label: "Abrir Reglas" })}`;
     const expiry = o.expiries.includes(hoy.expiry) ? hoy.expiry : o.expiries.at(-1);
     const grid = levelGrid(o.symbols, { ...o.opts, expiries: [expiry] }, o.today);
     const cells = grid.names.map((name) => name.cells[0]);
@@ -408,7 +404,7 @@ export function createHoy(ctx) {
     const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
     const floor = hoy.barSort === "floor";
     let head = "", legend = "";
-    let body = `<div class="empty"><h2>Ningún deal comparable el ${esc(labelOf(expiry))}.</h2></div>`;
+    let body = emptyBox(`Ningún deal comparable el ${esc(labelOf(expiry))}.`);
     if (pts.length) {
       // Escala común. Por abajo se corta en −2 %: lo que cae más allá se marca con una flecha y lleva su número.
       const W = 320, H = 24, PAD = 9, FLOOR = -2;
@@ -557,10 +553,9 @@ export function createHoy(ctx) {
   }
 
   /** Un bloque plegable: título, una frase a la derecha y un chevron. Cerrado de fábrica; lo abierto se recuerda en el dispositivo. */
-  const fold = (id, title, sub, body) => {
-    const open = hoy.folds.includes(id);
-    return `<section class="fi-fold"><button class="fi-fold-h" data-hoy="fold" data-v="${id}" aria-expanded="${open}"><span class="fi-fold-t">${title}</span>${sub ? `<span class="fi-fold-s">${sub}</span>` : ""}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>${open ? `<div class="fi-fold-b">${body}</div>` : ""}</section>`;
-  };
+  const foldBlock = (action, value, title, sub, open, body) =>
+    `<section class="fi-fold${action === "fold" ? "" : " solo"}"><button class="fi-fold-h" data-hoy="${action}"${value ? ` data-v="${value}"` : ""} aria-expanded="${open}"><span class="fi-fold-t">${title}</span>${sub ? `<span class="fi-fold-s">${sub}</span>` : ""}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>${open ? `<div class="fi-fold-b">${body}</div>` : ""}</section>`;
+  const fold = (id, title, sub, body) => foldBlock("fold", id, title, sub, hoy.folds.includes(id), body);
 
   const fiHead = (sym) => {
     const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
@@ -630,13 +625,13 @@ export function createHoy(ctx) {
     const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."], ["floor", "Suelo"], ["day", "Por día"]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
     const rowHtml = (d) => dealRow(d, { selectedKey });
     return `<section class="fi-deals">
-        <div class="fi-deals-h"><h3>Deals de ${esc(sym.s)}</h3><span class="small muted num">${list.length} de ${all.length}</span></div>
+        ${sectionHead(`Deals de ${esc(sym.s)}`, `${list.length} de ${all.length}`)}
         ${all.length ? filters + sum + sortBar : ""}
         ${
           all.length === 0
             ? `<p class="small muted">Ahora no hay ningún bull put puntuado de ${esc(sym.s)} en el plazo de Reglas.</p>`
             : list.length === 0
-              ? `<p class="small muted">Ningún deal con estos filtros.</p><button class="btn quiet" data-hoy="fl-reset">Quitar filtros</button>`
+              ? emptyBox("Ningún deal con estos filtros.", "", { attrs: 'data-hoy="fl-reset"', label: "Quitar filtros" })
               : `<ul class="fi-dlist">${shown.map(rowHtml).join("")}</ul>${list.length > shown.length ? `<button class="btn quiet fi-more" data-hoy="fl-more">Ver más (${list.length - shown.length})</button>` : ""}`
         }
       </section>`;
@@ -816,9 +811,7 @@ export function createHoy(ctx) {
     const open = openDeals().sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : a.s.localeCompare(b.s)));
     const closed = deals.filter((deal) => deal.closedAt).sort((a, b) => b.closedAt - a.closedAt);
     if (!deals.length) {
-      return `<div class="empty"><h2>Todavía no has apuntado ningún deal.</h2>
-        <p class="small muted" style="margin-top:8px">Se apuntan desde la ficha de un deal, con «La he abierto». Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.</p>
-        <p class="small muted" style="margin-top:8px">Se guardan solo en este dispositivo.</p></div>`;
+      return emptyBox("Todavía no has apuntado ningún deal.", ["Se apuntan desde la ficha de un deal, con «La he abierto». Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.", "Se guardan solo en este dispositivo."]);
     }
     const LABEL = { lejos: "lejos del corto", cerca: "cerca del corto", debajo: "por debajo del corto", vencido: "vencido", "sin-precio": "sin precio" };
     const title = (deal) => `<b>${esc(deal.s)}</b> <span class="muted">${fmtStrike(deal.short)}/${fmtStrike(deal.long)} · ${esc(labelOf(deal.expiry))}${deal.qty > 1 ? ` · ${deal.qty} contratos` : ""}</span>`;
@@ -876,13 +869,13 @@ export function createHoy(ctx) {
       )
       .join("");
     return `
-      ${open.length ? `<h2 class="group"><span>Abiertos</span><span class="small muted">${open.length}</span></h2><ul class="rows">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
+      ${open.length ? `${sectionHead("Abiertos", open.length)}<ul class="rows">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
       ${
         closed.length
-          ? `<h2 class="group"><span>Lo que pasó, por nivel</span><span class="small muted">${closed.length} ${closed.length === 1 ? "cerrado" : "cerrados"}</span></h2>
+          ? `${sectionHead("Lo que pasó, por nivel", `${closed.length} ${closed.length === 1 ? "cerrado" : "cerrados"}`)}
              <ul class="rows">${recordRows}</ul>
              <p class="xs muted" style="margin-top:8px">El nivel es el que tenía cada deal al apuntarlo. Con pocos deals no dice nada; con unos meses dirá si un nivel alto de verdad sale mejor.</p>
-             <h2 class="group"><span>Cerrados</span></h2><ul class="rows">${closedList}</ul>`
+             ${sectionHead("Cerrados")}<ul class="rows">${closedList}</ul>`
           : ""
       }
       <p class="xs muted" style="margin-top:12px">Guardado solo en este dispositivo. Lo que apuntas aquí no sale del móvil.</p>`;
@@ -896,7 +889,7 @@ export function createHoy(ctx) {
     const body = hoy.view === "mis" ? viewMis() : hoy.view === "nube" ? viewNube(o) : hoy.view === "barras" ? viewBarras(o) : viewMapa(o);
     return `
       ${ctx.header("Hoy", false)}
-      ${closed && hoy.view !== "mis" ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.</p>' : ""}
+      ${closed && hoy.view !== "mis" ? notice("watch", "Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.") : ""}
       ${segmented()}
       ${body}
       ${ctx.foot()}`;
