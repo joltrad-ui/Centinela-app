@@ -15,6 +15,7 @@ import { createHoy } from "./hoy.js";
 import { notice, sectionHead } from "./ui.js";
 import { createBuscador } from "./buscador.js";
 import { createReglas } from "./reglas.js";
+import { fmtOf } from "./filtros.js";
 import { createAvisos } from "./avisos.js";
 import { createConexion } from "./conexion.js";
 
@@ -798,18 +799,15 @@ function render() {
 
 
 // Las barras "hasta" (Hoy, ficha y Buscador): mientras se arrastra solo cambia el número; al soltar, se aplica.
-const fmtPct = (v) => `${v} %`;
-const fmtUsd = (v) => `$${v}`;
-const fmtDays = (v) => `${v} d`;
 const RANGES = {
-  "hoy-range": { fmt: fmtPct, apply: (v) => hoy.setProb(v) },
-  "hoy-w-range": { fmt: fmtUsd, apply: (v) => hoy.setWidth(v) },
-  "fi-w-range": { fmt: fmtUsd, apply: (v, max) => hoy.setFl("w", v, max) },
-  "fi-pr-range": { fmt: fmtPct, apply: (v, max) => hoy.setFl("pr", v, max) },
-  "fi-days-range": { fmt: fmtDays, apply: (v, max) => hoy.setFl("days", v, max) },
-  "bs-w-range": { fmt: fmtUsd, apply: (v) => buscador.setRange("w", v) },
-  "bs-pr-range": { fmt: fmtPct, apply: (v) => buscador.setRange("pr", v) },
-  "bs-days-range": { fmt: fmtDays, apply: (v) => buscador.setRange("days", v) },
+  "hoy-pr-range": { apply: (v) => hoy.setProb(v) },
+  "hoy-w-range": { apply: (v) => hoy.setWidth(v) },
+  "fi-w-range": { apply: (v, max) => hoy.setFl("w", v, max) },
+  "fi-pr-range": { apply: (v, max) => hoy.setFl("pr", v, max) },
+  "fi-days-range": { apply: (v, max) => hoy.setFl("days", v, max) },
+  "bs-w-range": { apply: (v) => buscador.setRange("w", v) },
+  "bs-pr-range": { apply: (v) => buscador.setRange("pr", v) },
+  "bs-days-range": { apply: (v) => buscador.setRange("days", v) },
 };
 root.addEventListener("input", (event) => {
   const id = event.target.id;
@@ -817,7 +815,7 @@ root.addEventListener("input", (event) => {
     buscador.setQuery(event.target.value);
   } else if (RANGES[id]) {
     const label = root.querySelector(`#${id}-val`);
-    if (label) label.textContent = RANGES[id].fmt(event.target.value);
+    if (label) label.textContent = fmtOf(id)(event.target.value);
   }
 });
 root.addEventListener("change", (event) => {

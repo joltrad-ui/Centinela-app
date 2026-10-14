@@ -14,7 +14,8 @@
 
 import { emptyBox, notice, sectionHead } from "./ui.js";
 import { createVistas } from "./hoy-vistas.js";
-import { PROBS, probOk, WIDTHS, FL_W_MIN, FL_W_MAX, FL_W_STEP, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals } from "./hoy-calc.js";
+import { PR, W, filterBars, filterRow } from "./filtros.js";
+import { PROBS, probOk, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals } from "./hoy-calc.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -214,14 +215,9 @@ export function createHoy(ctx) {
     );
     list = sortDeals(list, f.ord);
     const shown = list.slice(0, f.shown);
-    const chipRow = (label, chips, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${chips}</div></div>`;
-    const slider = (id, min, max, value, label, text, step = 1) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
-    const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
+    const chipRow = filterRow;
     const filters = `<div class="fi-filters">
-        ${chipRow("Nivel", lvChips)}
-        ${dMax > dMin ? chipRow("Vence hasta", slider("fi-days-range", dMin, dMax, Math.min(dMax, f.days ?? dMax), "Vence en estos días o menos", (v) => `${v} d`), " sl") : ""}
-        ${chipRow("Ancho hasta", slider("fi-w-range", FL_W_MIN, FL_W_MAX, f.w ?? FL_W_MAX, "Ancho máximo", (v) => `$${v}`, FL_W_STEP), " sl")}
-        ${chipRow("Prob. hasta", slider("fi-pr-range", FL_PR_MIN, FL_PR_MAX, f.pr ?? FL_PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
+        ${filterBars({ prefix: "fi", lv: { attr: 'data-hoy="fl-lv"', selected: f.lv }, days: { min: dMin, max: dMax, value: f.days }, w: f.w ?? W.max, pr: f.pr ?? PR.max })}
         ${chipRow("Ocultar", chip("fl-hide", "", "Fuera de Reglas", f.hide))}
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.

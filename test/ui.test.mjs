@@ -96,7 +96,7 @@ for (const width of [360, 390]) {
 
 test("el orden de los filtros es siempre Nivel, Vence, Ancho, Prob.", { skip }, async () => {
   const page = await open(390);
-  const hoy = await labels(page, ".filters .hoy-lab");
+  const hoy = await labels(page, ".filters .fi-f-l");
   assert.deepEqual(hoy, ["Ancho hasta", "Prob. hasta"]);
   await goTab(page, "Buscador");
   assert.deepEqual(await labels(page, ".fi-filters .fi-f-l"), ORDER);
@@ -212,8 +212,8 @@ test("Hoy: las barras de ancho y prob. cambian el contador", { skip }, async () 
   await set("hoy-w-range", 200);
   assert.equal(await page.locator("#hoy-w-range-val").innerText(), "$200");
   assert.notEqual(await sum(), a);
-  await set("hoy-range", 30);
-  assert.equal(await page.locator("#hoy-range-val").innerText(), "30 %");
+  await set("hoy-pr-range", 30);
+  assert.equal(await page.locator("#hoy-pr-range-val").innerText(), "30 %");
   assert.deepEqual(page.errors, []);
   await page.close();
 });

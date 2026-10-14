@@ -1,18 +1,19 @@
 // Cuentas y textos de la ficha y de las listas de deals de Hoy: funciones puras, sin estado ni pantalla.
 
 import { fmtStrike, num, returnsOf } from "./engine.js";
+import { PR, W } from "./filtros.js";
 
 export const PROBS = [5, 8, 10];
-export const PROB_MIN = 3; // la barra de prob. va de 3 a 30 % en pasos de 1 punto: "X % o menos" (30 % es el tope con el que se puntúan los deals)
-export const PROB_MAX = 30;
+export const PROB_MIN = PR.min; // la barra de prob. va de 3 a 30 % de uno en uno: "X % o menos" (30 % es el tope común)
+export const PROB_MAX = PR.max;
 export const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 export const WIDTHS = [2, 3, 5, 10];
 // Filtros de ancho y de prob. de la lista de deals de la ficha: barras que filtran "hasta"; al máximo no filtran.
-export const FL_W_MIN = 100;
-export const FL_W_MAX = 1000;
-export const FL_W_STEP = 50;
-export const FL_PR_MIN = 3;
-export const FL_PR_MAX = 30;
+export const FL_W_MIN = W.min;
+export const FL_W_MAX = W.max;
+export const FL_W_STEP = W.step;
+export const FL_PR_MIN = PR.min;
+export const FL_PR_MAX = PR.max;
 export const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
 export const VIEWS = ["mapa", "nube", "barras", "mis"];
 export const MAX_DEALS = 300;

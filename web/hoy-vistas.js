@@ -2,7 +2,8 @@
 
 import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
-import { FL_W_MAX, FL_W_MIN, FL_W_STEP, PROB_MAX, PROB_MIN, signedPct, usd2 } from "./hoy-calc.js";
+import { signedPct, usd2 } from "./hoy-calc.js";
+import { W, filterBars, filterRow, moreHead } from "./filtros.js";
 
 export function createVistas(h) {
   const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
@@ -18,19 +19,15 @@ export function createVistas(h) {
       const held = o.opts.held;
       const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
       const nAct = (hoy.price === "mid" ? 1 : 0) + (held.length ? 1 : 0);
-      const head = `<div class="fhead"><button class="fhead-b" data-hoy="filters-open" aria-expanded="${hoy.fOpen}">${hoy.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${nAct ? `${nAct} ${nAct === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
+      const wDollars = Math.min(W.max, Math.max(W.min, Math.round((o.opts.width * 100) / W.step) * W.step));
+      const head = moreHead('data-hoy="filters-open"', hoy.fOpen, nAct);
       return `<div class="filters">
-        <div class="frow" role="group" aria-label="Ancho máximo, en dólares por contrato"><span class="small muted hoy-lab">Ancho hasta</span>
-          <input type="range" class="range" id="hoy-w-range" min="${FL_W_MIN}" max="${FL_W_MAX}" step="${FL_W_STEP}" value="${Math.min(FL_W_MAX, Math.max(FL_W_MIN, Math.round((o.opts.width * 100) / FL_W_STEP) * FL_W_STEP))}" aria-label="Ancho máximo del spread">
-          <b class="num" id="hoy-w-range-val" style="min-width:3.2em;text-align:right">$${Math.round(o.opts.width * 100)}</b></div>
-        <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
-          <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
-          <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
+        ${filterBars({ prefix: "hoy", w: wDollars, pr: o.opts.prob })}
         ${head}
         ${
           !hoy.fOpen
             ? ""
-            : `      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span>${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}</div>
+            : `      ${filterRow("Precio", `${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}`)}
         ${
           hoy.heldOpen
             ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
