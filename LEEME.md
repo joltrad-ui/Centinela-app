@@ -5,8 +5,7 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da ór
 ## Qué hace
 
 - **Hoy**: la pantalla que se abre al entrar. Un mapa de nombres por vencimientos, con un nivel de 0 a 4 por casilla (cuánto tiene a favor el bull put de igual riesgo de esa casilla); una nube para comparar los de un vencimiento; unas barras con los mismos deals, una fila cada uno, que enseñan lo que cobra, lo que se espera pagar y lo que queda con su error; la ficha única de cada deal (lo que cobras, lo que apartas para pérdidas y lo que te queda, con los puntos que dan el nivel y, al final, todos los deals puntuados del mismo nombre con filtros); y **Mis deals**, donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
-- **Lista**: la lista base y la única que hay. 33 nombres con opciones líquidas (incluido XSP, el índice S&P 500 mini, sin asignación), agrupados por bloque (bolsa EE. UU., tecnología grande, energía, metales, otras bolsas, defensivos, bonos largos, bitcoin). Está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
-- **Deals**: todos los bull puts de la lista juntos, con filtros por ancho, vencimiento y % abajo.
+- **Buscador**: todos los bull puts de las 33 acciones con opciones líquidas de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), con caja de búsqueda y los filtros de la ficha: nivel, bloque, vencimiento, ancho y probabilidad de asignación hasta el 30 %, y los que ocultan fuera de Reglas, con resultados o con aviso de tendencia. Se pueden quitar y poner acciones una a una y marcar las que ya tienes. La lista está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
 - **Avisos**: cuando un nombre de la lista pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
 - **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
 
@@ -107,5 +106,5 @@ El barrido de la lista base lee los 33 nombres en unos segundos. Cada barrido de
 - `config.json` reglas de fábrica. Solo se usa en el modo ordenador.
 - `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
 - `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar las otras.
-- `scanner/cierres.mjs` baja una vez al día los cierres diarios de la lista (carpeta `historia/`), para las cuentas con historia de Hoy y de Deals. Un push no lo lanza.
+- `scanner/cierres.mjs` baja una vez al día los cierres diarios de la lista (carpeta `historia/`), para las cuentas con historia de Hoy y del Buscador. Un push no lo lanza.
 - `test/` pruebas y generador de datos de ejemplo.
