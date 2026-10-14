@@ -163,10 +163,11 @@ export function createBuscador(ctx) {
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-bs="lv" data-v="${l}" aria-pressed="${bs.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const n = activeFilters();
     const rest = bs.more
-      ? `${blocks.length > 1 ? chipRow("Bloque", chip("blk", "", "Todos", !bs.blocks.length) + blocks.map((b) => chip("blk", b, esc(b), bs.blocks.includes(b))).join(""), " wrap") : ""}
-        ${chipRow("Solo", chip("margin", "", "Con margen", bs.margin) + chip("tengo-only", "", "Las que tengo", bs.tengo === "only"), " wrap")}
-        ${chipRow("Ocultar", chip("earn", "", "Resultados", bs.earn) + chip("trend", "", "Tendencia", bs.trend) + chip("hide", "", "Fuera de Reglas", bs.hide) + chip("tengo-hide", "", "Las que tengo", bs.tengo === "hide"), " wrap")}
-        ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`
+      ? `${blocks.length > 1 ? chipRow("Bloque", chip("blk", "", "Todos", !bs.blocks.length) + blocks.map((b) => chip("blk", b, esc(b), bs.blocks.includes(b))).join("")) : ""}
+        ${chipRow("Las que tengo", bar("tengo", [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo, "Las que tengo"), " sl")}
+        ${chipRow("Precio", `<div class="sortbar eq" role="group" aria-label="Precio"><button data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button></div>`, " sl")}
+        ${chipRow("Solo", chip("margin", "", "Con margen", bs.margin))}
+        ${chipRow("Ocultar", chip("earn", "", "Resultados", bs.earn) + chip("trend", "", "Tendencia", bs.trend) + chip("hide", "", "Fuera de Reglas", bs.hide), " fi-wrap")}`
       : "";
     return `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
@@ -285,8 +286,7 @@ export function createBuscador(ctx) {
       if (Number.isInteger(l) && l >= 0 && l <= 5) bs.lv = toggleIn(bs.lv, l).sort();
     } else if (act === "blk") bs.blocks = value ? toggleIn(bs.blocks, value) : [];
     else if (act === "more-filters") bs.more = !bs.more;
-    else if (act === "tengo-only") bs.tengo = bs.tengo === "only" ? "all" : "only";
-    else if (act === "tengo-hide") bs.tengo = bs.tengo === "hide" ? "all" : "hide";
+    else if (act === "tengo") bs.tengo = ["all", "hide", "only"].includes(el.dataset.v) ? el.dataset.v : "all";
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
