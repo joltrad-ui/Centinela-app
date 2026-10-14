@@ -444,8 +444,10 @@ export function createHoy(ctx) {
       // El orden va una sola vez, encima de la lista: a la izquierda cuántos son y a la derecha por qué van ordenados (tocar lo cambia).
       head = `<div class="hoy-sort small">
           <span class="muted">${pts.length} ${pts.length === 1 ? "deal" : "deals"}</span>
-          <button data-hoy="bsort" data-v="${floor ? "left" : "floor"}" aria-label="Ordenados ${floor ? "por el suelo" : "por lo que queda"}. Cambiar a ${floor ? "lo que queda" : "el suelo"}">${floor ? "Por el suelo" : "Por lo que queda"}
-            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M5 3v10M5 3L2.5 5.5M5 3l2.5 2.5M11 13V3M11 13l-2.5-2.5M11 13l2.5-2.5"/></svg></button>
+          <span class="sortbar sm" role="group" aria-label="Orden de las barras">
+            <button data-hoy="bsort" data-v="left" aria-pressed="${!floor}">Por lo que queda</button>
+            <button data-hoy="bsort" data-v="floor" aria-pressed="${floor}">Por el suelo</button>
+          </span>
         </div>`;
       body = `<div class="hoy-bars">
           <div class="hoy-brow-axis"><p class="xs muted">% de lo que arriesgas («pierdes máx.»)</p><svg viewBox="0 0 ${W} 14" aria-hidden="true">${ticks}</svg></div>
@@ -575,7 +577,7 @@ export function createHoy(ctx) {
         ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
         ${chipRow("Ancho hasta", chip("fl-w", "0", "Todos", !f.w) + WIDTHS.map((n) => chip("fl-w", n, `$${n}`, f.w === n)).join(""))}
         ${chipRow("Prob. hasta", chip("fl-pr", "0", "Todas", !f.pr) + FL_PROBS.map((n) => chip("fl-pr", n, `${n} %`, f.pr === n)).join(""))}
-        ${chipRow("Orden", chip("fl-ord", "lv", "Nivel", f.ord === "lv") + chip("fl-ord", "ben", "Beneficio", f.ord === "ben") + chip("fl-ord", "prob", "Prob.", f.ord === "prob"))}
+        ${chipRow("Orden", `<span class="sortbar sm" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</span>`)}
         ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
       </div>`;
     const rowHtml = (d) => {
