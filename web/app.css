@@ -356,6 +356,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 /* Deals por calidad: filtros como en Hoy, una cabecera de columnas y dos líneas por deal. Color solo en lo que cobras, la rentab. y resultados. */
 .dq-lvb { min-height: 0; width: 34px; height: 30px; font-size: 0.875rem; border-radius: 8px; flex: none; }
 .dq-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
+/* El 0 no tiene color propio: encendido, un gris oscuro neutro con texto claro, para que se note frente al contorno de apagado. */
+.dq-lvb.lv0[aria-pressed="true"] { background: #3a3a3a; color: #ededed; font-weight: 600; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28); }
 .dq-more-filters { justify-self: start; font-size: 0.8125rem; color: var(--brass); padding: 2px 0; }
 .dq-more-filters span { color: var(--fg); }
 .dq-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
