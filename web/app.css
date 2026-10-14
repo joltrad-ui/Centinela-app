@@ -289,7 +289,8 @@ nav.dock svg { width: 20px; height: 20px; }
 .hoy-cloud g[data-hoy]:focus-visible { outline: none; }
 .hoy-cloud g[data-hoy]:focus-visible .lab { fill: var(--brass); }
 
-.hoy-sort { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 4px 8px; border-top: 1px solid var(--line); }
+.hoy-sort { display: grid; gap: 8px; margin-top: 12px; padding: 10px 0 8px; border-top: 1px solid var(--line); }
+.hoy-sort > .muted { padding: 0 4px; }
 .hoy-bars { background: var(--surface); box-shadow: var(--border); border-radius: 16px; padding: 8px 12px 2px; margin-top: 4px; }
 .hoy-bars ul { list-style: none; margin: 0; padding: 0; }
 .hoy-bars li { border-top: 1px solid var(--line); }
@@ -360,6 +361,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .dq-more-filters span { color: var(--fg); }
 .dq-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
 .dq-count { display: inline-flex; align-items: center; gap: 6px; }
+.dq-bar > .sortbar { flex: 1 1 100%; }
 .dq-count .chip { height: 28px; padding: 0 9px; }
 .dq-head { display: grid; grid-template-columns: 1.25fr 1fr 0.6fr 1.25fr; gap: 4px; padding: 12px 0 6px 34px; }
 .dq-head span:nth-child(2), .dq-head span:nth-child(3) { text-align: center; }
@@ -493,5 +495,3 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .sortbar button[aria-pressed="true"] { background: #1e1e1c; color: #ecebe5; }
 .sortbar button:focus-visible { outline-offset: -2px; }
 .sortbar.eq button { flex: 1 1 0; }
-.sortbar.sm { display: inline-flex; width: auto; padding: 2px; border-radius: 12px; }
-.sortbar.sm button { height: 26px; padding: 0 9px; border-radius: 10px; }

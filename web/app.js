@@ -1267,7 +1267,7 @@ function viewDeals() {
     <p class="hoy-sum" style="margin:6px 0 8px">${summary}</p>
     <div class="dq-bar">
       <span class="dq-count small muted">${chip("one", 1, "Uno por nombre", dq.one)} ${dq.one ? `${groups.length} ${groups.length === 1 ? "nombre" : "nombres"} · ` : ""}${list.length} ${list.length === 1 ? "deal" : "deals"}</span>
-      <span class="sortbar sm" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => `<button data-dq="order" data-v="${esc(id)}" aria-pressed="${dq.order === id}">${label}</button>`).join("")}</span>
+      <span class="sortbar eq" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => `<button data-dq="order" data-v="${esc(id)}" aria-pressed="${dq.order === id}">${label}</button>`).join("")}</span>
     </div>
     ${
       list.length
