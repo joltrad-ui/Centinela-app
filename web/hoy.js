@@ -562,23 +562,43 @@ export function createHoy(ctx) {
       <p class="small muted fi-sub">${esc(name)}</p>`;
   };
 
+  /** Lo que queda de lo cobrado, en %: el "beneficio" de las filas de la ficha y del Buscador. */
+  const benefit = (d) => (d.row.net > 0 ? ((d.row.net - d.row.expected) / d.row.net) * 100 : null);
+  /** Rentab. esperada repartida entre los días hasta el vencimiento. */
+  const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
+  /** La lista de deals en el orden elegido en la barra: nivel (el de fábrica), beneficio, prob., suelo o por día. */
+  function sortDeals(list, ord) {
+    if (ord === "ben") return [...list].sort((a, b) => (benefit(b) ?? -Infinity) - (benefit(a) ?? -Infinity));
+    if (ord === "prob") return [...list].sort((a, b) => (a.row.prob ?? 100) - (b.row.prob ?? 100));
+    if (ord === "floor") return [...list].sort((a, b) => (b.floor ?? -Infinity) - (a.floor ?? -Infinity) || b.level - a.level);
+    if (ord === "day") return [...list].sort((a, b) => perDay(b) - perDay(a) || b.level - a.level);
+    return list;
+  }
+  /** Una fila de la lista de deals. En la ficha (`withName` falso) elige ese deal; en el Buscador lleva el nombre y abre la ficha. */
+  function dealRow(d, { selectedKey = null, withName = false, note = "" } = {}) {
+      const r = d.row;
+      const left = r.net - r.expected;
+      const p = benefit(d);
+      const key = dealKey(r);
+      const sel = key === selectedKey;
+      const out = d.ok ? "" : `<small class="xs fi-out">fuera de Reglas${d.fails.length ? `: ${esc([...new Set(d.fails.map(failShort))].join(", "))}` : ""}</small>`;
+      return `<li><button class="fi-dr${sel ? " on" : ""}" data-hoy="${withName ? "cell" : "pick"}"${withName ? ` data-s="${esc(d.sym.s)}"` : ""} data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-pressed="${sel}">
+          <span class="lv lv${d.level} fi-dr-lv">${d.level}</span>
+          <span class="fi-dr-m"><span class="fi-dr-t">${withName ? `<b>${esc(d.sym.s)}</b> ` : ""}<b class="num">${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)}</b> <span class="muted">· ${esc(r.expiryLabel)}</span></span>
+            <small class="xs muted num">prob. ${r.prob == null ? "—" : `${num(r.prob, 1)} %`} · ancho $${num(r.width * 100, 0)}</small>${out}${note ? `<small class="xs muted">${note}</small>` : ""}</span>
+          <span class="fi-dr-r num"><span class="fi-dr-v"><b class="${tone(left)}">${usdS(left)}</b>${p == null ? "" : ` <span class="${tone(left)}">${p < 0 ? "−" : ""}${num(Math.abs(p), 0)} %</span>`}</span><small class="xs muted">queda</small></span>
+        </button></li>`;
+  }
+
   /** Todos los deals puntuados del nombre, con sus filtros. La fila elegida lleva una barra a la izquierda. */
   function dealsSection(sym, o, selectedKey) {
     const all = nameDeals(sym, o);
     const f = hoy.fl;
-    const benefit = (d) => (d.row.net > 0 ? ((d.row.net - d.row.expected) / d.row.net) * 100 : null);
     const exps = [...new Set(all.map((d) => d.row.expiry))].sort();
     let list = all.filter(
       (d) => f.lv.includes(d.level) && (!f.exp || d.row.expiry === f.exp) && (!f.w || d.row.width <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
     );
-    if (f.ord === "ben") list = [...list].sort((a, b) => (benefit(b) ?? -Infinity) - (benefit(a) ?? -Infinity));
-    else if (f.ord === "prob") list = [...list].sort((a, b) => (a.row.prob ?? 100) - (b.row.prob ?? 100));
-    else if (f.ord === "floor") list = [...list].sort((a, b) => (b.floor ?? -Infinity) - (a.floor ?? -Infinity) || b.level - a.level);
-    else if (f.ord === "day") {
-      // Rentab. esperada repartida entre los días hasta el vencimiento.
-      const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
-      list = [...list].sort((a, b) => perDay(b) - perDay(a) || b.level - a.level);
-    }
+    list = sortDeals(list, f.ord);
     const shown = list.slice(0, f.shown);
     const chipRow = (label, chips, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${chips}</div></div>`;
     const slider = (id, min, max, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
@@ -592,19 +612,7 @@ export function createHoy(ctx) {
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
     const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."], ["floor", "Suelo"], ["day", "Por día"]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
-    const rowHtml = (d) => {
-      const r = d.row;
-      const left = r.net - r.expected;
-      const p = benefit(d);
-      const key = dealKey(r);
-      const out = d.ok ? "" : `<small class="xs fi-out">fuera de Reglas${d.fails.length ? `: ${esc([...new Set(d.fails.map(failShort))].join(", "))}` : ""}</small>`;
-      return `<li><button class="fi-dr${key === selectedKey ? " on" : ""}" data-hoy="pick" data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-pressed="${key === selectedKey}">
-          <span class="lv lv${d.level} fi-dr-lv">${d.level}</span>
-          <span class="fi-dr-m"><span class="fi-dr-t"><b class="num">${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)}</b> <span class="muted">· ${esc(r.expiryLabel)}</span></span>
-            <small class="xs muted num">prob. ${r.prob == null ? "—" : `${num(r.prob, 1)} %`} · ancho $${num(r.width * 100, 0)}</small>${out}</span>
-          <span class="fi-dr-r num"><span class="fi-dr-v"><b class="${tone(left)}">${usdS(left)}</b>${p == null ? "" : ` <span class="${tone(left)}">${p < 0 ? "−" : ""}${num(Math.abs(p), 0)} %</span>`}</span><small class="xs muted">queda</small></span>
-        </button></li>`;
-    };
+    const rowHtml = (d) => dealRow(d, { selectedKey });
     return `<section class="fi-deals">
         <div class="fi-deals-h"><h3>Deals de ${esc(sym.s)}</h3><span class="small muted num">${list.length} de ${all.length}</span></div>
         ${all.length ? filters + sortBar : ""}
@@ -1094,5 +1102,5 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb, setFl, openName };
+  return { view, sheet, click, submit, escape, setProb, setFl, openName, dealRow, sortDeals };
 }

@@ -2,25 +2,18 @@ import {
   DEFAULT_CONFIG,
   DEFAULT_RULES,
   RULES_V,
-  ORDERS,
   PROB_OFF,
-  assessSymbol,
   cboeUrl,
-  daysBetween,
-  compareSpreads,
   pricesOutsideMarket,
-  fmtStrike,
   labelOf,
   normalizeConfig,
   num,
   nyToday,
   readCboeChain,
   rulesLine,
-  spreadLine,
-  statusLabel,
-  qualityDeals,
 } from "./engine.js";
 import { createHoy } from "./hoy.js";
+import { createBuscador } from "./buscador.js";
 
 const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
@@ -64,9 +57,6 @@ const state = {
   showGh: false,
   kept: "", // dónde quedó guardado el último barrido real: "cuenta", "dispositivo" o "no"
   copied: "",
-  dealsPerName: 10, // 0 = todos
-  dealsShown: 60,
-  dealFilter: { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 },
   hist: null, // cierres diarios de la lista (historia/cierres.json), si los hay
   refresh: null, // última comprobación del barrido: { at, result: "nuevo" | "igual" | "sin-conexion" | "error" | "leido" }
 };
@@ -626,10 +616,6 @@ const esc = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 // Números a la española en toda la app: coma decimal y "%" separado (ver `num` en el motor).
 const money = (n) => `$${num(n, 2)}`;
-const usd = (n) => `$${num(Math.round(n), 0)}`;
-const pct = (n, d = 0) => `${num(n, d)} %`;
-const signed = (n) => `${n > 0 ? "+" : ""}${num(n, 2)} %`;
-const shortMoney = (n) => `$${Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "")}`;
 const whenFmt = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 const when = (ms) => whenFmt.format(new Date(ms));
 const hourFmt = new Intl.DateTimeFormat("es-ES", { hour: "2-digit", minute: "2-digit" });
@@ -678,17 +664,12 @@ function refreshBox() {
     <ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>
   </div>`;
 }
-const nameOf = (sym) => (sym.n && sym.n !== sym.s ? sym.n : "");
-const kpiText = (sp) => (sp.balance == null ? "—" : num(sp.balance, 2));
-const widthText = (sp) => shortMoney(sp.width);
-const probText = (sp) => (sp.prob == null ? "—" : pct(sp.prob));
 
 // ---------- vistas ----------
 
 const ICONS = {
   hoy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="4" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="4" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="4" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="15.5" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="4" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="15.5" width="4.5" height="4.5" rx="1"/></svg>',
-  favoritos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
-  deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>',
+  buscador: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
@@ -751,44 +732,6 @@ function readSummary(scan) {
   </div>`;
 }
 
-function metrics(sp) {
-  return `<dl class="metrics">
-    <div class="metric"><dt>Prob. asignación</dt><dd>${probText(sp)}</dd></div>
-    <div class="metric"><dt>Rentabilidad</dt><dd>${pct(sp.ret)}</dd></div>
-    <div class="metric kpi"><dt>Equilibrio</dt><dd>${kpiText(sp)}</dd></div>
-    <div class="metric"><dt>Ancho</dt><dd>${widthText(sp)}</dd></div>
-    <div class="metric"><dt>Cobras</dt><dd>${usd(sp.creditUsd)}</dd></div>
-    <div class="metric"><dt>Pérdida máx.</dt><dd>${usd(sp.lossUsd)}</dd></div>
-  </dl>`;
-}
-
-function card(sym, res, withToggle = false) {
-  const sp = res.best;
-  const up = sym.c >= 0;
-  const earn = sp?.earnInside && sym.er ? `<p class="small brass" style="margin-top:8px">Resultados ${esc(labelOf(sym.er.d))}</p>` : "";
-  const why = res.status !== "entrada" && sp?.fails.length ? `<p class="small muted" style="margin-top:6px">No pasa: ${esc(sp.fails.join(" · "))}</p>` : "";
-  const noSpread = !sp
-    ? `<p class="small muted line">${res.status === "sin-cadena" ? "No llegaron puts de este nombre." : res.status === "sin-plazo" ? "No hay vencimientos en tu plazo." : "No hay ningún bull put cerca de tu punto."}</p>`
-    : "";
-  return `<li class="card ${res.status}">
-    <button class="row-open" data-open="${esc(sym.s)}" aria-label="Ver ${esc(sym.s)}"></button>
-    <div class="card-head">
-      <div style="min-width:0">
-        <p class="sym">${esc(sym.s)} <span class="pill ${res.status}" style="margin-left:6px">${statusLabel(res.status)}</span></p>
-        <p class="name small muted">${esc(nameOf(sym))}</p>
-        ${sym.b ? `<p style="margin-top:6px"><span class="pill">${esc(sym.b)}</span></p>` : ""}
-      </div>
-      <div style="display:flex;gap:6px;align-items:flex-start">
-        <div class="price"><p class="num" style="font-weight:500">${money(sym.p)}</p><p class="num small ${up ? "up" : "down"}">${signed(sym.c)}</p></div>
-        ${withToggle ? toggle(sym.s, true) : ""}
-      </div>
-    </div>
-    ${sp ? `<p class="line">${esc(spreadLine(sp))}</p>${metrics(sp)}` : noSpread}
-    ${why}${earn}
-  </li>`;
-}
-
-const NO_BLOCK = "Sin bloque";
 
 /** Bloques en el orden de la lista base; los nombres sin bloque van al final. */
 function blockOrder() {
@@ -809,57 +752,6 @@ function allListSymbols() {
 function listSymbols() {
   const off = state.config.off ?? [];
   return allListSymbols().filter((sym) => !off.includes(sym.s));
-}
-
-function offCard(sym) {
-  return `<li class="card off" style="opacity:.6">
-    <div class="card-head">
-      <div style="min-width:0"><p class="sym">${esc(sym.s)}</p><p class="name small muted">${esc(nameOf(sym))} · fuera de tu lista</p></div>
-      ${toggle(sym.s, false)}
-    </div>
-  </li>`;
-}
-
-function toggle(symbol, on) {
-  return `<button class="chip quiet toggle" data-off="${esc(symbol)}" aria-pressed="${on}" aria-label="${on ? "Quitar" : "Poner"} ${esc(symbol)} ${on ? "de" : "en"} mi lista">${on ? "Quitar" : "Poner"}</button>`;
-}
-
-/** Nombres cortos de los órdenes de Lista, para que la barra quepa en una fila (el nombre completo va en `aria-label`). */
-const ORDER_SHORT = { equilibrio: "Equil.", rentab: "Rentab.", prob: "Prob. asig.", abajo: "% abajo", credito: "Crédito" };
-
-function viewFavoritos() {
-  const today = nyToday();
-  const everyone = allListSymbols();
-  const offNames = state.config.off ?? [];
-  const rows = listSymbols().map((sym) => ({ sym, res: assessSymbol(sym, state.config.rules, state.config.order, today) }));
-  const rank = (row) => (row.res.status === "entrada" ? 0 : row.res.status === "no-pasa" ? 1 : 2);
-  rows.sort((a, b) => rank(a) - rank(b) || (a.res.best && b.res.best ? compareSpreads(a.res.best, b.res.best, state.config.order) : 0));
-  const passing = rows.filter((row) => row.res.status === "entrada").length;
-  const groups = [...blockOrder(), NO_BLOCK]
-    .map((name) => {
-      const own = rows.filter((row) => (row.sym.b ?? NO_BLOCK) === name);
-      const out = everyone.filter((sym) => (sym.b ?? NO_BLOCK) === name && offNames.includes(sym.s));
-      if (!own.length && !out.length) return "";
-      const ok = own.filter((row) => row.res.status === "entrada").length;
-      return `<h2 class="group">${esc(name)}<span class="small muted">${ok} de ${own.length} ${own.length === 1 ? "cumple" : "cumplen"}</span></h2>
-        <ul class="cards">${own.map((row) => card(row.sym, row.res, true)).join("")}${out.map(offCard).join("")}</ul>`;
-    })
-    .join("");
-  const order = ORDERS.find((o) => o.id === state.config.order);
-  const empty = state.scan
-    ? '<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado. Pulsa Actualizar dentro de un rato.</p></div>'
-    : "";
-  return `
-    ${header("Lista")}
-    <div class="tools">
-      <div class="sortbar" role="group" aria-label="Orden">
-        ${ORDERS.map((o) => `<button data-order="${o.id}" aria-pressed="${o.id === state.config.order}" aria-label="${esc(o.label)}">${ORDER_SHORT[o.id] ?? o.label}</button>`).join("")}
-      </div>
-    </div>
-    <p class="small muted" style="margin:-6px 0 4px">${esc(order?.hint ?? "")}</p>
-    <p class="small muted" style="margin:0 0 6px">${everyone.length ? `${passing} de ${rows.length} ${rows.length === 1 ? "nombre cumple" : "nombres cumplen"} (${rows.length} de ${everyone.length} en tu lista). Con Quitar / Poner eliges cuáles ves; la elección se queda solo en este dispositivo.` : ""}</p>
-    ${everyone.length ? groups : empty}
-    ${foot()}`;
 }
 
 function stepper(path, label, hint, min, max, step, format) {
@@ -1057,235 +949,6 @@ function ghBlock() {
   </section>`;
 }
 
-// Deslizadores de los filtros de Deals: ancho máximo ($1 a $8) y prob. de asignación máxima (1 a 15 %).
-const DW_MIN = 1;
-const DW_MAX = 8;
-const DP_MIN = 1;
-const DP_MAX = 15;
-// ---------- Deals: todos los bull puts del plazo, por calidad ----------
-// Mismo nivel que la pestaña Hoy (0–5). Por defecto, de nivel 3 en adelante, uno por nombre (el mejor) y ordenados por nivel;
-// a igual nivel, el que más aguanta si el cálculo se equivoca (el suelo) y luego la rentab. esperada.
-// Los filtros viven en el dispositivo (`centinela.deals.v2`). El precio (Bid/Ask o Mid) y los bloques que ya tienes son los de Hoy.
-const LS_DQ = "centinela.deals.v2";
-const DQ_WIDTHS = [2, 3, 5, 10];
-const DQ_PROB_MIN = 3;
-const DQ_PROB_MAX = 30;
-const DQ_ORDERS = [
-  ["lv", "Nivel"],
-  ["ret", "Rentab."],
-  ["prob", "Prob."],
-  ["net", "Cobras"],
-  ["floor", "Suelo"],
-  ["day", "Por día"],
-];
-const DQ_HIDES = [
-  ["earn", "Resultados"],
-  ["name", "Nombres que tengo"],
-  ["block", "Bloques que tengo"],
-  ["rules", "Fuera de Reglas"],
-];
-const dq = (() => {
-  const saved = readLocal(LS_DQ) ?? {};
-  const hide = saved.hide && typeof saved.hide === "object" ? saved.hide : {};
-  return {
-    levels: Array.isArray(saved.levels) ? saved.levels.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [3, 4, 5],
-    prob: Number.isInteger(saved.prob) && saved.prob >= DQ_PROB_MIN && saved.prob <= DQ_PROB_MAX ? saved.prob : null,
-    width: DQ_WIDTHS.includes(saved.width) ? saved.width : null,
-    days: Number.isInteger(saved.days) && saved.days > 0 ? saved.days : null, // vence en N días o menos; null = todos
-    margin: saved.margin === true,
-    hide: Object.fromEntries(DQ_HIDES.map(([id]) => [id, hide[id] === true])),
-    one: saved.one !== false,
-    order: DQ_ORDERS.some(([id]) => id === saved.order) ? saved.order : "lv",
-    more: false,
-    open: new Set(),
-    shown: 40,
-  };
-})();
-const keepDq = () => writeLocal(LS_DQ, { levels: dq.levels, prob: dq.prob, width: dq.width, days: dq.days, margin: dq.margin, hide: dq.hide, one: dq.one, order: dq.order });
-let dqCache = { key: "", out: null };
-
-/** Los deals puntuados (se calculan una vez por barrido, reglas, precio y bloques) y lo que hace falta para los avisos. */
-function dqData() {
-  const rules = state.config.rules;
-  const hoyLs = readLocal("centinela.hoy.v1") ?? {};
-  const price = hoyLs.price === "mid" ? "mid" : "nat";
-  const mine = (readLocal("centinela.misdeals.v1") ?? []).filter((d) => d && typeof d.s === "string" && !d.closedAt);
-  const held = [...new Set([...(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : []), ...mine.map((d) => d.b).filter(Boolean)])];
-  const today = nyToday();
-  const symbols = listSymbols();
-  const key = JSON.stringify([state.scan?.at, state.hist?.at, rules, price, held, today, symbols.map((sym) => sym.s)]);
-  if (dqCache.key !== key) {
-    const out = qualityDeals(
-      symbols,
-      { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: state.hist?.symbols ?? null, held, price, maxProb: DQ_PROB_MAX, maxWidth: 10 },
-      today,
-    );
-    dqCache = { key, out };
-  }
-  return { ...dqCache.out, price, held, openNames: new Set(mine.map((d) => d.s)), rules, today };
-}
-
-// "probabilidad alta" → "prob.": los motivos de las Reglas, cortos para una etiqueta.
-const DQ_FAIL = { "probabilidad alta": "prob.", "sin dato de probabilidad": "prob.", "fuera del punto": "% abajo", "crédito corto": "cobras", "equilibrio bajo": "equilibrio" };
-const dqFail = (fail) => DQ_FAIL[fail] ?? (fail.startsWith("ancho de") ? "ancho" : fail);
-
-function dqClick(el) {
-  const act = el.dataset.dq;
-  const value = el.dataset.v ?? "";
-  if (act === "level") {
-    const l = Number(value);
-    dq.levels = dq.levels.includes(l) ? dq.levels.filter((x) => x !== l) : [...dq.levels, l].sort();
-  } else if (act === "width" && DQ_WIDTHS.includes(Number(value))) dq.width = Number(value);
-  else if (act === "margin") dq.margin = !dq.margin;
-  else if (act === "hide" && value in dq.hide) dq.hide[value] = !dq.hide[value];
-  else if (act === "one") dq.one = !dq.one;
-  else if (act === "order" && DQ_ORDERS.some(([id]) => id === value)) dq.order = value;
-  else if (act === "more") {
-    dq.more = !dq.more;
-    render();
-    return;
-  } else if (act === "variants") {
-    if (dq.open.has(value)) dq.open.delete(value);
-    else dq.open.add(value);
-    render();
-    return;
-  } else if (act === "shown") {
-    dq.shown += 40;
-    render();
-    return;
-  } else return;
-  dq.shown = 40;
-  keepDq();
-  render();
-}
-
-function viewDeals() {
-  if (!state.scan?.symbols?.length) return `<div class="deals">${header("Deals")}<div class="empty"><h2>Esperando el primer barrido de la lista</h2><p class="small muted" style="margin-top:8px">Sale cada media hora en horario de mercado.</p></div></div>`;
-  const data = dqData();
-  const { rules, today } = data;
-  const prob = dq.prob ?? Math.min(DQ_PROB_MAX, Math.max(DQ_PROB_MIN, rules.maxProb >= PROB_OFF ? 10 : Math.round(rules.maxProb)));
-  const width = dq.width ?? nearest(DQ_WIDTHS, rules.width);
-  const expiries = [...new Set(data.deals.map((d) => d.row.expiry))].sort();
-  const dtes = expiries.map((e) => daysBetween(today, e));
-  const dMin = dtes.length ? Math.min(...dtes) : rules.minDte;
-  const dMax = dtes.length ? Math.max(...dtes) : rules.maxDte;
-  const days = dq.days == null ? dMax : Math.min(dMax, Math.max(dMin, dq.days));
-  const maxLevel = rules.levelSafety === "off" ? 3 : rules.levelSafety === "margin" ? 5 : 4;
-  const blockOf = (d) => d.sym.b ?? "";
-  const list = data.deals.filter(
-    (d) =>
-      dq.levels.includes(d.level) &&
-      d.row.prob != null &&
-      d.row.prob <= prob + 1e-9 &&
-      d.row.width <= width + 1e-9 &&
-      d.row.dte <= days &&
-      (!dq.margin || d.checks.safe) &&
-      (!dq.hide.earn || !(d.row.earnInside && d.sym.er)) &&
-      (!dq.hide.name || !data.openNames.has(d.sym.s)) &&
-      (!dq.hide.block || data.openNames.has(d.sym.s) || !data.held.includes(blockOf(d))) &&
-      (!dq.hide.rules || d.ok),
-  );
-  const floorOf = (d) => (d.floor == null ? -Infinity : d.floor);
-  // Por día: la rentab. esperada repartida entre los días hasta el vencimiento, para comparar plazos distintos.
-  const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
-  const sorters = {
-    lv: (a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp,
-    floor: (a, b) => floorOf(b) - floorOf(a) || b.level - a.level || b.row.retExp - a.row.retExp,
-    day: (a, b) => perDay(b) - perDay(a) || b.level - a.level || floorOf(b) - floorOf(a),
-    ret: (a, b) => b.row.retExp - a.row.retExp || b.level - a.level,
-    prob: (a, b) => a.row.prob - b.row.prob || b.level - a.level || floorOf(b) - floorOf(a),
-    net: (a, b) => b.row.net - a.row.net || b.level - a.level,
-  };
-  list.sort(sorters[dq.order]);
-  const groups = [];
-  const byName = new Map();
-  for (const d of list) {
-    if (!byName.has(d.sym.s)) {
-      byName.set(d.sym.s, []);
-      groups.push(byName.get(d.sym.s));
-    }
-    byName.get(d.sym.s).push(d);
-  }
-  const count = (level) => list.filter((d) => d.level === level).length;
-  const tops = [5, 4, 3].filter((l) => l <= maxLevel);
-  const summary = [...tops.map((l) => [`Nivel ${l}`, count(l)]), ...(rules.levelSafety === "off" ? [] : [["Con margen", list.filter((d) => d.checks.safe).length]])]
-    .map(([label, n]) => `<span class="hoy-count">${label}: <b class="num">${n}</b></span>`)
-    .join('<span aria-hidden="true">·</span>');
-
-  const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-dq="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
-  const active = (width !== nearest(DQ_WIDTHS, rules.width) ? 1 : 0) + (dq.margin ? 1 : 0) + DQ_HIDES.filter(([id]) => dq.hide[id]).length;
-  const tags = (d) => {
-    const out = [];
-    if (d.row.earnInside && d.sym.er) out.push(`<span class="dq-tag red">resultados el ${esc(labelOf(d.sym.er.d))}</span>`);
-    if (data.openNames.has(d.sym.s)) out.push(`<span class="dq-tag">ya tienes un ${esc(d.sym.s)} abierto</span>`);
-    else if (data.held.includes(blockOf(d))) out.push('<span class="dq-tag">bloque que ya tienes</span>');
-    if (!d.ok) out.push(`<span class="dq-tag">fuera de tus Reglas: ${esc([...new Set(d.fails.map(dqFail))].join(", "))}</span>`);
-    for (const note of d.row.trend ?? []) out.push(`<span class="dq-tag">${esc(note)}</span>`);
-    return out.join("");
-  };
-  const row = (d, more = "", sub = false) => {
-    const r = d.row;
-    const firm = d.level >= 1 && d.level <= 3 && d.checks.safe;
-    const t = tags(d);
-    return `<li class="dq-row${sub ? " sub" : ""}">
-      <button class="dq-open" data-hoy="cell" data-s="${esc(d.sym.s)}" data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-label="${esc(d.sym.s)} ${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)} ${esc(r.expiryLabel)}: nivel ${d.level}">
-        <span class="dq-top"><span class="lv lv${d.level} dq-lv${firm ? " firm" : ""}">${d.level}</span><span class="dq-title"><b>${esc(d.sym.s)}</b> ${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)} <span class="muted">· ${esc(r.expiryLabel)} · $${num(r.width * 100, 0)} · ${num(r.otm, 1)} % abajo</span></span><span class="dq-ret num${r.retExp > 0 ? " up" : ""}">${r.retExp > 0 ? "+" : ""}${num(r.retExp, 1)} %</span></span>
-        <span class="dq-four num"><span class="up">${usdDec(r.net)}</span><span>${r.prob == null ? "—" : `${num(r.prob, 1)} %`}</span><span>${r.dte}</span><span>${usdDec(r.loss)}</span></span>
-      </button>
-      ${t || more ? `<span class="dq-tags">${t}${more}</span>` : ""}
-    </li>`;
-  };
-  let rows = "";
-  if (dq.one) {
-    for (const g of groups.slice(0, dq.shown)) {
-      const name = g[0].sym.s;
-      const open = dq.open.has(name);
-      const more = g.length > 1 ? `<button class="dq-more" data-dq="variants" data-v="${esc(name)}" aria-expanded="${open}">${open ? "ocultar ▴" : `+${g.length - 1} ${g.length === 2 ? "variante" : "variantes"} ▾`}</button>` : "";
-      rows += row(g[0], more);
-      if (open) rows += g.slice(1, 12).map((d) => row(d, "", true)).join("") + (g.length > 12 ? `<li class="dq-row sub xs muted">y ${g.length - 12} más de ${esc(name)}.</li>` : "");
-    }
-  } else rows = list.slice(0, dq.shown).map((d) => row(d)).join("");
-  const total = dq.one ? groups.length : list.length;
-  const closed = !state.scan.example && pricesOutsideMarket(state.scan.at);
-
-  return `<div class="deals">
-    ${header("Deals")}
-    ${closed ? '<p class="banner small">Precios tomados con el mercado cerrado: las horquillas son más anchas y se apartan más deals.</p>' : ""}
-    <div class="filters" aria-label="Filtros" style="margin-top:12px">
-      <div class="frow" role="group" aria-label="Niveles"><span class="small muted hoy-lab">Nivel</span>${Array.from({ length: maxLevel + 1 }, (_, l) => `<button class="lv lv${l} dq-lvb" data-dq="level" data-v="${l}" aria-pressed="${dq.levels.includes(l)}">${l}</button>`).join("")}</div>
-      <div class="frow" role="group" aria-label="Prob. de asignación, de ${DQ_PROB_MIN} % a ${DQ_PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
-        <input type="range" class="range" id="dq-prob" min="${DQ_PROB_MIN}" max="${DQ_PROB_MAX}" step="1" value="${prob}" aria-label="Prob. de asignación máxima">
-        <b class="num" id="dq-prob-val" style="min-width:3.2em;text-align:right">${prob} %</b></div>
-      <div class="frow" role="group" aria-label="Vence en ${dMin} a ${dMax} días o menos"><span class="small muted hoy-lab">Vence hasta</span>
-        <input type="range" class="range" id="dq-days" min="${dMin}" max="${dMax}" step="1" value="${days}" aria-label="Días hasta el vencimiento, como mucho">
-        <b class="num" id="dq-days-val" style="min-width:3.2em;text-align:right">${days} d</b></div>
-      <button class="dq-more-filters" data-dq="more" aria-expanded="${dq.more}">${dq.more ? "Menos filtros ▴" : "Más filtros ▾"}${active ? ` <span>· ${active} ${active === 1 ? "activo" : "activos"}</span>` : ""}</button>
-      ${
-        dq.more
-          ? `<div class="frow" role="group" aria-label="Ancho máximo"><span class="small muted hoy-lab">Ancho hasta</span>${DQ_WIDTHS.map((w) => chip("width", w, `$${w * 100}`, width === w)).join("")}</div>
-      <div class="frow" role="group" aria-label="Precio"><span class="small muted hoy-lab">Precio</span><button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${data.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${data.price === "mid"}">Mid</button></div>
-      ${rules.levelSafety === "off" ? "" : `<div class="frow" role="group" aria-label="Solo"><span class="small muted hoy-lab">Solo</span>${chip("margin", 1, "Con margen", dq.margin)}</div>`}
-      <div class="frow hoy-wrap" role="group" aria-label="Ocultar"><span class="small muted hoy-lab">Ocultar</span><div class="hoy-mine">${DQ_HIDES.map(([id, label]) => chip("hide", id, label, dq.hide[id])).join("")}</div></div>
-      ${data.price === "mid" ? '<p class="xs muted">A precio Mid: si te llenaran a precio medio. Es una hipótesis, no un precio garantizado. Se cambia también en Hoy.</p>' : ""}`
-          : ""
-      }
-    </div>
-    <p class="hoy-sum" style="margin:6px 0 8px">${summary}</p>
-    <div class="dq-bar">
-      <span class="dq-count small muted">${chip("one", 1, "Uno por nombre", dq.one)} ${dq.one ? `${groups.length} ${groups.length === 1 ? "nombre" : "nombres"} · ` : ""}${list.length} ${list.length === 1 ? "deal" : "deals"}</span>
-      <span class="sortbar eq" role="group" aria-label="Orden">${DQ_ORDERS.map(([id, label]) => `<button data-dq="order" data-v="${esc(id)}" aria-pressed="${dq.order === id}">${label}</button>`).join("")}</span>
-    </div>
-    ${
-      list.length
-        ? `<div class="dq-head xs muted" aria-hidden="true"><span>Cobras neto</span><span>Prob. asig.</span><span>Días</span><span>Pierdes máx.</span></div>
-      <ul class="dq-list">${rows}</ul>
-      ${total > dq.shown ? `<button class="btn" style="margin-top:12px" data-dq="shown">Ver ${Math.min(40, total - dq.shown)} más (quedan ${total - dq.shown})</button>` : ""}`
-        : `<div class="empty"><h2>${data.deals.length ? "Nada con esos filtros" : state.hist?.symbols ? "Ningún bull put del plazo se puede puntuar" : "Sin cierres diarios todavía"}</h2><p class="small muted" style="margin-top:8px">${data.deals.length ? "Prueba a encender más niveles o a subir la prob." : "Hacen falta los cierres de cada nombre para puntuar."}</p></div>`
-    }
-    <p class="xs muted" style="margin-top:14px">${data.deals.length} bull puts puntuados en el plazo de tus Reglas (${rules.minDte}–${rules.maxDte} días)${data.gated ? `; ${data.gated} apartados por horquilla ancha` : ""}. El nivel es el de Hoy: una estimación para ordenar, no una previsión ni un consejo. Toca un deal para ver su ficha.</p>
-  </div>`;
-}
-
 function viewAvisos() {
   const a = state.config.alerts;
   const push = state.scan?.push;
@@ -1330,13 +993,11 @@ function foot() {
   return `<p class="foot xs muted">${failed ? `Sin lectura en el último barrido: ${failed} nombres. ` : ""}${kept ? `Con datos del barrido anterior: ${kept} nombres. ` : ""}Un bull put puede perder el ancho menos el crédito. No es una orden ni un consejo, y los datos van con retraso.</p>`;
 }
 
-// ---------- Igual riesgo (pestaña de prueba) ----------
-
-const nearest = (list, value) => list.reduce((best, item) => (Math.abs(item - value) < Math.abs(best - value) ? item : best), list[0]);
-const usdDec = (n) => `$${num(n, 2)}`;
 
 // La pestaña "Hoy" (mapa, nube, ficha del deal y Mis deals) vive en hoy.js.
 const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
+// El Buscador sustituye a Lista y a Deals: todos los deals de todas las acciones con el esquema de la ficha (buscador.js).
+const buscador = createBuscador({ state, root, listSymbols, allSymbols: allListSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig });
 
 function dock() {
   const seen = Number(readLocal(LS_SEEN) ?? 0);
@@ -1344,13 +1005,13 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("hoy", "Hoy")}${item("deals", "Deals")}${item("favoritos", "Lista")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("buscador", "Buscador")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? viewDeals() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : viewFavoritos();
+    state.tab === "hoy" ? hoy.view() : state.tab === "reglas" ? viewReglas() : state.tab === "avisos" ? viewAvisos() : buscador.view();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}`;
@@ -1373,19 +1034,13 @@ const PAIRS = { "rules.maxDte": "rules.minDte", "rules.maxOtm": "rules.minOtm", 
 // Deslizador de la prob. objetivo: mientras se arrastra solo cambia el número; al soltar, se aplica.
 root.addEventListener("input", (event) => {
   const id = event.target.id;
-  if (id === "f-width-range" || id === "f-prob-range") {
-    const label = root.querySelector(id === "f-width-range" ? "#f-width-val" : "#f-prob-val");
-    if (label) label.textContent = id === "f-width-range" ? `hasta $${event.target.value}` : `hasta ${event.target.value} %`;
+  if (id === "bs-q") {
+    buscador.setQuery(event.target.value);
     return;
   }
-  if (id === "dq-days") {
-    const label = root.querySelector("#dq-days-val");
-    if (label) label.textContent = `${event.target.value} d`;
-    return;
-  }
-  if (id === "dq-prob") {
-    const label = root.querySelector("#dq-prob-val");
-    if (label) label.textContent = `${event.target.value} %`;
+  if (id === "bs-w-range" || id === "bs-pr-range") {
+    const label = root.querySelector(`#${id}-val`);
+    if (label) label.textContent = id === "bs-w-range" ? `$${event.target.value}` : `${event.target.value} %`;
     return;
   }
   if (id === "hoy-range") {
@@ -1401,14 +1056,6 @@ root.addEventListener("input", (event) => {
 });
 root.addEventListener("change", (event) => {
   const id = event.target.id;
-  if (id === "f-width-range" || id === "f-prob-range") {
-    const value = Number(event.target.value);
-    if (id === "f-width-range") state.dealFilter.maxWidth = value >= DW_MIN && value <= DW_MAX ? value : 0;
-    else state.dealFilter.maxProb = value >= DP_MIN && value <= DP_MAX ? value : 0;
-    state.dealsShown = 60;
-    render();
-    return;
-  }
   if (id === "hoy-range") {
     if (hoy.setProb(Number(event.target.value))) render();
     return;
@@ -1417,46 +1064,25 @@ root.addEventListener("change", (event) => {
     if (hoy.setFl(id === "fi-w-range" ? "w" : "pr", Number(event.target.value))) render();
     return;
   }
-  if (id === "dq-days") {
-    const value = Number(event.target.value);
-    if (Number.isInteger(value) && value > 0) {
-      dq.days = value >= Number(event.target.max) ? null : value;
-      dq.shown = 40;
-      keepDq();
-      render();
-    }
-    return;
-  }
-  if (id === "dq-prob") {
-    const value = Number(event.target.value);
-    if (Number.isInteger(value) && value >= DQ_PROB_MIN && value <= DQ_PROB_MAX) {
-      dq.prob = value;
-      dq.shown = 40;
-      keepDq();
-      render();
-    }
+  if (id === "bs-w-range" || id === "bs-pr-range") {
+    if (buscador.setRange(id === "bs-w-range" ? "w" : "pr", Number(event.target.value))) render();
     return;
   }
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-dq],[data-hoy],[data-off],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-order],[data-per-name],[data-f-exp],[data-f-width],[data-f-otm],[data-tab],[data-act],[data-open]");
+  const el = event.target.closest("[data-bs],[data-hoy],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-tab],[data-act],[data-open]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
-  if (el.dataset.dq) {
-    dqClick(el);
+  if (el.dataset.bs) {
+    if (buscador.click(el)) render();
     return;
   }
   if (el.dataset.hoy) {
     hoy.click(el);
     return;
   }
-  if (el.dataset.off) {
-    const name = el.dataset.off;
-    changeConfig((config) => {
-      config.off = config.off.includes(name) ? config.off.filter((s) => s !== name) : [...config.off, name];
-    });
-  } else if (el.dataset.step) {
+  if (el.dataset.step) {
     const path = el.dataset.step;
     const current = path.split(".").reduce((obj, key) => obj[key], state.config);
     const by = Number(el.dataset.by);
@@ -1482,37 +1108,6 @@ root.addEventListener("click", (event) => {
     changeConfig((config) => {
       config.alerts[el.dataset.alert] = !config.alerts[el.dataset.alert];
     });
-  } else if (el.dataset.order) {
-    state.dealsShown = 60;
-    changeConfig((config) => {
-      config.order = el.dataset.order;
-    });
-  } else if (el.dataset.perName != null) {
-    state.dealsPerName = Number(el.dataset.perName);
-    state.dealsShown = 60;
-    render();
-  } else if (el.dataset.fWidth != null) {
-    state.dealFilter.maxWidth = Number(el.dataset.fWidth) || 0;
-    state.dealsShown = 60;
-    render();
-  } else if (el.dataset.fProb != null) {
-    state.dealFilter.maxProb = Number(el.dataset.fProb) || 0;
-    state.dealsShown = 60;
-    render();
-  } else if (el.dataset.fOtm != null) {
-    state.dealFilter.minOtm = Number(el.dataset.fOtm) || 0;
-    state.dealsShown = 60;
-    render();
-  } else if (el.dataset.fExp != null) {
-    const value = el.dataset.fExp;
-    const list = state.dealFilter.expiries;
-    state.dealFilter.expiries = value === "" ? [] : list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
-    state.dealsShown = 60;
-    render();
-  } else if (el.dataset.act === "clear-filters") {
-    state.dealFilter = { expiries: [], maxWidth: 0, minOtm: 0, maxProb: 0 };
-    state.dealsShown = 60;
-    render();
   } else if (el.dataset.act === "copy-secret") {
     const done = (text) => {
       state.copied = text;
@@ -1530,9 +1125,6 @@ root.addEventListener("click", (event) => {
     } catch {
       done("No se pudo copiar solo. Mantén pulsado el texto de abajo y cópialo a mano.");
     }
-  } else if (el.dataset.act === "more-deals") {
-    state.dealsShown += 60;
-    render();
   } else if (el.dataset.tab) {
     state.tab = el.dataset.tab;
     if (state.tab === "avisos") writeLocal(LS_SEEN, Date.now());
@@ -1579,7 +1171,7 @@ root.addEventListener("submit", (event) => {
     };
     writeLocal(LS_GH, state.gh);
     state.showGh = false;
-    state.tab = "favoritos";
+    state.tab = "buscador";
     void load().then(loadHist, loadHist);
   }
 });
