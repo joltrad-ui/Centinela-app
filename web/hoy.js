@@ -283,7 +283,7 @@ export function createHoy(ctx) {
     const msg = !s.withHistory ? "Todavía no hay cierres diarios guardados: sin ellos no se puede puntuar." : s.positive === 0 ? "Hoy ninguna casilla cubre lo que se espera pagar." : "";
     const line = msg
       ? `<p class="hoy-sum none">${msg}</p>`
-      : stats([...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [[o.opts.safety === "both" ? "Los dos cálculos en positivo" : "Con margen", s.firm]]), ["Comparables", s.comparable]], "Casillas por nivel");
+      : stats([...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [["Margen", s.firm]]), ["Total", s.comparable]], "Casillas por nivel");
     return `${controls(o)}
       ${expChips}
       ${line}
@@ -610,7 +610,7 @@ export function createHoy(ctx) {
     const rest = (d) => (!f.days || d.row.dte <= f.days) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok);
     const pool = all.filter(rest);
     const by = (l) => pool.filter((d) => d.level === l).length;
-    const sum = stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Con margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
+    const sum = stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
     let list = all.filter(
       (d) => f.lv.includes(d.level) && (!f.days || d.row.dte <= f.days) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
     );
