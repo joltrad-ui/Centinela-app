@@ -19,7 +19,8 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. Lee tambi
 Node 22, sin dependencias. No añadir paquetes de npm sin preguntar.
 
 ```
-npm test                         # pruebas del motor
+npm test                         # pruebas del motor y de las pantallas (con Playwright + Chromium; sin ellos, las de pantallas se saltan)
+npm run test:motor               # solo el motor, en un segundo
 npm run ejemplo                  # app con cadenas inventadas en http://localhost:8080
 node scanner/scan.mjs --limit 20 # barrido real de 20 nombres, escribe en out/data
 node scanner/scan.mjs --serve    # barrido real completo + app en http://localhost:8080
