@@ -44,7 +44,7 @@ export function createBuscador(ctx) {
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
     shown: SHOW,
     namesOpen: false,
-    fOpen: saved.fOpen !== false, // los filtros, desplegados o comprimidos
+    fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
     open: "", // la fila de filtros desplegada (blk, solo, hide), como "Ya tengo" de Hoy
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
@@ -182,17 +182,15 @@ export function createBuscador(ctx) {
         ${fold("solo", "Solo", soloOpts)}
         ${fold("hide", "Ocultar", hideOpts)}
         ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`;
-    const lvText = bs.lv.length ? `Nivel ${bs.lv.join(" · ")}` : "Sin niveles";
-    const summary = `${n ? `${n} ${n === 1 ? "activo" : "activos"} · ` : ""}${lvText} · Prob. ≤ ${bs.pr ?? PR_MAX} % · Ancho ≤ $${bs.w ?? W_MAX} · Vence ≤ ${activeDays() ?? days.max} d`;
-    const head = `<div class="fhead"><button class="fhead-b" data-bs="filters-open" aria-expanded="${bs.fOpen}">${bs.fOpen ? "Menos filtros ▴" : "Filtros ▾"}</button><span class="small muted">${bs.fOpen ? (n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo") : summary}</span></div>`;
-    if (!bs.fOpen) return head;
-    return `${head}<div class="fi-filters">
+    const head = `<div class="fhead"><button class="fhead-b" data-bs="filters-open" aria-expanded="${bs.fOpen}">${bs.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
+    return `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
         ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
         ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
-        ${rest}
-        ${n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
+        ${head}
+        ${bs.fOpen ? rest : ""}
+        ${bs.fOpen && n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
       </div>`;
   }
 
