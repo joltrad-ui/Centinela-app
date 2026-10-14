@@ -466,3 +466,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-f-c:not(.sl):not(.wrap) { flex: 1 1 0; }
 .fi-f-c.sl > .sortbar { flex: 1 1 auto; }
 
+
+/* Cabecera de los filtros comprimibles (Hoy y Buscador): "Menos filtros ▴" / "Filtros ▾" y, plegado, un resumen */
+.fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0 0 6px; }
+.fhead-b { background: none; border: 0; padding: 6px 0; font: inherit; color: var(--brass); cursor: pointer; }

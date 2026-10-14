@@ -44,10 +44,11 @@ export function createBuscador(ctx) {
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
     shown: SHOW,
     namesOpen: false,
+    fOpen: saved.fOpen !== false, // los filtros, desplegados o comprimidos
     open: "", // la fila de filtros desplegada (blk, solo, hide), como "Ya tengo" de Hoy
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
-  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord });
+  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, fOpen: bs.fOpen });
 
   let tengoList = (Array.isArray(readLocal(LS_TENGO)) ? readLocal(LS_TENGO) : []).filter((s) => typeof s === "string").slice(0, 200);
   const keepTengo = () => writeLocal(LS_TENGO, tengoList);
@@ -181,13 +182,17 @@ export function createBuscador(ctx) {
         ${fold("solo", "Solo", soloOpts)}
         ${fold("hide", "Ocultar", hideOpts)}
         ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`;
-    return `<div class="fi-filters">
+    const lvText = bs.lv.length ? `Nivel ${bs.lv.join(" · ")}` : "Sin niveles";
+    const summary = `${n ? `${n} ${n === 1 ? "activo" : "activos"} · ` : ""}${lvText} · Prob. ≤ ${bs.pr ?? PR_MAX} % · Ancho ≤ $${bs.w ?? W_MAX} · Vence ≤ ${activeDays() ?? days.max} d`;
+    const head = `<div class="fhead"><button class="fhead-b" data-bs="filters-open" aria-expanded="${bs.fOpen}">${bs.fOpen ? "Menos filtros ▴" : "Filtros ▾"}</button><span class="small muted">${bs.fOpen ? (n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo") : summary}</span></div>`;
+    if (!bs.fOpen) return head;
+    return `${head}<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
         ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
         ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
         ${rest}
-        ${n ? `<div class="bs-more"><span class="small">${n} ${n === 1 ? "filtro activo" : "filtros activos"}</span><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
+        ${n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
       </div>`;
   }
 
@@ -297,6 +302,10 @@ export function createBuscador(ctx) {
       const l = Number(value);
       if (Number.isInteger(l) && l >= 0 && l <= 5) bs.lv = toggleIn(bs.lv, l).sort();
     } else if (act === "blk") bs.blocks = value ? toggleIn(bs.blocks, value) : [];
+    else if (act === "filters-open") {
+      bs.fOpen = !bs.fOpen;
+      keep();
+    }
     else if (act === "open") bs.open = bs.open === value ? "" : value;
     else if (act === "tengo-only") bs.tengo = bs.tengo === "only" ? "all" : "only";
     else if (act === "tengo-hide") bs.tengo = bs.tengo === "hide" ? "all" : "hide";
@@ -312,7 +321,7 @@ export function createBuscador(ctx) {
     } else if (act === "reset") {
       Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: false, tengo: "all" });
     } else touched = false;
-    if (touched && act !== "names" && act !== "open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
+    if (touched && act !== "names" && act !== "open" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;
       keep();
     }
