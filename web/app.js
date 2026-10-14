@@ -1069,7 +1069,7 @@ const DP_MAX = 15;
 const LS_DQ = "centinela.deals.v2";
 const DQ_WIDTHS = [2, 3, 5, 10];
 const DQ_PROB_MIN = 3;
-const DQ_PROB_MAX = 20;
+const DQ_PROB_MAX = 30;
 const DQ_ORDERS = [
   ["lv", "Nivel"],
   ["ret", "Rentab."],

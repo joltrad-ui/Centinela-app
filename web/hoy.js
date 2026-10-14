@@ -41,15 +41,15 @@ import {
 const LS_HOY = "centinela.hoy.v1";
 const LS_DEALS = "centinela.misdeals.v1";
 const PROBS = [5, 8, 10];
-const PROB_MIN = 3; // la barra de prob. va de 3 a 20 % en pasos de 1 punto: "X % o menos" (20 % es el mismo tope que usa Deals)
-const PROB_MAX = 20;
+const PROB_MIN = 3; // la barra de prob. va de 3 a 30 % en pasos de 1 punto: "X % o menos" (30 % es el tope con el que se puntúan los deals)
+const PROB_MAX = 30;
 const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
 // Filtros de ancho y de prob. de la lista de deals de la ficha: barras que filtran "hasta"; al máximo no filtran.
 const FL_W_MIN = 1;
 const FL_W_MAX = 10;
 const FL_PR_MIN = 3;
-const FL_PR_MAX = 20;
+const FL_PR_MAX = 30;
 const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
 const VIEWS = ["mapa", "nube", "barras", "mis"];
 const MAX_DEALS = 300;
@@ -498,7 +498,7 @@ export function createHoy(ctx) {
     if (nameCache.key !== key) {
       const out = qualityDeals(
         [sym],
-        { rules, fee: o.opts.fee, gapPct: o.opts.gapPct, safety: o.opts.safety, marginK: o.opts.marginK, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: o.opts.hist, held: o.opts.held, price: hoy.price, maxProb: 20, maxWidth: 10 },
+        { rules, fee: o.opts.fee, gapPct: o.opts.gapPct, safety: o.opts.safety, marginK: o.opts.marginK, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: o.opts.hist, held: o.opts.held, price: hoy.price, maxProb: 30, maxWidth: 10 },
         o.today,
       );
       nameCache = { key, deals: out.deals };

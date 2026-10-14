@@ -1243,7 +1243,7 @@ function ruleFailsOf(row, rules) {
  *  en % de lo que se arriesga.
  *  Orden: nivel, suelo y rentab. esperada. */
 export function qualityDeals(symbols, opts, today = nyToday()) {
-  const { rules, fee = 0, gapPct = DEFAULT_RULES.equalGapPct, hist = null, price = "nat", maxProb = 20, maxWidth = 10 } = opts;
+  const { rules, fee = 0, gapPct = DEFAULT_RULES.equalGapPct, hist = null, price = "nat", maxProb = 30, maxWidth = 10 } = opts;
   const err = { volPct: opts.errVolPct, histK: opts.errHistK };
   const deals = [];
   let gated = 0;
