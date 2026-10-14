@@ -457,8 +457,9 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .bs-name.gone[aria-pressed="false"] { text-decoration: line-through; opacity: 0.6; }
 .bs-name.mine::after { content: "●"; margin-left: 5px; font-size: 0.6rem; color: var(--brass); vertical-align: middle; }
 .bs-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
-.bs-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding: 6px 2px; }
-.bs-more-b { background: none; border: 0; color: var(--brass, #c9a45c); font: inherit; padding: 4px 0; cursor: pointer; }
+.bs-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0 0; }
+.fi-f-lb { text-align: left; height: 32px; padding: 0; }
+.fi-f-note { margin: 0 0 2px 100px; }
 .fi-f-c.fi-wrap { flex-wrap: wrap; overflow: visible; }
 .fi-f:has(> .fi-f-c.fi-wrap) { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: start; }
 .fi-f:has(> .fi-f-c.fi-wrap) > .fi-f-l { padding-top: 6px; }
