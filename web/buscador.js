@@ -44,7 +44,7 @@ export function createBuscador(ctx) {
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
     shown: SHOW,
     namesOpen: false,
-    more: false, // "Más filtros" desplegado
+    open: "", // la fila de filtros desplegada (blk, solo, hide), como "Ya tengo" de Hoy
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
   const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord });
@@ -162,20 +162,32 @@ export function createBuscador(ctx) {
     const days = daysRange();
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-bs="lv" data-v="${l}" aria-pressed="${bs.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const n = activeFilters();
-    const rest = bs.more
-      ? `${blocks.length > 1 ? chipRow("Bloque", chip("blk", "", "Todos", !bs.blocks.length) + blocks.map((b) => chip("blk", b, esc(b), bs.blocks.includes(b))).join("")) : ""}
-        ${chipRow("Las que tengo", bar("tengo", [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo, "Las que tengo"), " sl")}
-        ${chipRow("Precio", `<div class="sortbar eq" role="group" aria-label="Precio"><button data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button></div>`, " sl")}
-        ${chipRow("Solo", chip("margin", "", "Con margen", bs.margin))}
-        ${chipRow("Ocultar", chip("earn", "", "Resultados", bs.earn) + chip("trend", "", "Tendencia", bs.trend) + chip("hide", "", "Fuera de Reglas", bs.hide), " fi-wrap")}`
-      : "";
+    // Como "Ya tengo" de Hoy: plegada enseña lo marcado (o "ninguno"); al tocar se abren todas las opciones y "Listo".
+    const fold = (id, label, options, note = "") => {
+      const sel = options.filter((o) => o.on);
+      if (bs.open !== id) {
+        const shown = sel.length ? sel.map((o) => `<button class="chip quiet" data-bs="open" data-v="${id}" aria-pressed="true">${o.label}</button>`).join("") : `<button class="chip quiet" data-bs="open" data-v="${id}">${options.none ?? "ninguno"}</button>`;
+        return `<div class="fi-f"><button class="small muted fi-f-l fi-f-lb" data-bs="open" data-v="${id}" aria-expanded="false">${label} ▾</button><div class="fi-f-c">${shown}</div></div>`;
+      }
+      return `<div class="fi-f fi-open"><button class="small muted fi-f-l fi-f-lb" data-bs="open" data-v="${id}" aria-expanded="true">${label} ▴</button><div class="fi-f-c fi-wrap">${options.map((o) => o.html).join("")}<button class="chip quiet hoy-edit" data-bs="open" data-v="${id}">Listo</button></div></div>${note ? `<p class="xs muted fi-f-note">${note}</p>` : ""}`;
+    };
+    const opt = (act, value, label, pressed) => ({ label, on: pressed, html: chip(act, value, label, pressed) });
+    const blockOpts = [opt("blk", "", "Todos", !bs.blocks.length), ...blocks.map((b) => opt("blk", b, esc(b), bs.blocks.includes(b)))];
+    blockOpts.none = "todos";
+    blockOpts[0].on = false;
+    const soloOpts = [opt("margin", "", "Con margen", bs.margin), opt("tengo-only", "", "Las que tengo", bs.tengo === "only")];
+    const hideOpts = [opt("earn", "", "Resultados", bs.earn), opt("trend", "", "Tendencia", bs.trend), opt("hide", "", "Fuera de Reglas", bs.hide), opt("tengo-hide", "", "Las que tengo", bs.tengo === "hide")];
+    const rest = `${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
+        ${fold("solo", "Solo", soloOpts)}
+        ${fold("hide", "Ocultar", hideOpts)}
+        ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`;
     return `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
         ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
         ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
-        <div class="bs-more"><button class="bs-more-b" data-bs="more-filters" aria-expanded="${bs.more}">${bs.more ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">${n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo"}</span>${n ? `<button class="btn quiet" data-bs="reset">Quitar filtros</button>` : ""}</div>
         ${rest}
+        ${n ? `<div class="bs-more"><span class="small">${n} ${n === 1 ? "filtro activo" : "filtros activos"}</span><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
       </div>`;
   }
 
@@ -285,8 +297,9 @@ export function createBuscador(ctx) {
       const l = Number(value);
       if (Number.isInteger(l) && l >= 0 && l <= 5) bs.lv = toggleIn(bs.lv, l).sort();
     } else if (act === "blk") bs.blocks = value ? toggleIn(bs.blocks, value) : [];
-    else if (act === "more-filters") bs.more = !bs.more;
-    else if (act === "tengo") bs.tengo = ["all", "hide", "only"].includes(el.dataset.v) ? el.dataset.v : "all";
+    else if (act === "open") bs.open = bs.open === value ? "" : value;
+    else if (act === "tengo-only") bs.tengo = bs.tengo === "only" ? "all" : "only";
+    else if (act === "tengo-hide") bs.tengo = bs.tengo === "hide" ? "all" : "hide";
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
@@ -299,7 +312,7 @@ export function createBuscador(ctx) {
     } else if (act === "reset") {
       Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: false, tengo: "all" });
     } else touched = false;
-    if (touched && act !== "names" && act !== "more-filters" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
+    if (touched && act !== "names" && act !== "open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;
       keep();
     }
