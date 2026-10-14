@@ -217,3 +217,24 @@ test("Hoy: las barras de ancho y prob. cambian el contador", { skip }, async () 
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test("se abre en la última pestaña usada y avisa de que no hay conexión", { skip }, async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE);
+  await page.waitForSelector(".hoy-grid, .stats");
+  await goTab(page, "Buscador");
+  await page.reload();
+  await page.waitForSelector("#bs-bar");
+  assert.ok(await page.locator("#bs-bar").count(), "debe abrir en el Buscador");
+  assert.equal(await page.locator(".notice.info").count(), 0);
+  await context.setOffline(true);
+  await page.waitForSelector(".notice.info");
+  assert.match(await page.locator(".notice.info").innerText(), /Sin conexión: se enseña el último barrido guardado/);
+  await context.setOffline(false);
+  await page.waitForFunction(() => !document.querySelector(".notice.info"), null, { timeout: 15000 });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
