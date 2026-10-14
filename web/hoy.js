@@ -80,6 +80,7 @@ export function createHoy(ctx) {
     price: saved.price === "mid" ? "mid" : "nat",
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
+    fOpen: saved.fOpen !== false, // los filtros de arriba, desplegados o comprimidos
     barSort: saved.barSort === "floor" ? "floor" : "left", // orden de la vista Barras: por lo que queda o por el suelo
     folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
@@ -94,7 +95,7 @@ export function createHoy(ctx) {
     copied: "",
     confirm: null, // id del deal que se va a borrar
   };
-  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort });
+  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort, fOpen: hoy.fOpen });
 
   const cleanDeal = (row) => {
     if (!row || typeof row !== "object" || typeof row.id !== "string" || typeof row.s !== "string" || typeof row.expiry !== "string") return null;
@@ -180,7 +181,10 @@ export function createHoy(ctx) {
     const blocks = ctx.blockOrder();
     const held = o.opts.held;
     const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
-    return `<div class="filters">
+    const summary = `Prob. ≤ ${o.opts.prob} % · Ancho ≤ $${Math.round(o.opts.width * 100)} · ${hoy.price === "mid" ? "Mid" : "Bid/Ask"}${held.length ? ` · Ya tengo ${held.length}` : ""}`;
+    const head = `<div class="fhead"><button class="fhead-b" data-hoy="filters-open" aria-expanded="${hoy.fOpen}">${hoy.fOpen ? "Menos filtros ▴" : "Filtros ▾"}</button>${hoy.fOpen ? "" : `<span class="small muted">${summary}</span>`}</div>`;
+    if (!hoy.fOpen) return head;
+    return `${head}<div class="filters">
       <div class="frow" role="group" aria-label="Prob. de asignación, de ${PROB_MIN} % a ${PROB_MAX} %"><span class="small muted hoy-lab">Prob. hasta</span>
         <input type="range" class="range" id="hoy-range" min="${PROB_MIN}" max="${PROB_MAX}" step="1" value="${o.opts.prob}" aria-label="Prob. de asignación máxima">
         <b class="num" id="hoy-range-val" style="min-width:3.2em;text-align:right">${o.opts.prob} %</b></div>
@@ -904,6 +908,9 @@ export function createHoy(ctx) {
       window.scrollTo(0, 0);
     } else if (act === "price") {
       hoy.price = value === "mid" ? "mid" : "nat";
+      keep();
+    } else if (act === "filters-open") {
+      hoy.fOpen = !hoy.fOpen;
       keep();
     } else if (act === "held-open") {
       hoy.heldOpen = !hoy.heldOpen;
