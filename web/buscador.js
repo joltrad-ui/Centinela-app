@@ -3,17 +3,18 @@
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
+import { PR, W, filterBars, filterRow, moreHead } from "./filtros.js";
 import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
 const LS_HOY = "centinela.hoy.v1";
 const LS_MISDEALS = "centinela.misdeals.v1";
-const W_MIN = 100; // ancho hasta, en dólares por contrato (como "ancho $600" en las filas): de $100 a $1000; el máximo no filtra
-const W_MAX = 1000;
-const W_STEP = 50;
-const PR_MIN = 3; // prob. hasta: de 3 a 30 %; el máximo no filtra
-const PR_MAX = 30;
+const W_MIN = W.min;
+const W_MAX = W.max;
+const W_STEP = W.step;
+const PR_MIN = PR.min;
+const PR_MAX = PR.max;
 const SHOW = 40;
 const ORDERS = [
   ["lv", "Nivel"],
@@ -114,8 +115,7 @@ export function createBuscador(ctx) {
 
   // ---------- pintado ----------
   const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-bs="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
-  const chipRow = (label, inner, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${inner}</div></div>`;
-  const slider = (id, min, max, step, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
+  const chipRow = filterRow;
   const bar = (act, options, current, label) => `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button data-bs="${act}" data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`;
 
   function namesPanel(d0) {
@@ -162,7 +162,6 @@ export function createBuscador(ctx) {
     const present = new Set(d0.deals.map((d) => d.sym.b ?? ""));
     const blocks = blockOrder().filter((b) => present.has(b));
     const days = daysRange();
-    const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-bs="lv" data-v="${l}" aria-pressed="${bs.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const n = activeFilters();
     // Como "Ya tengo" de Hoy: plegada enseña lo marcado (o "ninguno"); al tocar se abren todas las opciones y "Listo".
     const fold = (id, label, options, note = "") => {
@@ -183,12 +182,9 @@ export function createBuscador(ctx) {
         ${fold("solo", "Solo", soloOpts)}
         ${fold("hide", "Ocultar", hideOpts)}
         ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`;
-    const head = `<div class="fhead"><button class="fhead-b" data-bs="filters-open" aria-expanded="${bs.fOpen}">${bs.fOpen ? "Menos filtros ▴" : "Más filtros ▾"}</button><span class="small">· ${n ? `${n} ${n === 1 ? "activo" : "activos"}` : "ninguno activo"}</span></div>`;
+    const head = moreHead('data-bs="filters-open"', bs.fOpen, n);
     return `<div class="fi-filters">
-        ${chipRow("Nivel", lvChips)}
-        ${chipRow("Vence hasta", slider("bs-days-range", days.min, days.max, 1, activeDays() ?? days.max, "Vence en estos días o menos", (v) => `${v} d`), " sl")}
-        ${chipRow("Ancho hasta", slider("bs-w-range", W_MIN, W_MAX, W_STEP, bs.w ?? W_MAX, "Ancho máximo del spread, en dólares por contrato", (v) => `$${v}`), " sl")}
-        ${chipRow("Prob. hasta", slider("bs-pr-range", PR_MIN, PR_MAX, 1, bs.pr ?? PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
+        ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
         ${head}
         ${bs.fOpen ? rest : ""}
         ${bs.fOpen && n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
