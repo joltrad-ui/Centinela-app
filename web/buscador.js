@@ -198,7 +198,7 @@ export function createBuscador(ctx) {
   function levelSummary(d0) {
     const pool = filtered(d0, true);
     const by = (l) => pool.filter((d) => d.level === l).length;
-    return hoy.stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Con margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
+    return hoy.stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
   }
 
   function listHtml(d0) {

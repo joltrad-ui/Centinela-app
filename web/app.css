@@ -456,9 +456,10 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .bs-name { position: relative; }
 .bs-name.gone[aria-pressed="false"] { text-decoration: line-through; opacity: 0.6; }
 .bs-name.mine::after { content: "●"; margin-left: 5px; font-size: 0.6rem; color: var(--brass); vertical-align: middle; }
-.stats { display: flex; flex-wrap: wrap; gap: 2px 12px; margin: 6px 0 10px; }
+.stats { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 0 8px; margin: 6px 0 10px; overflow: hidden; }
 .stat { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-.stat b { font-size: 0.9375rem; font-weight: 500; color: var(--fg); }
+.stat .xs { font-size: 0.75rem; }
+.stat b { font-size: 0.8125rem; font-weight: 500; color: var(--fg); }
 .bs-bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
 .bs-bar > span { white-space: nowrap; }
 .bs-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0 0; }
@@ -474,3 +475,4 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 /* Cabecera de los filtros comprimibles (Hoy y Buscador): "Menos filtros ▴" / "Filtros ▾" y, plegado, un resumen */
 .fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0 0 6px; }
 .fhead-b { background: none; border: 0; padding: 6px 0; font: inherit; color: var(--brass); cursor: pointer; }
+@media (max-width: 340px) { .stats { gap: 0 4px; } .stat { gap: 3px; } .stat .xs { font-size: 0.6875rem; } .stat b { font-size: 0.75rem; } }
