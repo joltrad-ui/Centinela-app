@@ -46,8 +46,9 @@ const PROB_MAX = 30;
 const probOk = (v) => Number.isInteger(v) && v >= PROB_MIN && v <= PROB_MAX;
 const WIDTHS = [2, 3, 5, 10];
 // Filtros de ancho y de prob. de la lista de deals de la ficha: barras que filtran "hasta"; al máximo no filtran.
-const FL_W_MIN = 1;
-const FL_W_MAX = 10;
+const FL_W_MIN = 100;
+const FL_W_MAX = 1000;
+const FL_W_STEP = 50;
 const FL_PR_MIN = 3;
 const FL_PR_MAX = 30;
 const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
@@ -596,17 +597,17 @@ export function createHoy(ctx) {
     const f = hoy.fl;
     const exps = [...new Set(all.map((d) => d.row.expiry))].sort();
     let list = all.filter(
-      (d) => f.lv.includes(d.level) && (!f.exp || d.row.expiry === f.exp) && (!f.w || d.row.width <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
+      (d) => f.lv.includes(d.level) && (!f.exp || d.row.expiry === f.exp) && (!f.w || d.row.width * 100 <= f.w + 1e-6) && (!f.pr || (d.row.prob ?? 100) <= f.pr + 1e-9) && !(f.hide && !d.ok),
     );
     list = sortDeals(list, f.ord);
     const shown = list.slice(0, f.shown);
     const chipRow = (label, chips, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${chips}</div></div>`;
-    const slider = (id, min, max, value, label, text) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="1" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
+    const slider = (id, min, max, value, label, text, step = 1) => `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" aria-label="${label}"><b class="num fi-range-v" id="${id}-val">${text(value)}</b>`;
     const lvChips = [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" data-hoy="fl-lv" data-v="${l}" aria-pressed="${f.lv.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join("");
     const filters = `<div class="fi-filters">
         ${chipRow("Nivel", lvChips)}
         ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
-        ${chipRow("Ancho hasta", slider("fi-w-range", FL_W_MIN, FL_W_MAX, f.w ?? FL_W_MAX, "Ancho máximo", (v) => `$${v}`), " sl")}
+        ${chipRow("Ancho hasta", slider("fi-w-range", FL_W_MIN, FL_W_MAX, f.w ?? FL_W_MAX, "Ancho máximo", (v) => `$${v}`, FL_W_STEP), " sl")}
         ${chipRow("Prob. hasta", slider("fi-pr-range", FL_PR_MIN, FL_PR_MAX, f.pr ?? FL_PR_MAX, "Prob. de asignación máxima", (v) => `${v} %`), " sl")}
         ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
       </div>`;
