@@ -198,7 +198,8 @@ export function createBuscador(ctx) {
   function levelSummary(d0) {
     const pool = filtered(d0, true);
     const by = (l) => pool.filter((d) => d.level === l).length;
-    return `<p class="hoy-sum">Nivel 5: <b>${by(5)}</b> · Nivel 4: <b>${by(4)}</b> · Nivel 3: <b>${by(3)}</b> · Con margen: <b>${pool.filter((d) => d.checks.safe).length}</b></p>`;
+    const cell = (label, n) => `<div class="bs-stat"><b class="num">${n}</b><span class="xs muted">${label}</span></div>`;
+    return `<div class="bs-stats" role="group" aria-label="Deals por nivel">${cell("Nivel 5", by(5))}${cell("Nivel 4", by(4))}${cell("Nivel 3", by(3))}${cell("Con margen", pool.filter((d) => d.checks.safe).length)}</div>`;
   }
 
   function listHtml(d0) {
@@ -228,7 +229,7 @@ export function createBuscador(ctx) {
     const list = filtered(d0);
     const names = new Set(list.map((d) => d.sym.s)).size;
     const count = bs.one ? `${names} ${names === 1 ? "nombre" : "nombres"} · ${list.length} ${list.length === 1 ? "deal" : "deals"}` : `${list.length} ${list.length === 1 ? "deal" : "deals"}`;
-    return `${chip("one", "", "Uno por nombre", bs.one)}<span class="small muted num">${count} · de ${d0.deals.length}</span>`;
+    return `<span class="small muted num">${count}</span>${chip("one", "", "Uno por nombre", bs.one)}`;
   }
 
   function view() {

@@ -456,7 +456,13 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .bs-name { position: relative; }
 .bs-name.gone[aria-pressed="false"] { text-decoration: line-through; opacity: 0.6; }
 .bs-name.mine::after { content: "●"; margin-left: 5px; font-size: 0.6rem; color: var(--brass); vertical-align: middle; }
-.bs-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.bs-stats { display: grid; grid-template-columns: repeat(4, 1fr); margin: 10px 0 6px; padding: 10px 4px; border-radius: 14px; background: var(--surface); box-shadow: var(--border); }
+.bs-stat { display: grid; justify-items: center; gap: 2px; min-width: 0; }
+.bs-stat + .bs-stat { border-left: 1px solid var(--line); }
+.bs-stat b { font-size: 1.125rem; font-weight: 600; color: var(--fg); }
+.bs-stat span { white-space: nowrap; }
+.bs-bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
+.bs-bar > span { white-space: nowrap; }
 .bs-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0 0; }
 .fi-f-lb { text-align: left; height: 32px; padding: 0; }
 .fi-f-note { margin: 0 0 2px 100px; }
