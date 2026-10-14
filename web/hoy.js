@@ -577,9 +577,10 @@ export function createHoy(ctx) {
         ${exps.length > 1 ? chipRow("Vence", chip("fl-exp", "", "Todos", !f.exp) + exps.map((e) => chip("fl-exp", e, esc(labelOf(e)), f.exp === e)).join("")) : ""}
         ${chipRow("Ancho hasta", chip("fl-w", "0", "Todos", !f.w) + WIDTHS.map((n) => chip("fl-w", n, `$${n}`, f.w === n)).join(""))}
         ${chipRow("Prob. hasta", chip("fl-pr", "0", "Todas", !f.pr) + FL_PROBS.map((n) => chip("fl-pr", n, `${n} %`, f.pr === n)).join(""))}
-        ${chipRow("Orden", `<span class="sortbar sm" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</span>`)}
         ${chipRow("", chip("fl-hide", "", "Ocultar fuera de Reglas", f.hide))}
       </div>`;
+    // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
+    const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
     const rowHtml = (d) => {
       const r = d.row;
       const left = r.net - r.expected;
@@ -595,7 +596,7 @@ export function createHoy(ctx) {
     };
     return `<section class="fi-deals">
         <div class="fi-deals-h"><h3>Deals de ${esc(sym.s)}</h3><span class="small muted num">${list.length} de ${all.length}</span></div>
-        ${all.length ? filters : ""}
+        ${all.length ? filters + sortBar : ""}
         ${
           all.length === 0
             ? `<p class="small muted">Ahora no hay ningún bull put puntuado de ${esc(sym.s)} en el plazo de Reglas.</p>`

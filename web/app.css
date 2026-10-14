@@ -469,9 +469,9 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-f-c { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 1px; }
 .fi-f-c::-webkit-scrollbar { display: none; }
 .fi-f-c > * { flex: none; }
-.fi-f-c > .sortbar { flex: 1 1 auto; }
 .fi-lvb { min-height: 0; width: 34px; height: 32px; font-size: 0.875rem; border-radius: 8px; }
 .fi-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
+.fi-sort { margin-top: 4px; }
 .fi-dlist { list-style: none; margin: 8px 0 0; padding: 0; }
 .fi-dr { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 56px; padding: 8px 8px 8px 10px; text-align: left; border-top: 1px solid var(--line); border-left: 3px solid transparent; }
 .fi-dr.on { border-left-color: var(--brass); background: var(--surface); }
@@ -492,5 +492,6 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .sortbar button { flex: 1 1 auto; height: 32px; padding: 0 6px; border-radius: 11px; font-size: 0.75rem; font-weight: 600; color: #b5b3aa; white-space: nowrap; }
 .sortbar button[aria-pressed="true"] { background: #1e1e1c; color: #ecebe5; }
 .sortbar button:focus-visible { outline-offset: -2px; }
+.sortbar.eq button { flex: 1 1 0; }
 .sortbar.sm { display: inline-flex; width: auto; padding: 2px; border-radius: 12px; }
 .sortbar.sm button { height: 26px; padding: 0 9px; border-radius: 10px; }
