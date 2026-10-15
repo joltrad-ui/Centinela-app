@@ -69,7 +69,7 @@ Todo lo personal vive aquí y nunca en el repositorio ni en `data/` (ver Privaci
 - **Ancho, prob. y vencimiento** son siempre barras "hasta": ancho en $ por contrato de $100 a $1000 de 50 en 50; prob. de 3 a 30 % de uno en uno; vencimiento en días (de los mínimos a los máximos de las Reglas en Hoy y el Buscador; entre el más cercano y el más lejano del nombre en la ficha). El máximo de la barra no filtra. Se aplican al soltar (`RANGES` en `app.js`).
 - **Elegir una opción entre varias** → barra segmentada de dos o tres posiciones (`choiceRow`). **Varias casillas independientes** → chips dentro de una fila plegable ("Ocultar"). Nunca una misma opción repartida en dos botones de dos posiciones.
 - **Filas:** todas del mismo alto (34 px: 32 de control y 2 de margen), etiqueta en una columna fija de `--lab` (100 px) y los controles empezando en la misma línea; las barras de elegir una dentro de una fila miden lo mismo que un chip (`.fi-f-c.sl > .sortbar`). Textos cortos en las barras; la etiqueta lleva el sentido ("Margen: Todos / Con / Sin").
-- **"Más filtros ▾ · N activos" / "Menos filtros ▴"** (`fhead`, `moreHead`): comprimidos de fábrica y se recuerdan (`fOpen`). Las barras principales van siempre a la vista.
+- **"Más filtros ▾ · N activos" / "Menos filtros ▴"** (`fhead`, `moreHead`): comprimidos de fábrica y se recuerdan (`fOpen`). Las barras principales van siempre a la vista. A la derecha de la cabecera: el "?" de ayuda (Buscador) y "Quitar filtros" (solo si hay filtros puestos, también con "Más filtros" cerrado). Las filas de "Más filtros" van juntas en un recuadro de fondo suave (`morePanel`, `.fi-more`) que sobresale 8 px a cada lado para que las filas sigan alineadas con las barras de arriba.
 - **Filas plegables al estilo de "Ya tengo"** (Bloque, Ocultar): cerradas enseñan la etiqueta con ▾ y lo marcado, o "ninguno"; al tocar se abren todas las opciones con "Listo"; solo una abierta a la vez (`bs.open`).
 
 ## 6. Buscador (`buscador.js`)
@@ -87,7 +87,7 @@ La pantalla de todas las acciones, con el esquema de la ficha. De arriba abajo:
 - **Cuando no sale nada:** `emptyBox` con los tres filtros que más devolverían al quitarlos ("Quitar Ancho hasta $100 · saldrían 18"; `criteria`, `blockers`, acción `drop`) y "Quitar todos los filtros".
 - **Datos:** `qualityDeals` (motor) con tope de prob. de 30 %, calculados una vez por barrido, reglas, precio y acciones (caché), puntuados con el mismo nivel 0–5 que Hoy. Valores de fábrica: niveles 3, 4 y 5, uno por nombre.
 - Los filtros viven en `centinela.buscador.v1`; `cleanFilters` los sanea y es el mismo saneado que usan las combinaciones guardadas.
-- **Ayuda en las etiquetas:** Nivel, Margen y Las que tengo llevan un subrayado de puntos; tocar la etiqueta abre una frase de explicación debajo (`HELP` en `buscador.js`, `help` de `filterRow` en `filtros.js`, solo en memoria). Los textos usan el vocabulario de `docs/calculo.md`.
+- **Ayuda de los filtros:** un "?" a la derecha de la cabecera "Más filtros" abre un recuadro con lo que significan Nivel, Margen y Las que tengo (`HELP` en `buscador.js`, solo en memoria). Los textos usan el vocabulario de `docs/calculo.md`. Las etiquetas de las filas no llevan marcas: ninguna línea ni símbolo extra.
 - **Precálculo:** con Hoy en pantalla, en un rato libre (`requestIdleCallback`) `app.js` llama a `buscador.warm()`, que calcula los deals; al abrir el Buscador ya están (la caché es por barrido, reglas, precio y acciones).
 
 ## 7. Hoy (`hoy.js`, `hoy-vistas.js`)

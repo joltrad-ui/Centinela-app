@@ -334,14 +334,15 @@ test("Buscador sin resultados: dice qué filtro quitar y cuántos saldrían", { 
 test("Buscador: ayuda en las etiquetas y combinaciones de filtros guardadas", { skip }, async () => {
   const page = await open(390);
   await goTab(page, "Buscador");
-  // ayuda: tocar la etiqueta abre una frase debajo
-  await page.locator('[data-bs="help"][data-v="lv"]').click();
-  assert.match(await page.locator(".fi-f-note").first().innerText(), /Nivel 0: la rentab\. esperada no es positiva/);
+  // ayuda: el "?" de la cabecera abre la explicación de Nivel, Margen y Las que tengo
+  await page.locator('[data-bs="help"]').click();
+  const panel = await page.locator(".fi-help-panel").innerText();
+  assert.match(panel, /Nivel\s+0 = la rentab\. esperada no es positiva/);
+  assert.match(panel, /Margen\s+Con = lo que queda/);
+  assert.match(panel, /Las que tengo\s+Acciones con un deal abierto/);
+  await page.locator('[data-bs="help"]').click();
+  assert.equal(await page.locator(".fi-help-panel").count(), 0);
   await page.locator('[data-bs="filters-open"]').click();
-  await page.locator('[data-bs="help"][data-v="margin"]').click();
-  assert.match(await page.locator("#app").innerText(), /supera el error del cálculo/);
-  await page.locator('[data-bs="help"][data-v="margin"]').click();
-  assert.doesNotMatch(await page.locator("#app").innerText(), /su beneficio esperado es menor que la incertidumbre/);
   // guardar una combinación: Con margen, nivel 5
   await page.locator('[data-bs="margin"][data-v="yes"]').click();
   await page.locator('[data-bs="lv"][data-v="3"]').click();
