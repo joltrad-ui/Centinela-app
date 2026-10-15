@@ -103,6 +103,7 @@ El barrido de la lista base lee los 33 nombres en unos segundos. Cada barrido de
 - `web/` la app (`engine.js` es el motor: reglas, columnas y orden).
 - `scanner/scan.mjs` el barrido y los avisos.
 - `scanner/universe.json` la lista base, por bloques.
+- `.github/workflows/pruebas.yml` corre las pruebas en cada PR y antes de publicar la app: si fallan, no se publica.
 - `config.json` reglas de fábrica (públicas). `config.local.json` lo que guardas tú en el modo ordenador: git lo ignora. Solo se usan en el modo ordenador.
 - `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
 - `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar las otras.

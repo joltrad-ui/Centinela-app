@@ -6,8 +6,13 @@ name: Publicar
 on:
   push:
     branches: [main]
-    paths: ["web/**", "scripts/rama.sh", ".github/workflows/publicar.yml"]
+    paths: ["web/**", "scripts/rama.sh", ".github/workflows/publicar.yml", ".github/workflows/pruebas.yml"]
   workflow_dispatch:
+    inputs:
+      sin_pruebas:
+        description: "Publicar sin correr las pruebas (solo si fallan por algo ajeno a la app y hay que publicar ya)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,7 +22,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Nada se publica si fallan las pruebas.
+  pruebas:
+    if: ${{ !inputs.sin_pruebas }}
+    uses: ./.github/workflows/pruebas.yml
+
   publicar:
+    needs: pruebas
+    if: ${{ always() && (needs.pruebas.result == 'success' || needs.pruebas.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
