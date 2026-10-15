@@ -28,7 +28,7 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | | Dónde está | ¿Lo ve alguien más? |
 |---|---|---|
 | El código y la pantalla de la app | Repositorio y página | Sí |
-| La lista y su barrido (precios y cadenas de los 32 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
+| La lista y su barrido (precios y cadenas de los 33 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
 | Reglas y orden | En tu dispositivo | No |
 | Mis deals y los bloques que marcas como ya abiertos | En tu dispositivo | No. No se suben a ningún sitio; si borras los datos del navegador, se pierden |
 | Reglas para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
