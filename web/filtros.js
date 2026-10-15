@@ -28,6 +28,15 @@ const bar = (kind, id, value, min = BARS[kind].min, max = BARS[kind].max) => {
 /** Los chips de nivel 0–5. `attr` = los atributos del botón (p. ej. `data-bs="lv"`). */
 export const levelRow = (attr, selected) => filterRow("Nivel", [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" ${attr} data-v="${l}" aria-pressed="${selected.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join(""));
 
+/** Una fila plegable con el mismo aspecto que las demás: la etiqueta a la izquierda y un campo (fondo de barra, ▾ a la derecha) que enseña lo marcado
+ *  o "ninguno". Al tocarlo se abren las opciones debajo, con "Listo". `toggle` = atributos del botón; `options` = html de las opciones.
+ *  `summary` = texto de lo marcado ("" = ninguno, se enseña apagado con `none`). `note` = una línea de explicación al abrir. */
+export const foldRow = (label, toggle, open, summary, options, { none = "ninguno", note = "" } = {}) => {
+  const field = `<button class="fi-field${summary ? "" : " none"}" ${toggle} aria-expanded="${open}"><span>${summary || none}</span><i aria-hidden="true">${open ? "▴" : "▾"}</i></button>`;
+  if (!open) return `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c fi-fc">${field}</div></div>`;
+  return `<div class="fi-f fi-open"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c fi-fc fi-fc-open">${field}<div class="fi-chips">${options}<button class="chip quiet hoy-edit" ${toggle} aria-expanded="true">Listo</button></div>${note ? `<p class="xs muted fi-fnote">${note}</p>` : ""}</div></div>`;
+};
+
 /** "Elegir una" entre varias: una barra segmentada (la misma que la de orden). `attr` = atributos de cada botón (p. ej. `data-bs="margin"`);
  *  `options` = [[valor, texto], ...]; el valor va en `data-v`. Para varias casillas independientes se usan chips en una fila plegable. */
 export const choiceRow = (label, attr, options, current) =>

@@ -3,7 +3,7 @@
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
-import { PR, W, choiceRow, filterBars, moreHead, morePanel } from "./filtros.js";
+import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
 import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
@@ -204,14 +204,9 @@ export function createBuscador(ctx) {
     const days = daysRange();
     const n = activeFilters();
     // Como "Ya tengo" de Hoy: plegada enseña lo marcado (o "ninguno"); al tocar se abren todas las opciones y "Listo".
-    const fold = (id, label, options, note = "") => {
-      const sel = options.filter((o) => o.on);
-      if (bs.open !== id) {
-        const shown = sel.length ? sel.map((o) => `<button class="chip quiet" data-bs="open" data-v="${id}" aria-pressed="true">${o.label}</button>`).join("") : `<button class="chip quiet" data-bs="open" data-v="${id}">${options.none ?? "ninguno"}</button>`;
-        return `<div class="fi-f"><button class="small muted fi-f-l fi-f-lb" data-bs="open" data-v="${id}" aria-expanded="false">${label} ▾</button><div class="fi-f-c">${shown}</div></div>`;
-      }
-      return `<div class="fi-f fi-open"><button class="small muted fi-f-l fi-f-lb" data-bs="open" data-v="${id}" aria-expanded="true">${label} ▴</button><div class="fi-f-c fi-wrap">${options.map((o) => o.html).join("")}<button class="chip quiet hoy-edit" data-bs="open" data-v="${id}">Listo</button></div></div>${note ? `<p class="xs muted fi-f-note">${note}</p>` : ""}`;
-    };
+    // Plegable con el mismo aspecto que las demás filas (`foldRow`): enseña lo marcado, o "ninguno".
+    const fold = (id, label, options, note = "") =>
+      foldRow(label, `data-bs="open" data-v="${id}"`, bs.open === id, options.filter((o) => o.on).map((o) => o.label).join(" · "), options.map((o) => o.html).join(""), { none: options.none ?? "ninguno", note });
     const opt = (act, value, label, pressed) => ({ label, on: pressed, html: chip(act, value, label, pressed) });
     const blockOpts = [opt("blk", "", "Todos", !bs.blocks.length), ...blocks.map((b) => opt("blk", b, esc(b), bs.blocks.includes(b)))];
     blockOpts.none = "todos";

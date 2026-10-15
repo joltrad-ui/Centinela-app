@@ -347,7 +347,7 @@ test("Buscador: ayuda en las etiquetas y combinaciones de filtros guardadas", { 
   await page.locator('[data-bs="margin"][data-v="yes"]').click();
   await page.locator('[data-bs="lv"][data-v="3"]').click();
   await page.locator('[data-bs="lv"][data-v="4"]').click();
-  await page.locator('.fi-f-lb[data-v="preset"]').click();
+  await page.locator('.fi-field[data-v="preset"]').click();
   await page.fill('.bs-save input[name="n"]', "Estricta");
   await page.locator('.bs-save button[type="submit"]').click();
   await page.waitForTimeout(300);
@@ -364,8 +364,8 @@ test("Buscador: ayuda en las etiquetas y combinaciones de filtros guardadas", { 
   // se recuerda al recargar, y se borra con la ×
   await page.reload();
   await page.waitForSelector("#bs-bar");
-  if (!(await page.locator('.fi-f-lb[data-v="preset"]').count())) await page.locator('[data-bs="filters-open"]').click(); // "Más filtros" se recuerda abierto
-  if (!(await page.locator('.fi-f-lb[data-v="preset"][aria-expanded="true"]').count())) await page.locator('.fi-f-lb[data-v="preset"]').click();
+  if (!(await page.locator('.fi-field[data-v="preset"]').count())) await page.locator('[data-bs="filters-open"]').click(); // "Más filtros" se recuerda abierto
+  if (!(await page.locator('.fi-field[data-v="preset"][aria-expanded="true"]').count())) await page.locator('.fi-field[data-v="preset"]').click();
   assert.equal(await page.locator('[data-bs="preset"]').count(), 1, "la combinación debe sobrevivir a recargar");
   await page.locator('[data-bs="preset-del"]').click();
   assert.equal(await page.locator('[data-bs="preset"]').count(), 0);
