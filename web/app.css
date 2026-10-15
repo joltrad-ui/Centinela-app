@@ -220,12 +220,7 @@ nav.dock svg { width: 20px; height: 20px; }
 .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); font-weight: 500; }
 .hoy-lab { flex: none; width: var(--lab); }
 /* Bloques que ya tengo: una fila más de filtros, con la misma etiqueta y los mismos chips */
-.frow.hoy-wrap { align-items: flex-start; overflow: visible; }
-.frow.hoy-wrap .hoy-lab { line-height: 32px; }
-.hoy-mine { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 0; min-width: 0; }
-.hoy-lab-btn { text-align: left; height: var(--h-sm); }
 .chip.quiet.hoy-edit { color: var(--brass); box-shadow: none; padding: 0 6px; }
-.hoy-mine-note { margin: 0 0 2px 98px; }
 /* El contador del mapa: una línea sin caja, con los niveles altos y sus recuentos */
 .hoy-sum { margin: 0 0 12px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; color: var(--muted); font-size: 0.875rem; }
 .hoy-sum.none { color: var(--brass); }
@@ -475,11 +470,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .stat b { font-size: 0.8125rem; font-weight: 500; color: var(--fg); }
 .bs-bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
 .bs-bar > span { white-space: nowrap; }
-.fi-f-lb { text-align: left; height: var(--h-sm); padding: 0; }
 .fi-f-note { margin: 0 0 2px calc(var(--lab) + 8px); }
-.fi-f-c.fi-wrap { flex-wrap: wrap; overflow: visible; }
-.fi-f:has(> .fi-f-c.fi-wrap) { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: start; }
-.fi-f:has(> .fi-f-c.fi-wrap) > .fi-f-l { padding-top: 6px; }
 .fi-f-c:not(.sl):not(.wrap) { flex: 1 1 0; }
 /* La barra de elegir una opción dentro de una fila de filtro: de la misma altura que un chip, para que todas las filas lleven el mismo ritmo */
 .fi-f-c.sl > .sortbar { flex: 1 1 auto; padding: 2px; gap: 2px; border-radius: 12px; }
@@ -509,3 +500,15 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .bs-preset-x { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 9px; border-left: 0; }
 .bs-save { display: flex; gap: 6px; flex: 1 1 100%; min-width: 0; }
 .bs-save input { flex: 1; min-width: 0; height: var(--h-sm); padding: 0 10px; border: 0; border-radius: 10px; background: var(--surface-2); color: var(--fg); font: inherit; font-size: 0.8125rem; }
+
+/* Filas plegables (Guardados, Bloque, Ocultar, Ya tengo): un campo con el mismo fondo y alto que las barras de elegir una */
+.fi-fc { flex: 1 1 0; min-width: 0; overflow: visible; display: grid; }
+.fi-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--h-sm); padding: 0 12px; border-radius: 12px; background: #262624; color: var(--fg); font-size: 0.8125rem; text-align: left; min-width: 0; }
+.fi-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fi-field.none > span { color: var(--muted); }
+.fi-field > i { font-style: normal; font-size: 0.7rem; color: var(--muted); flex: none; }
+.fi-f.fi-open { align-items: flex-start; }
+.fi-f.fi-open > .fi-f-l { line-height: var(--h-sm); }
+.fi-fc-open { gap: 8px; }
+.fi-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fi-fnote { margin: 0; }

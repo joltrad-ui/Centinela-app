@@ -3,7 +3,7 @@
 import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
 import { signedPct, usd2 } from "./hoy-calc.js";
-import { W, choiceRow, filterBars, moreHead, morePanel } from "./filtros.js";
+import { W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
 
 export function createVistas(h) {
   const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
@@ -28,16 +28,14 @@ export function createVistas(h) {
           !hoy.fOpen
             ? ""
             : morePanel(`${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], hoy.price)}
-        ${
-          hoy.heldOpen
-            ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
-                .map((name) => `<button class="chip quiet" data-hoy="held" data-v="${esc(name)}" aria-pressed="${held.includes(name)}" ${fromDeals.includes(name) ? "disabled" : ""}>${esc(name)}</button>`)
-                .join("")}<button class="chip quiet hoy-edit" data-hoy="held-open" aria-expanded="true">Listo</button></div></div>
-              <p class="xs muted hoy-mine-note">Marca los bloques en los que ya tienes algo abierto. Un deal de un bloque marcado no suma el punto de bloque nuevo.${fromDeals.length ? " Los de tus deals apuntados se marcan solos." : ""} Solo en este dispositivo.</p>`
-            : `<div class="frow" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="false">Ya tengo ▾</button>${held
-                .map((name) => `<button class="chip quiet" data-hoy="held-open" aria-pressed="true">${esc(name)}</button>`)
-                .join("")}${held.length ? "" : '<button class="chip quiet" data-hoy="held-open">ninguno</button>'}</div>`
-        }`)
+        ${foldRow(
+          "Ya tengo",
+          'data-hoy="held-open"',
+          hoy.heldOpen,
+          held.map(esc).join(" · "),
+          blocks.map((name) => `<button class="chip quiet" data-hoy="held" data-v="${esc(name)}" aria-pressed="${held.includes(name)}" ${fromDeals.includes(name) ? "disabled" : ""}>${esc(name)}</button>`).join(""),
+          { note: `Marca los bloques en los que ya tienes algo abierto. Un deal de un bloque marcado no suma el punto de bloque nuevo.${fromDeals.length ? " Los de tus deals apuntados se marcan solos." : ""} Solo en este dispositivo.` },
+        )}`)
         }
       </div>`;
     }
