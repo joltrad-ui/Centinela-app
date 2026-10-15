@@ -172,6 +172,8 @@ nav.dock svg { width: 20px; height: 20px; }
 .foot { margin-top: 24px; }
 .empty p { margin: 8px 0 0; }
 .empty .btn { margin-top: 14px; }
+.empty-actions { display: grid; gap: 8px; justify-items: center; margin-top: 14px; }
+.empty-actions .btn { margin-top: 0; max-width: 100%; white-space: normal; height: auto; min-height: var(--h-md); padding-block: 6px; }
 .empty { background: var(--surface); border-radius: 16px; box-shadow: var(--border); padding: 28px 16px; text-align: center; }
 
 @media (min-width: 560px) {
