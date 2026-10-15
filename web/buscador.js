@@ -3,7 +3,7 @@
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
-import { PR, W, filterBars, filterRow, moreHead } from "./filtros.js";
+import { PR, W, choiceRow, filterBars, moreHead } from "./filtros.js";
 import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
@@ -40,7 +40,7 @@ export function createBuscador(ctx) {
     hide: saved.hide === true, // ocultar los que están fuera de Reglas
     earn: saved.earn === true, // ocultar los que tienen resultados dentro del plazo
     trend: saved.trend === true, // ocultar los que llevan aviso de tendencia
-    margin: saved.margin === true, // solo los que cumplen el punto de seguridad
+    margin: saved.margin === true || saved.margin === "yes" ? "yes" : saved.margin === "no" ? "no" : "all", // punto de seguridad: todos, solo con margen o solo sin margen
     one: saved.one !== false, // uno por nombre
     tengo: saved.tengo === "hide" || saved.tengo === "only" ? saved.tengo : "all",
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
@@ -108,14 +108,13 @@ export function createBuscador(ctx) {
         !(bs.hide && !d.ok) &&
         !(bs.earn && d.row.earnInside && d.sym.er) &&
         !(bs.trend && (d.row.trend ?? []).length) &&
-        !(bs.margin && !d.checks.safe) &&
+        (bs.margin === "all" || (bs.margin === "yes") === Boolean(d.checks.safe)) &&
         (bs.tengo === "all" || (bs.tengo === "hide" ? !tengo.has(d.sym.s) : tengo.has(d.sym.s))),
     );
   }
 
   // ---------- pintado ----------
   const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-bs="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
-  const chipRow = filterRow;
   const bar = (act, options, current, label) => `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button data-bs="${act}" data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`;
 
   function namesPanel(d0) {
@@ -154,7 +153,7 @@ export function createBuscador(ctx) {
 
   /** Cuántos filtros hay puestos (el nivel de fábrica no cuenta). */
   function activeFilters() {
-    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin, bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
+    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin !== "all", bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
   }
 
   /** Los filtros, en el orden de la pantalla Deals de antes: lo que más se toca arriba (nivel y las tres barras) y el resto plegado. */
@@ -176,12 +175,12 @@ export function createBuscador(ctx) {
     const blockOpts = [opt("blk", "", "Todos", !bs.blocks.length), ...blocks.map((b) => opt("blk", b, esc(b), bs.blocks.includes(b)))];
     blockOpts.none = "todos";
     blockOpts[0].on = false;
-    const soloOpts = [opt("margin", "", "Con margen", bs.margin), opt("tengo-only", "", "Las que tengo", bs.tengo === "only")];
-    const hideOpts = [opt("earn", "", "Resultados", bs.earn), opt("trend", "", "Tendencia", bs.trend), opt("hide", "", "Fuera de Reglas", bs.hide), opt("tengo-hide", "", "Las que tengo", bs.tengo === "hide")];
+    const hideOpts = [opt("earn", "", "Resultados", bs.earn), opt("trend", "", "Tendencia", bs.trend), opt("hide", "", "Fuera de Reglas", bs.hide)];
     const rest = `${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
-        ${fold("solo", "Solo", soloOpts)}
-        ${fold("hide", "Ocultar", hideOpts)}
-        ${chipRow("Precio", `<button class="chip quiet" data-hoy="price" data-v="nat" aria-pressed="${d0.price === "nat"}">Bid/Ask</button><button class="chip quiet" data-hoy="price" data-v="mid" aria-pressed="${d0.price === "mid"}">Mid</button>`)}`;
+        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con margen"], ["no", "Sin margen"]], bs.margin)}
+        ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
+        ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
+        ${fold("hide", "Ocultar", hideOpts)}`;
     const head = moreHead('data-bs="filters-open"', bs.fOpen, n);
     return `<div class="fi-filters">
         ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
@@ -302,19 +301,18 @@ export function createBuscador(ctx) {
       keep();
     }
     else if (act === "open") bs.open = bs.open === value ? "" : value;
-    else if (act === "tengo-only") bs.tengo = bs.tengo === "only" ? "all" : "only";
-    else if (act === "tengo-hide") bs.tengo = bs.tengo === "hide" ? "all" : "hide";
+    else if (act === "tengo") bs.tengo = ["all", "hide", "only"].includes(value) ? value : "all";
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
-    else if (act === "margin") bs.margin = !bs.margin;
+    else if (act === "margin") bs.margin = ["all", "yes", "no"].includes(value) ? value : "all";
     else if (act === "one") bs.one = !bs.one;
     else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : "lv";
     else if (act === "more-rows") {
       bs.shown += SHOW;
       return true;
     } else if (act === "reset") {
-      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: false, tengo: "all" });
+      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", tengo: "all" });
     } else touched = false;
     if (touched && act !== "names" && act !== "open" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;

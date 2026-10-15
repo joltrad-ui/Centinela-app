@@ -3,7 +3,7 @@
 import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
 import { signedPct, usd2 } from "./hoy-calc.js";
-import { W, filterBars, filterRow, moreHead } from "./filtros.js";
+import { W, choiceRow, filterBars, moreHead } from "./filtros.js";
 
 export function createVistas(h) {
   const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
@@ -27,7 +27,7 @@ export function createVistas(h) {
         ${
           !hoy.fOpen
             ? ""
-            : `      ${filterRow("Precio", `${chip("price", "nat", "Bid/Ask", hoy.price === "nat")}${chip("price", "mid", "Mid", hoy.price === "mid")}`)}
+            : `      ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], hoy.price)}
         ${
           hoy.heldOpen
             ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
