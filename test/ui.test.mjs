@@ -238,3 +238,45 @@ test("se abre en la última pestaña usada y avisa de que no hay conexión", { s
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Buscador: Margen y Las que tengo son barras de tres posiciones", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="filters-open"]').click();
+  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) deals?/)[1]);
+  const pick = async (act, value) => {
+    await page.locator(`[data-bs="${act}"][data-v="${value}"]`).click();
+    await page.waitForTimeout(400);
+  };
+  // incluir todos los niveles, para que "con" y "sin" margen sumen el total
+  for (const l of [0, 1, 2]) await page.locator(`[data-bs="lv"][data-v="${l}"]`).click();
+  await page.waitForTimeout(400);
+  await page.locator('[data-bs="one"]').click(); // todos los deals, no uno por nombre
+  await page.waitForTimeout(300);
+  const all = await count();
+  await pick("margin", "yes");
+  const yes = await count();
+  await pick("margin", "no");
+  const no = await count();
+  assert.ok(yes > 0 && no > 0, `con margen ${yes}, sin margen ${no}`);
+  assert.equal(yes + no, all, "con margen + sin margen debe dar el total");
+  assert.equal(await page.locator('[data-bs="margin"][aria-pressed="true"]').innerText(), "Sin margen");
+  await pick("margin", "all");
+  assert.equal(await count(), all);
+  // Las que tengo: marcar una acción a mano, y Solo / Ocultar
+  const mine = await page.locator('#bs-list [data-hoy="cell"]').first().getAttribute("data-s"); // un nombre que sí tiene deals
+  await page.locator('[data-bs="names"]').click();
+  await page.locator('[data-bs="mode"][data-v="tengo"]').click();
+  await page.locator(`[data-bs="name"][data-v="${mine}"]`).click();
+  await page.waitForTimeout(300);
+  await page.locator('[data-bs="names"]').click();
+  await pick("tengo", "only");
+  const only = await count();
+  await pick("tengo", "hide");
+  const hidden = await count();
+  assert.ok(only > 0 && hidden > 0 && only + hidden === all, `solo ${only}, ocultar ${hidden}, total ${all}`);
+  await pick("tengo", "all");
+  assert.match(await page.locator(".fhead").innerText(), /(\d+|ninguno) activos?/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

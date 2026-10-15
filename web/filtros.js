@@ -28,6 +28,11 @@ const bar = (kind, id, value, min = BARS[kind].min, max = BARS[kind].max) => {
 /** Los chips de nivel 0–5. `attr` = los atributos del botón (p. ej. `data-bs="lv"`). */
 export const levelRow = (attr, selected) => filterRow("Nivel", [0, 1, 2, 3, 4, 5].map((l) => `<button class="lv lv${l} fi-lvb" ${attr} data-v="${l}" aria-pressed="${selected.includes(l)}" aria-label="Nivel ${l}">${l}</button>`).join(""));
 
+/** "Elegir una" entre varias: una barra segmentada (la misma que la de orden). `attr` = atributos de cada botón (p. ej. `data-bs="margin"`);
+ *  `options` = [[valor, texto], ...]; el valor va en `data-v`. Para varias casillas independientes se usan chips en una fila plegable. */
+export const choiceRow = (label, attr, options, current) =>
+  filterRow(label, `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button ${attr} data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`, " sl");
+
 /** Las barras de una pantalla, en el orden de siempre. Las que no se pasan no salen.
  *  `prefix` da los ids (`bs-w-range`...); `lv` = { attr, selected }; `days` = { min, max, value }; `w` y `pr` = valor actual. */
 export function filterBars({ prefix, lv, days, w, pr }) {
