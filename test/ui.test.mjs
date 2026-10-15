@@ -318,3 +318,28 @@ test("privacidad: el servidor de ejemplo rechaza otros nombres de host y orígen
   assert.equal(await call({ Host: `localhost:${PORT}`, Origin: "https://evil.example.com", "Content-Type": "application/json" }, "POST", "{}"), 403, "origen de otra página");
   assert.equal(await call({ Host: `localhost:${PORT}` }), 200);
 });
+
+test("Buscador sin resultados: dice qué filtro quitar y cuántos saldrían", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  await page.fill("#bs-q", "zzzz");
+  await page.waitForTimeout(300);
+  const empty = page.locator("#bs-list .empty");
+  assert.match(await empty.innerText(), /Ningún deal con estos filtros/);
+  // con la búsqueda sin resultados, quitar solo la búsqueda es la única salida que devuelve algo
+  const first = empty.locator('[data-bs="drop"]').first();
+  assert.match(await first.innerText(), /Quitar la búsqueda · saldrían \d+/);
+  const promised = Number((await first.innerText()).match(/saldrían (\d+)/)[1]);
+  await first.click();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator("#bs-q").inputValue(), "");
+  assert.equal(await page.locator("#bs-list .empty").count(), 0);
+  const shown = Number((await page.locator("#bs-bar").innerText()).match(/(\d+) deals?/)[1]);
+  assert.equal(shown, promised, "el número prometido debe ser el que sale");
+  // y con un filtro de menos, el botón de quitar todos sigue ahí
+  await page.fill("#bs-q", "zzzz");
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('#bs-list [data-bs="reset"]').count(), 1);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

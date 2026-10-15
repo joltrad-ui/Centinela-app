@@ -93,24 +93,39 @@ export function createBuscador(ctx) {
   };
   const activeDays = () => (bs.days != null && bs.days >= daysRange().min && bs.days < daysRange().max ? bs.days : null);
 
-  function filtered(d0, skipLevel = false) {
+  /** Los filtros puestos, cada uno con su prueba. `drop` lo quita (lo usa "Ningún deal con estos filtros" para sugerir qué quitar). */
+  const ALL_LV = [0, 1, 2, 3, 4, 5];
+  function criteria(d0) {
     const q = norm(bs.q.trim());
     const tengo = tengoSet(d0.openNames);
     const days = activeDays();
-    return d0.deals.filter(
-      (d) =>
-        matches(d.sym, q) &&
-        (skipLevel || bs.lv.includes(d.level)) &&
-        (!days || d.row.dte <= days) &&
-        (!bs.blocks.length || bs.blocks.includes(d.sym.b ?? "")) &&
-        (!bs.w || d.row.width * 100 <= bs.w + 1e-6) &&
-        (!bs.pr || (d.row.prob ?? 100) <= bs.pr + 1e-9) &&
-        !(bs.hide && !d.ok) &&
-        !(bs.earn && d.row.earnInside && d.sym.er) &&
-        !(bs.trend && (d.row.trend ?? []).length) &&
-        (bs.margin === "all" || (bs.margin === "yes") === Boolean(d.checks.safe)) &&
-        (bs.tengo === "all" || (bs.tengo === "hide" ? !tengo.has(d.sym.s) : tengo.has(d.sym.s))),
-    );
+    return [
+      { key: "q", on: q !== "", label: "la búsqueda", test: (d) => matches(d.sym, q), drop: () => (bs.q = "") },
+      { key: "lv", on: bs.lv.length < ALL_LV.length, label: "el filtro de Nivel", test: (d) => bs.lv.includes(d.level), drop: () => (bs.lv = [...ALL_LV]) },
+      { key: "days", on: Boolean(days), label: `Vence hasta ${days} d`, test: (d) => d.row.dte <= days, drop: () => (bs.days = null) },
+      { key: "blk", on: bs.blocks.length > 0, label: "el filtro de Bloque", test: (d) => bs.blocks.includes(d.sym.b ?? ""), drop: () => (bs.blocks = []) },
+      { key: "w", on: Boolean(bs.w), label: `Ancho hasta $${bs.w}`, test: (d) => d.row.width * 100 <= bs.w + 1e-6, drop: () => (bs.w = null) },
+      { key: "pr", on: Boolean(bs.pr), label: `Prob. hasta ${bs.pr} %`, test: (d) => (d.row.prob ?? 100) <= bs.pr + 1e-9, drop: () => (bs.pr = null) },
+      { key: "hide", on: bs.hide, label: "Ocultar fuera de Reglas", test: (d) => d.ok, drop: () => (bs.hide = false) },
+      { key: "earn", on: bs.earn, label: "Ocultar resultados", test: (d) => !(d.row.earnInside && d.sym.er), drop: () => (bs.earn = false) },
+      { key: "trend", on: bs.trend, label: "Ocultar tendencia", test: (d) => !(d.row.trend ?? []).length, drop: () => (bs.trend = false) },
+      { key: "margin", on: bs.margin !== "all", label: "el filtro de Margen", test: (d) => (bs.margin === "yes") === Boolean(d.checks.safe), drop: () => (bs.margin = "all") },
+      { key: "tengo", on: bs.tengo !== "all", label: "Las que tengo", test: (d) => (bs.tengo === "hide" ? !tengo.has(d.sym.s) : tengo.has(d.sym.s)), drop: () => (bs.tengo = "all") },
+    ].filter((c) => c.on);
+  }
+
+  function filtered(d0, skipLevel = false, skipKey = null) {
+    const tests = criteria(d0).filter((c) => !(skipLevel && c.key === "lv") && c.key !== skipKey);
+    return d0.deals.filter((d) => tests.every((c) => c.test(d)));
+  }
+
+  /** Para cuando no sale nada: cuántos deals saldrían quitando cada filtro por separado, de más a menos. */
+  function blockers(d0) {
+    return criteria(d0)
+      .map((c) => ({ key: c.key, label: c.label, count: filtered(d0, false, c.key).length }))
+      .filter((c) => c.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
   }
 
   // ---------- pintado ----------
@@ -214,7 +229,10 @@ export function createBuscador(ctx) {
       }
     }
     const shown = rows.slice(0, bs.shown);
-    if (!rows.length) return emptyBox("Ningún deal con estos filtros.", "", { attrs: 'data-bs="reset"', label: "Quitar filtros" });
+    if (!rows.length) {
+      const ideas = blockers(d0).map((c) => ({ attrs: `data-bs="drop" data-v="${c.key}"`, label: `Quitar ${esc(c.label)} · saldrían ${c.count}` }));
+      return emptyBox("Ningún deal con estos filtros.", ideas.length ? "Esto es lo que saldría quitando cada filtro por separado:" : "", [...ideas, { attrs: 'data-bs="reset"', label: "Quitar todos los filtros" }]);
+    }
     const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more-rows">Ver más (${rows.length - shown.length})</button>` : "";
     return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : "" })).join("")}</ul>${more}`;
   }
@@ -311,6 +329,8 @@ export function createBuscador(ctx) {
     else if (act === "more-rows") {
       bs.shown += SHOW;
       return true;
+    } else if (act === "drop") {
+      criteria(data()).find((c) => c.key === value)?.drop();
     } else if (act === "reset") {
       Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", tengo: "all" });
     } else touched = false;

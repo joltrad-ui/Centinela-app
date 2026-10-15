@@ -1,10 +1,11 @@
 // Piezas de pantalla compartidas por Hoy, el Buscador y Reglas: un solo aspecto para lo mismo.
 
 /** "No hay nada": un título corto, una o varias líneas de motivo y, si ayuda, un botón.
- *  `notes` es un texto o una lista de textos (ya escapados); `action` = { attrs, label } con los data-* del botón. */
+ *  `notes` es un texto o una lista de textos (ya escapados); `action` = { attrs, label } con los data-* del botón, o una lista de ellos. */
 export const emptyBox = (title, notes = [], action = null) => {
   const lines = (Array.isArray(notes) ? notes : [notes]).filter(Boolean);
-  return `<div class="empty"><h2>${title}</h2>${lines.map((line) => `<p class="small muted">${line}</p>`).join("")}${action ? `<button class="btn quiet" ${action.attrs}>${action.label}</button>` : ""}</div>`;
+  const actions = (Array.isArray(action) ? action : [action]).filter(Boolean);
+  return `<div class="empty"><h2>${title}</h2>${lines.map((line) => `<p class="small muted">${line}</p>`).join("")}${actions.length ? `<div class="empty-actions">${actions.map((a) => `<button class="btn quiet" ${a.attrs}>${a.label}</button>`).join("")}</div>` : ""}</div>`;
 };
 
 /** Un aviso en una línea o dos. Un solo lenguaje de color en toda la app: gris = informa, ámbar = conviene mirar, rojo = algo falla o baja el nivel (verde = bien, solo en números y en la caja de lectura).
