@@ -3,7 +3,7 @@
 import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
 import { signedPct, usd2 } from "./hoy-calc.js";
-import { W, choiceRow, filterBars, moreHead } from "./filtros.js";
+import { W, choiceRow, filterBars, moreHead, morePanel } from "./filtros.js";
 
 export function createVistas(h) {
   const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
@@ -27,7 +27,7 @@ export function createVistas(h) {
         ${
           !hoy.fOpen
             ? ""
-            : `      ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], hoy.price)}
+            : morePanel(`${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], hoy.price)}
         ${
           hoy.heldOpen
             ? `<div class="frow hoy-wrap" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="true">Ya tengo ▴</button><div class="hoy-mine">${blocks
@@ -37,7 +37,7 @@ export function createVistas(h) {
             : `<div class="frow" role="group" aria-label="Bloques que ya tengo"><button class="small muted hoy-lab hoy-lab-btn" data-hoy="held-open" aria-expanded="false">Ya tengo ▾</button>${held
                 .map((name) => `<button class="chip quiet" data-hoy="held-open" aria-pressed="true">${esc(name)}</button>`)
                 .join("")}${held.length ? "" : '<button class="chip quiet" data-hoy="held-open">ninguno</button>'}</div>`
-        }`
+        }`)
         }
       </div>`;
     }

@@ -3,7 +3,7 @@
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
-import { PR, W, choiceRow, filterBars, moreHead } from "./filtros.js";
+import { PR, W, choiceRow, filterBars, moreHead, morePanel } from "./filtros.js";
 import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
@@ -56,7 +56,7 @@ export function createBuscador(ctx) {
     namesOpen: false,
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
     open: "", // la fila de filtros desplegada (blk, hide, guardados), como "Ya tengo" de Hoy
-    help: "", // la etiqueta con su explicación abierta (lv, margin, tengo); solo en memoria
+    help: false, // la explicación de los filtros abierta; solo en memoria
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
   const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, fOpen: bs.fOpen });
@@ -151,12 +151,12 @@ export function createBuscador(ctx) {
   const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-bs="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
   const bar = (act, options, current, label) => `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button data-bs="${act}" data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`;
 
-  const HELP = {
-    lv: "Nivel 0: la rentab. esperada no es positiva. Si lo es, parte de 1 y suma un punto por cada comprobación: margen (lo que queda supera el error del cálculo), costes razonables (ida y vuelta hasta el 40 % de lo cobrado) y bloque nuevo (no tienes ya uno abierto de ese bloque). El 5 exige además el doble de margen.",
-    margin: "Con margen: lo que queda tras restar lo que se espera pagar supera el error del cálculo (1 vez de fábrica; se cambia en Reglas, pestaña Hoy). Sin margen: no lo supera. Puede salir bien igualmente, pero su beneficio esperado es menor que la incertidumbre de la cuenta.",
-    tengo: "Las que tengo: acciones con un deal abierto en Mis deals, más las que marques a mano en Acciones, Marcar las que tengo. Ocultar las quita de la lista; Solo deja únicamente esas. Se guardan solo en este dispositivo.",
-  };
-  const help = (id) => ({ attr: `data-bs="help" data-v="${id}"`, open: bs.help === id, text: HELP[id] });
+  const HELP = [
+    ["Nivel", "0 = la rentab. esperada no es positiva. Si lo es, parte de 1 y suma un punto por cada comprobación: margen (lo que queda supera el error del cálculo), costes razonables (ida y vuelta hasta el 40 % de lo cobrado) y bloque nuevo (no tienes ya uno abierto de ese bloque). El 5 exige además el doble de margen."],
+    ["Margen", "Con = lo que queda tras restar lo que se espera pagar supera el error del cálculo (1 vez de fábrica; se cambia en Reglas, pestaña Hoy). Sin = no lo supera. Puede salir bien igualmente, pero su beneficio esperado es menor que la incertidumbre de la cuenta."],
+    ["Las que tengo", "Acciones con un deal abierto en Mis deals, más las que marques a mano en Acciones, Marcar las que tengo. Ocultar las quita de la lista; Solo deja únicamente esas. Se guardan solo en este dispositivo."],
+  ];
+  const helpPanel = () => (bs.help ? `<div class="fi-help-panel">${HELP.map(([name, text]) => `<p class="xs muted"><b>${name}</b> ${text}</p>`).join("")}</div>` : "");
 
   function namesPanel(d0) {
     const all = allSymbols();
@@ -220,18 +220,18 @@ export function createBuscador(ctx) {
     const presetOpts = presets.map((p, i) => ({ label: esc(p.n), on: sameFilters(p.f), html: `<span class="bs-preset">${chip("preset", i, esc(p.n), sameFilters(p.f))}<button class="chip quiet bs-preset-x" data-bs="preset-del" data-v="${i}" aria-label="Borrar ${esc(p.n)}">×</button></span>` }));
     if (presets.length < MAX_PRESETS) presetOpts.push({ label: "", on: false, html: `<form class="bs-save" data-bs-form="preset"><input name="n" maxlength="20" placeholder="Nombre" aria-label="Nombre de la combinación" autocomplete="off"><button class="chip quiet" type="submit">Guardar estos filtros</button></form>` });
     const presetRow = fold("preset", "Guardados", presetOpts);
-    const rest = `${presetRow}
+    const rest = morePanel(`${presetRow}
         ${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
-        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin, help("margin"))}
-        ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo, help("tengo"))}
+        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
+        ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
         ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
-        ${fold("hide", "Ocultar", hideOpts)}`;
-    const head = moreHead('data-bs="filters-open"', bs.fOpen, n);
+        ${fold("hide", "Ocultar", hideOpts)}`);
+    const head = moreHead('data-bs="filters-open"', bs.fOpen, n, { help: { attr: 'data-bs="help"', open: bs.help }, reset: 'data-bs="reset"' });
     return `<div class="fi-filters">
-        ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv, help: help("lv") }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
+        ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
         ${head}
+        ${helpPanel()}
         ${bs.fOpen ? rest : ""}
-        ${bs.fOpen && n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
       </div>`;
   }
 
@@ -349,7 +349,7 @@ export function createBuscador(ctx) {
       keep();
     }
     else if (act === "open") bs.open = bs.open === value ? "" : value;
-    else if (act === "help") bs.help = bs.help === value ? "" : value;
+    else if (act === "help") bs.help = !bs.help;
     else if (act === "preset") {
       const p = presets[Number(value)];
       if (p) Object.assign(bs, cleanFilters(p.f));

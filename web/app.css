@@ -475,7 +475,6 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .stat b { font-size: 0.8125rem; font-weight: 500; color: var(--fg); }
 .bs-bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
 .bs-bar > span { white-space: nowrap; }
-.bs-more { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0 0; }
 .fi-f-lb { text-align: left; height: var(--h-sm); padding: 0; }
 .fi-f-note { margin: 0 0 2px calc(var(--lab) + 8px); }
 .fi-f-c.fi-wrap { flex-wrap: wrap; overflow: visible; }
@@ -491,13 +490,19 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 
 
 /* Cabecera de los filtros comprimibles (Hoy y Buscador): "Menos filtros ▴" / "Filtros ▾" y, plegado, un resumen */
-.fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0 0 6px; }
+.fhead { display: flex; align-items: center; gap: 0 10px; margin: 2px 0 6px; min-height: var(--h-sm); }
 .fhead-b { background: none; border: 0; padding: 6px 0; font: inherit; color: var(--brass); cursor: pointer; }
+.fhead-r { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.fhead-q { background: none; border: 0; padding: 6px 0; font: inherit; font-size: 0.8125rem; color: var(--muted); cursor: pointer; }
+.fhead-i { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 0.75rem; line-height: 1; color: var(--muted); box-shadow: var(--border); }
+.fhead-i[aria-expanded="true"] { color: var(--fg); background: var(--surface-2); }
+/* Las filas de "Más filtros" juntas, sobre un fondo suave, y la explicación de los filtros con el mismo aire */
+.fi-more, .fi-help-panel { display: grid; gap: 8px; padding: 10px 8px; margin: 0 -8px 8px; /* el fondo sale 8 px a cada lado: las filas siguen alineadas con las barras de arriba */ border-radius: 14px; background: var(--surface); box-shadow: var(--border); }
+.fi-help-panel { gap: 6px; }
+.fi-help-panel p { margin: 0; }
+.fi-help-panel b { color: var(--fg); font-weight: 500; }
 @media (max-width: 340px) { .stats { gap: 0 4px; } .stat { gap: 3px; } .stat .xs { font-size: 0.6875rem; } .stat b { font-size: 0.75rem; } }
 
-/* Etiqueta con explicación: subrayado de puntos; la frase abierta va debajo de la fila */
-.fi-help { text-align: left; padding: 0; height: var(--h-sm); border-bottom: 1px dotted var(--muted); border-radius: 0; }
-.fi-help[aria-expanded="true"] { color: var(--fg); }
 /* Combinaciones de filtros guardadas */
 .bs-preset { display: inline-flex; }
 .bs-preset > .chip:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
