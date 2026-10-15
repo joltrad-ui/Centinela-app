@@ -5,6 +5,7 @@
 //   node scanner/scan.mjs --serve         barre cada 30 min y sirve la app (modo ordenador)
 //
 // Opciones: --out <carpeta>  --port <n>  --prev-url <url>  --fixtures <carpeta>  --limit <n>
+//           --lan      con --serve: también desde el móvil, en el mismo Wi-Fi (por defecto, solo este ordenador)
 //           --public   lo que se escribe va a publicarse: nada personal en claro.
 //
 // Modo --public. Las reglas y los favoritos no se leen de config.json sino del
@@ -35,7 +36,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
 const OUT = path.resolve(args.out ?? path.join(ROOT, "out"));
 const DATA = path.join(OUT, "data");
-const CONFIG_PATH = path.join(ROOT, "config.json");
+// config.json = reglas de fábrica (va en el repositorio, público). Lo que cambias en la app (reglas, nombres quitados...)
+// se guarda en config.local.json, que git ignora: tus reglas reales no pueden llegar al repositorio por un descuido.
+const DEFAULT_CONFIG_PATH = path.join(ROOT, "config.json");
+const CONFIG_PATH = path.join(ROOT, "config.local.json");
 const FIXTURES = args.fixtures ? path.resolve(args.fixtures) : null;
 const PUBLIC = Boolean(args.public);
 
@@ -261,11 +265,14 @@ async function loadConfig() {
       return { config: normalizeConfig({ favorites: [], extra: [] }), personal: false };
     }
   }
-  try {
-    return { config: normalizeConfig(JSON.parse(await readFile(CONFIG_PATH, "utf8"))), personal: true };
-  } catch {
-    return { config: normalizeConfig({}), personal: true };
+  for (const file of [CONFIG_PATH, DEFAULT_CONFIG_PATH]) {
+    try {
+      return { config: normalizeConfig(JSON.parse(await readFile(file, "utf8"))), personal: true };
+    } catch {
+      /* no existe o no es válido: se prueba el siguiente */
+    }
   }
+  return { config: normalizeConfig({}), personal: true };
 }
 
 // Estado privado de los avisos (qué favorito cumplía, qué se avisó hoy), cifrado.
@@ -612,11 +619,37 @@ const MIME = {
   ".png": "image/png",
 };
 
-function serve(port) {
+/** Quién puede hablar con el servidor: siempre este ordenador; con --lan, también la red local (IP privada o nombre .local).
+ *  Se mira la cabecera Host (contra páginas de otro sitio que apunten a tu ordenador) y, al escribir, el Origin. */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const hostName = (value) => String(value ?? "").replace(/:\d+$/, "").toLowerCase();
+const isPrivateHost = (name) => /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/.test(name) || name.endsWith(".local");
+export function hostAllowed(host, lan) {
+  const name = hostName(host);
+  return LOCAL_HOSTS.has(name) || (lan && isPrivateHost(name));
+}
+export function originAllowed(origin, host) {
+  if (!origin) return true; // llamadas que no vienen de un navegador (curl, pruebas)
+  try {
+    return new URL(origin).host.toLowerCase() === String(host ?? "").toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function serve(port, lan = false) {
   const web = path.join(ROOT, "web");
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://x");
+      if (!hostAllowed(req.headers.host, lan)) {
+        res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end("Dirección no permitida");
+      }
+      if (req.method !== "GET" && req.method !== "HEAD" && !originAllowed(req.headers.origin, req.headers.host)) {
+        res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end("Origen no permitido");
+      }
       const send = (code, body, type = "application/json; charset=utf-8") => {
         res.writeHead(code, { "Content-Type": type, "Cache-Control": "no-store" });
         res.end(body);
@@ -650,8 +683,13 @@ function serve(port) {
       res.end(String(error?.message ?? error));
     }
   });
-  server.listen(port, "0.0.0.0", () => {
+  server.listen(port, lan ? "0.0.0.0" : "127.0.0.1", () => {
     log(`Centinela en este ordenador: http://localhost:${port}`);
+    if (!lan) {
+      log("Solo se abre desde este ordenador. Para verlo también en el móvil: npm run ordenador:movil");
+      return;
+    }
+    log("Abierto a la red local (--lan): cualquiera en tu Wi-Fi puede ver y cambiar tus reglas. Úsalo solo en una red de confianza.");
     for (const list of Object.values(os.networkInterfaces())) {
       for (const net of list ?? []) {
         if (net.family === "IPv4" && !net.internal) log(`Desde el móvil, con el mismo Wi-Fi: http://${net.address}:${port}`);
@@ -664,7 +702,7 @@ async function main() {
   if (args.serve) {
     const port = Number(args.port ?? 8080);
     const every = Math.max(5, Number(args.every ?? 30));
-    serve(port);
+    serve(port, Boolean(args.lan));
     const tick = async () => {
       if (!FIXTURES && !marketOpenNow() && existsSync(path.join(DATA, "scan.json"))) return;
       try {

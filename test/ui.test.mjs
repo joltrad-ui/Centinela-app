@@ -1,9 +1,10 @@
 // Pruebas de las pantallas con un navegador de verdad (Playwright + Chromium) y los datos de ejemplo.
 // Si no hay Playwright o Chromium en la máquina, se saltan (no rompen `npm test`).
-// Arranca su propio servidor de ejemplo en otro puerto y deja `config.json` como estaba.
+// Arranca su propio servidor de ejemplo en otro puerto y deja `config.json` y `config.local.json` como estaban.
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
+import http from "node:http";
 import { createRequire } from "node:module";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -14,6 +15,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8137;
 const BASE = `http://localhost:${PORT}/`;
 const CONFIG = path.join(ROOT, "config.json");
+const LOCAL = path.join(ROOT, "config.local.json");
 
 function findPlaywright() {
   const require = createRequire(import.meta.url);
@@ -32,11 +34,12 @@ const CHROMIUM = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium"].find((
 const playwright = findPlaywright();
 const skip = !playwright ? "no hay Playwright" : false;
 
-let server, browser, out, configBackup;
+let server, browser, out, configBackup, localBackup;
 
 before(async () => {
   if (skip) return;
   configBackup = readFileSync(CONFIG, "utf8");
+  localBackup = existsSync(LOCAL) ? readFileSync(LOCAL, "utf8") : null;
   out = mkdtempSync(path.join(os.tmpdir(), "centinela-ui-"));
   const run = (args) => execFileSync("node", args, { cwd: ROOT, stdio: "ignore" });
   run(["test/make-fixtures.mjs"]);
@@ -55,6 +58,8 @@ after(async () => {
   await browser?.close();
   server?.kill();
   if (configBackup != null) writeFileSync(CONFIG, configBackup);
+  if (localBackup != null) writeFileSync(LOCAL, localBackup);
+  else if (configBackup != null) rmSync(LOCAL, { force: true }); // lo que la prueba guardó, fuera
   if (out) rmSync(out, { recursive: true, force: true });
 });
 
@@ -279,4 +284,37 @@ test("Buscador: Margen y Las que tengo son barras de tres posiciones", { skip },
   assert.match(await page.locator(".fhead").innerText(), /(\d+|ninguno) activos?/);
   assert.deepEqual(page.errors, []);
   await page.close();
+});
+
+test("privacidad: la app no pide nada fuera de este servidor y las fuentes son propias", { skip }, async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  const outside = [];
+  page.on("request", (r) => {
+    const url = new URL(r.url());
+    if (!["localhost", "127.0.0.1"].includes(url.hostname) && url.protocol.startsWith("http")) outside.push(r.url());
+  });
+  await page.goto(BASE);
+  await page.waitForSelector(".hoy-grid, .stats");
+  for (const tab of ["Buscador", "Avisos", "Reglas", "Hoy"]) await goTab(page, tab);
+  await page.evaluate(() => document.fonts.ready);
+  assert.deepEqual(outside, [], "peticiones a otros sitios");
+  const fonts = await page.evaluate(() => [document.fonts.check('500 16px "IBM Plex Sans"'), document.fonts.check('500 16px "Newsreader"'), [...document.fonts].filter((f) => f.status === "loaded").length]);
+  assert.ok(fonts[0] && fonts[1] && fonts[2] >= 2, `fuentes propias sin cargar: ${fonts}`);
+  await page.close();
+});
+
+test("privacidad: el servidor de ejemplo rechaza otros nombres de host y orígenes", { skip }, async () => {
+  // `fetch` no deja cambiar la cabecera Host: se usa http a mano
+  const call = (headers, method = "GET", body) =>
+    new Promise((resolve, reject) => {
+      const req = http.request({ host: "127.0.0.1", port: PORT, path: "/api/config", method, headers }, (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode));
+      });
+      req.on("error", reject);
+      req.end(body);
+    });
+  assert.equal(await call({ Host: "evil.example.com" }), 403, "otro nombre de host");
+  assert.equal(await call({ Host: `localhost:${PORT}`, Origin: "https://evil.example.com", "Content-Type": "application/json" }, "POST", "{}"), 403, "origen de otra página");
+  assert.equal(await call({ Host: `localhost:${PORT}` }), 200);
 });

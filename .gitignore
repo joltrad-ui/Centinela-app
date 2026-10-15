@@ -4,3 +4,4 @@ site/
 test/fixtures/
 node_modules/
 .DS_Store
+config.local.json
