@@ -33,6 +33,7 @@ function findPlaywright() {
 const CHROMIUM = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium"].find((p) => p && existsSync(p));
 const playwright = findPlaywright();
 const skip = !playwright ? "no hay Playwright" : false;
+if (skip && process.env.PRUEBAS_EXIGENTES) throw new Error("PRUEBAS_EXIGENTES: falta Playwright, las pruebas de pantalla no pueden saltarse");
 
 let server, browser, out, configBackup, localBackup;
 

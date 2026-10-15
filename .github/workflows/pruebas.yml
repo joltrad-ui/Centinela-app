@@ -1,0 +1,34 @@
+name: Pruebas
+
+# Las pruebas del motor y de las pantallas (con datos de ejemplo: no usan secretos ni red).
+# Corren en cada PR y antes de publicar la app (publicar.yml las llama).
+# Repositorio público: nada personal aquí ni en el registro.
+
+on:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRUEBAS_EXIGENTES: "1" # sin Playwright, las pruebas de pantalla fallan en vez de saltarse
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Playwright y Chromium (solo para las pruebas; no es una dependencia del proyecto)
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+
+      - name: Pruebas
+        run: npm test
