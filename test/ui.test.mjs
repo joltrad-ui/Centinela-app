@@ -260,7 +260,7 @@ test("Buscador: Margen y Las que tengo son barras de tres posiciones", { skip },
   const no = await count();
   assert.ok(yes > 0 && no > 0, `con margen ${yes}, sin margen ${no}`);
   assert.equal(yes + no, all, "con margen + sin margen debe dar el total");
-  assert.equal(await page.locator('[data-bs="margin"][aria-pressed="true"]').innerText(), "Sin margen");
+  assert.equal(await page.locator('[data-bs="margin"][aria-pressed="true"]').innerText(), "Sin");
   await pick("margin", "all");
   assert.equal(await count(), all);
   // Las que tengo: marcar una acción a mano, y Solo / Ocultar
