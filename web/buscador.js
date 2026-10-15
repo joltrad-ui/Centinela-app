@@ -177,7 +177,7 @@ export function createBuscador(ctx) {
     blockOpts[0].on = false;
     const hideOpts = [opt("earn", "", "Resultados", bs.earn), opt("trend", "", "Tendencia", bs.trend), opt("hide", "", "Fuera de Reglas", bs.hide)];
     const rest = `${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
-        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con margen"], ["no", "Sin margen"]], bs.margin)}
+        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
         ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
         ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
         ${fold("hide", "Ocultar", hideOpts)}`;
