@@ -4,6 +4,7 @@ import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, deal
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious, hostAllowed, originAllowed } from "../scanner/scan.mjs";
+import { parseBackup } from "../web/copia.js";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -969,4 +970,33 @@ test("escribir en el servidor del ordenador solo desde su propia página", () =>
   assert.equal(originAllowed("https://evil.example.com", "localhost:8080"), false);
   assert.equal(originAllowed("http://localhost:9999", "localhost:8080"), false);
   assert.equal(originAllowed("no es una url", "localhost:8080"), false);
+});
+
+test("copia de seguridad: solo entran las claves permitidas y nunca la llave de GitHub", () => {
+  const text = JSON.stringify({
+    centinela: 1,
+    guardado: "2026-10-15T20:00:00.000Z",
+    datos: {
+      "centinela.misdeals.v1": [{ id: "a" }, { id: "b", closedAt: 5 }],
+      "centinela.tengo.v1": ["DIA", "SPY"],
+      "centinela.buscador.guardados.v1": [{ n: "Estricta", f: {} }],
+      "centinela.github.v1": { owner: "x", repo: "y", token: "ghp_secreto" }, // no se admite
+      "centinela.puente": "https://puente.example", // no se admite
+      "otra.cosa": 1,
+    },
+  });
+  const r = parseBackup(text);
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.entries.map(([k]) => k).sort(), ["centinela.buscador.guardados.v1", "centinela.misdeals.v1", "centinela.tengo.v1"]);
+  assert.match(r.summary, /1 deals abiertos y 1 cerrados/);
+  assert.match(r.summary, /2 acciones marcadas/);
+  assert.match(r.summary, /1 combinaciones de filtros/);
+  assert.equal(r.at, "2026-10-15");
+  assert.doesNotMatch(JSON.stringify(r), /ghp_secreto/);
+});
+
+test("copia de seguridad: textos que no son una copia se rechazan", () => {
+  for (const text of ["", "hola", "[]", "null", "{}", JSON.stringify({ centinela: 2, datos: {} }), JSON.stringify({ centinela: 1, datos: [] }), JSON.stringify({ centinela: 1, datos: { "otra.cosa": 1 } })]) {
+    assert.ok(parseBackup(text).error, `debería rechazar: ${text}`);
+  }
 });

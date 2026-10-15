@@ -494,3 +494,13 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fhead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; margin: 0 0 6px; }
 .fhead-b { background: none; border: 0; padding: 6px 0; font: inherit; color: var(--brass); cursor: pointer; }
 @media (max-width: 340px) { .stats { gap: 0 4px; } .stat { gap: 3px; } .stat .xs { font-size: 0.6875rem; } .stat b { font-size: 0.75rem; } }
+
+/* Etiqueta con explicación: subrayado de puntos; la frase abierta va debajo de la fila */
+.fi-help { text-align: left; padding: 0; height: var(--h-sm); border-bottom: 1px dotted var(--muted); border-radius: 0; }
+.fi-help[aria-expanded="true"] { color: var(--fg); }
+/* Combinaciones de filtros guardadas */
+.bs-preset { display: inline-flex; }
+.bs-preset > .chip:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.bs-preset-x { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 9px; border-left: 0; }
+.bs-save { display: flex; gap: 6px; flex: 1 1 100%; min-width: 0; }
+.bs-save input { flex: 1; min-width: 0; height: var(--h-sm); padding: 0 10px; border: 0; border-radius: 10px; background: var(--surface-2); color: var(--fg); font: inherit; font-size: 0.8125rem; }

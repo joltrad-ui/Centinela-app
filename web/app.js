@@ -18,6 +18,7 @@ import { createReglas } from "./reglas.js";
 import { fmtOf } from "./filtros.js";
 import { createAvisos } from "./avisos.js";
 import { createConexion } from "./conexion.js";
+import { createCopia } from "./copia.js";
 
 const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
@@ -774,7 +775,8 @@ const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, write
 const buscador = createBuscador({ state, root, listSymbols, allSymbols: allListSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig });
 const reload = () => void load().then(loadHist, loadHist);
 const conexion = createConexion({ state, root, esc, readLocal, writeLocal, render, ghReady, reload, sectionHead, LS_COPIED, LS_BRIDGE, LS_GH });
-const reglas = createReglas({ state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, DEFAULT_CONFIG });
+const copia = createCopia({ state, root, esc, readLocal, writeLocal, render, sectionHead, notice });
+const reglas = createReglas({ state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG });
 const avisos = createAvisos({ state, esc, when, sectionHead, changeConfig, foot, syncLine, isPublic });
 
 function dock() {
@@ -796,6 +798,20 @@ function render() {
   // Al pulsar dentro de la ficha (otro bull put, otro orden) se queda donde estaba.
   const after = root.querySelector(".sheet");
   if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
+  if (state.tab === "hoy") scheduleWarm();
+}
+
+// Con Hoy en pantalla, en un rato libre se calculan los deals del Buscador: al abrirlo ya están (la caché es por barrido, reglas, precio y acciones).
+let warmPending = false;
+function scheduleWarm() {
+  if (warmPending || !state.scan?.symbols?.length) return;
+  warmPending = true;
+  const run = () => {
+    warmPending = false;
+    if (state.tab === "hoy") buscador.warm();
+  };
+  if ("requestIdleCallback" in window) window.requestIdleCallback(run, { timeout: 4000 });
+  else setTimeout(run, 2000);
 }
 
 // ---------- eventos ----------
@@ -838,7 +854,7 @@ root.addEventListener("click", (event) => {
     hoy.click(el);
     return;
   }
-  if (reglas.click(el) || avisos.click(el) || conexion.click(el)) return;
+  if (reglas.click(el) || avisos.click(el) || copia.click(el) || conexion.click(el)) return;
   if (el.dataset.tab) {
     state.tab = el.dataset.tab;
     writeLocal(LS_TAB, state.tab);
@@ -861,7 +877,9 @@ root.addEventListener("submit", (event) => {
   const form = event.target;
   if (form.matches("[data-hoy-form]")) {
     hoy.submit(form);
-  } else conexion.submit(form);
+  } else if (form.matches("[data-bs-form]")) {
+    if (buscador.submit(form)) render();
+  } else if (!copia.submit(form)) conexion.submit(form);
 });
 
 window.addEventListener("keydown", (event) => {

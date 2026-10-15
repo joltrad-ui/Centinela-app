@@ -3,7 +3,7 @@
 import { PROB_OFF } from "./engine.js";
 
 export function createReglas(ctx) {
-  const { state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, DEFAULT_CONFIG } = ctx;
+  const { state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG } = ctx;
 
   function stepper(path, label, hint, min, max, step, format) {
     const value = path.split(".").reduce((obj, key) => obj[key], state.config);
@@ -128,7 +128,8 @@ export function createReglas(ctx) {
         </div>
       </section>
 
-      ${conexion.block()}
+      ${copia.view()}
+    ${conexion.block()}
       ${conexion.bridge()}
 
       <button class="btn quiet" style="margin-top:16px" data-act="reset">Volver al bull put de mesa</button>

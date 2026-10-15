@@ -5,11 +5,11 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import http from "node:http";
-import { createRequire } from "node:module";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CHROMIUM, findPlaywright } from "../scripts/playwright.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8137;
@@ -17,20 +17,6 @@ const BASE = `http://localhost:${PORT}/`;
 const CONFIG = path.join(ROOT, "config.json");
 const LOCAL = path.join(ROOT, "config.local.json");
 
-function findPlaywright() {
-  const require = createRequire(import.meta.url);
-  const roots = [undefined];
-  try {
-    roots.push(execFileSync("npm", ["root", "-g"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim());
-  } catch {}
-  for (const root of roots) {
-    try {
-      return require(root ? path.join(root, "playwright") : "playwright");
-    } catch {}
-  }
-  return null;
-}
-const CHROMIUM = [process.env.CHROMIUM_PATH, "/opt/pw-browsers/chromium"].find((p) => p && existsSync(p));
 const playwright = findPlaywright();
 const skip = !playwright ? "no hay Playwright" : false;
 if (skip && process.env.PRUEBAS_EXIGENTES) throw new Error("PRUEBAS_EXIGENTES: falta Playwright, las pruebas de pantalla no pueden saltarse");
@@ -343,4 +329,75 @@ test("Buscador sin resultados: dice qué filtro quitar y cuántos saldrían", { 
   assert.equal(await page.locator('#bs-list [data-bs="reset"]').count(), 1);
   assert.deepEqual(page.errors, []);
   await page.close();
+});
+
+test("Buscador: ayuda en las etiquetas y combinaciones de filtros guardadas", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  // ayuda: tocar la etiqueta abre una frase debajo
+  await page.locator('[data-bs="help"][data-v="lv"]').click();
+  assert.match(await page.locator(".fi-f-note").first().innerText(), /Nivel 0: la rentab\. esperada no es positiva/);
+  await page.locator('[data-bs="filters-open"]').click();
+  await page.locator('[data-bs="help"][data-v="margin"]').click();
+  assert.match(await page.locator("#app").innerText(), /supera el error del cálculo/);
+  await page.locator('[data-bs="help"][data-v="margin"]').click();
+  assert.doesNotMatch(await page.locator("#app").innerText(), /su beneficio esperado es menor que la incertidumbre/);
+  // guardar una combinación: Con margen, nivel 5
+  await page.locator('[data-bs="margin"][data-v="yes"]').click();
+  await page.locator('[data-bs="lv"][data-v="3"]').click();
+  await page.locator('[data-bs="lv"][data-v="4"]').click();
+  await page.locator('.fi-f-lb[data-v="preset"]').click();
+  await page.fill('.bs-save input[name="n"]', "Estricta");
+  await page.locator('.bs-save button[type="submit"]').click();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-bs="preset"]').count(), 1);
+  // cambiar los filtros y volver a la combinación
+  await page.locator('[data-bs="margin"][data-v="all"]').click();
+  await page.locator('[data-bs="lv"][data-v="3"]').click();
+  assert.equal(await page.locator('[data-bs="preset"][aria-pressed="true"]').count(), 0);
+  await page.locator('[data-bs="preset"]').click();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-bs="margin"][aria-pressed="true"]').innerText(), "Con");
+  assert.equal(await page.locator('[data-bs="lv"][aria-pressed="true"]').allInnerTexts().then((t) => t.join("")), "5");
+  assert.equal(await page.locator('[data-bs="preset"][aria-pressed="true"]').count(), 1);
+  // se recuerda al recargar, y se borra con la ×
+  await page.reload();
+  await page.waitForSelector("#bs-bar");
+  if (!(await page.locator('.fi-f-lb[data-v="preset"]').count())) await page.locator('[data-bs="filters-open"]').click(); // "Más filtros" se recuerda abierto
+  if (!(await page.locator('.fi-f-lb[data-v="preset"][aria-expanded="true"]').count())) await page.locator('.fi-f-lb[data-v="preset"]').click();
+  assert.equal(await page.locator('[data-bs="preset"]').count(), 1, "la combinación debe sobrevivir a recargar");
+  await page.locator('[data-bs="preset-del"]').click();
+  assert.equal(await page.locator('[data-bs="preset"]').count(), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("Reglas: copiar mis datos y restaurarlos desde la copia", { skip }, async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
+  await context.addInitScript(() => {
+    if (!localStorage.getItem("centinela.tengo.v1") && !sessionStorage.getItem("copiaProbada")) localStorage.setItem("centinela.tengo.v1", JSON.stringify(["DIA", "SPY"]));
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE);
+  await page.waitForSelector(".hoy-grid, .stats");
+  await goTab(page, "Reglas");
+  await page.locator('[data-act="copia-copiar"]').click();
+  const text = await page.locator("#copia").inputValue();
+  assert.equal(JSON.parse(text).centinela, 1);
+  assert.deepEqual(JSON.parse(text).datos["centinela.tengo.v1"], ["DIA", "SPY"]);
+  assert.doesNotMatch(text, /token|github/i, "la copia no debe llevar la llave de GitHub");
+  // se pierde y se recupera
+  await page.evaluate(() => localStorage.setItem("centinela.tengo.v1", "[]"));
+  await page.fill("#restaurar", "esto no es una copia");
+  await page.locator('form[data-copia] button[type="submit"]').click();
+  assert.match(await page.locator("#copia-seccion .notice.bad").innerText(), /no es una copia/);
+  await page.fill("#restaurar", text);
+  await page.locator('form[data-copia] button[type="submit"]').click();
+  assert.match(await page.locator("#copia-seccion .notice.watch").innerText(), /2 acciones marcadas/);
+  await Promise.all([page.waitForNavigation(), page.locator('[data-act="copia-ok"]').click()]);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem("centinela.tengo.v1"))), ["DIA", "SPY"]);
+  assert.deepEqual(errors, []);
+  await context.close();
 });

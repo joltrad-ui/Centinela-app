@@ -31,6 +31,7 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 - En modo `--public` solo se barre la lista base (33 nombres), nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista es pública: antes de añadir o quitar nombres a petición del dueño, avisarle de que el cambio se ve en el repositorio y de que una lista recortada a lo que opera lo delata.
 - Qué nombres quita o deja el dueño (`off`) vive solo en `localStorage` y en `CENTINELA_CONFIG`; nunca en el repositorio ni en `data/`. El barrido público sigue leyendo los 33.
 - "Mis deals", las acciones marcadas "las que tengo" y los bloques que el dueño marca como ya abiertos viven solo en `localStorage`. No se suben, no entran en `CENTINELA_CONFIG` y no se escriben en ningún archivo. La app no envía órdenes ni sabe qué bróker usa.
+- La copia de seguridad ("Tus datos" en Reglas) es un texto que el dueño guarda donde quiera: no se sube a ningún sitio y nunca incluye la llave de GitHub ni el puente (`copia.js`, con prueba).
 - Lo que cambia el dueño en el modo ordenador va a `config.local.json` (git lo ignora); `config.json` es solo de fábrica y no debe llegar con datos del dueño.
 - La app no debe pedir nada a otros sitios al abrirla: las fuentes son propias (`web/fonts/`) y una prueba de pantalla lo vigila. El servidor del ordenador solo escucha en `127.0.0.1` salvo con `--lan`, y rechaza otros `Host` y otros `Origin` (`docs/operacion.md` §6).
 - Las pruebas y los flujos de pruebas no usan secretos ni red.
@@ -41,16 +42,17 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 ```
 bash scripts/entrega.sh "mensaje"   # comprueba, prueba lo que toca, commit y sube (usa CLAUDE_SESSION_URL para el trailer)
 npm test                            # motor + pantallas; npm run test:motor, solo el motor (1 s)
-npm run ejemplo                     # app con datos de ejemplo en http://localhost:8080
+npm run ejemplo                     # app con datos de ejemplo en http://localhost:8080 (bash scripts/ejemplo-fondo.sh: solo si no corre ya)
+node scripts/ver.mjs --pestana Buscador --medir '.fi-f'   # mirar la app como un móvil, sin escribir un script nuevo
 ```
 
 Probar con la muestra y las pruebas, no con barridos reales. Agrupar los cambios en un solo envío. Antes de subir a producción: `TESTS=todo bash scripts/entrega.sh …`, PR a `main`, fusión con rebase y comprobar que "Publicar" termina en `success` (`docs/operacion.md` §2).
 
 ## Mapa de archivos
 
-- `web/`: la app, sin framework. `app.js` (arranque y eventos), `hoy.js` + `hoy-vistas.js` + `hoy-calc.js` (Hoy y la ficha), `buscador.js`, `reglas.js`, `avisos.js`, `conexion.js`, `filtros.js` y `ui.js` (piezas comunes), `engine.js` (motor puro, compartido con el barrido; las estrategias se registran en `STRATEGIES`, hoy solo `bullPut`), `sw.js` (offline), `app.css`, `fonts/`. Al añadir un archivo: ponerlo en `SHELL` de `sw.js` y subir `CACHE`.
+- `web/`: la app, sin framework. `app.js` (arranque y eventos), `hoy.js` + `hoy-vistas.js` + `hoy-calc.js` (Hoy y la ficha), `buscador.js`, `reglas.js`, `avisos.js`, `conexion.js`, `copia.js` (copia de seguridad), `filtros.js` y `ui.js` (piezas comunes), `engine.js` (motor puro, compartido con el barrido; las estrategias se registran en `STRATEGIES`, hoy solo `bullPut`), `sw.js` (offline), `app.css`, `fonts/`. Al añadir un archivo: ponerlo en `SHELL` de `sw.js` y subir `CACHE`.
 - `scanner/`: `scan.mjs` (barrido, avisos por ntfy y servidor local), `cierres.mjs` (histórico de 5 años), `universe.json` (la lista base).
-- `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml`, `cierres.yml`. `scripts/`: `rama.sh` (publica en `gh-pages`) y `entrega.sh`.
+- `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml`, `cierres.yml`. `scripts/`: `rama.sh` (publica en `gh-pages`), `entrega.sh`, `ver.mjs`, `ejemplo-fondo.sh` y `playwright.mjs`.
 - `config.json` (reglas de fábrica) y `config.local.json` (el dueño, ignorado por git). `test/`: `engine.test.mjs` y `ui.test.mjs`. `docs/`: el detalle.
 
 ## Estado

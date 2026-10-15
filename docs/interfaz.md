@@ -21,6 +21,7 @@ Ninguno pasa de ~900 líneas. Los que tienen pantalla se crean con `createX(ctx)
 | `app.js` | arranque, carga, guardado, cabecera, eventos y la tabla `RANGES` de las barras |
 | `reglas.js`, `avisos.js` | pestañas Reglas y Avisos |
 | `conexion.js` | secreto, puente y GitHub, con sus botones y formularios |
+| `copia.js` | "Tus datos" en Reglas: copia de seguridad como texto y restaurar (`createCopia`, `parseBackup`) |
 | `hoy.js` | estado de Hoy, ficha, Mis deals y eventos (`createHoy`: `view`, `sheet`, `click`, `submit`, `escape`, `setProb`, `setWidth`, `setFl`, `openName`, `dealRow`, `sortDeals`, `stats`) |
 | `hoy-vistas.js` | controles de Hoy, mapa, nube y barras |
 | `hoy-calc.js` | constantes, formatos y cuentas puras de la ficha y las listas |
@@ -41,6 +42,7 @@ Todo lo personal vive aquí y nunca en el repositorio ni en `data/` (ver Privaci
 | `centinela.hoy.v1` | vista, prob. objetivo, ancho (en puntos), precio visible o medio, bloques que ya tiene, vencimiento de nube y barras, orden de las barras, bloques abiertos de la ficha (`folds`), `fOpen` |
 | `centinela.misdeals.v1` | deals apuntados |
 | `centinela.buscador.v1` | filtros del Buscador (`lv, days, blocks, w, pr, hide, earn, trend, margin, one, tengo, ord, fOpen`). `margin` antes era un booleano: `true` se lee como `"yes"` |
+| `centinela.buscador.guardados.v1` | combinaciones de filtros con nombre (hasta 8) |
 | `centinela.tengo.v1` | acciones marcadas a mano como "la tengo" |
 | `centinela.pestana.v1` | última pestaña |
 | `centinela.avisos.vistos`, `centinela.secreto.copiado` | marcas de lectura y de copia |
@@ -76,7 +78,7 @@ La pantalla de todas las acciones, con el esquema de la ficha. De arriba abajo:
 
 1. **Caja de búsqueda** (símbolo, nombre o bloque). Al escribir solo se repinta la lista (`setQuery`).
 2. **Panel plegable "Acciones"** (chips por bloque). Tocar quita o pone una acción: el mismo `config.off` de siempre, que la oculta en toda la app. Con "Marcar las que tengo", tocar marca "la tengo" (`centinela.tengo.v1`, solo en el dispositivo).
-3. **Filtros:** Nivel 0–5, Vence hasta, Ancho hasta, Prob. hasta; y en "Más filtros": Bloque (plegable), **Margen** (Todos / Con / Sin), **Las que tengo** (Todas / Ocultar / Solo), **Precio** (Bid/Ask / Mid, el mismo de Hoy), **Ocultar** (plegable: Resultados, Tendencia, Fuera de Reglas), "Quitar filtros".
+3. **Filtros:** Nivel 0–5, Vence hasta, Ancho hasta, Prob. hasta; y en "Más filtros": **Guardados** (plegable: combinaciones con nombre; tocar una la aplica, la × la borra, y un campo "Nombre" + "Guardar estos filtros" guarda la de ahora; se marca la que coincide con los filtros actuales), Bloque (plegable), **Margen** (Todos / Con / Sin), **Las que tengo** (Todas / Ocultar / Solo), **Precio** (Bid/Ask / Mid, el mismo de Hoy), **Ocultar** (plegable: Resultados, Tendencia, Fuera de Reglas), "Quitar filtros".
 4. **Recuentos de nivel** (`stats`) y una línea con la cuenta de nombres y deals a la izquierda y "Uno por nombre" a la derecha.
 5. **Barra de orden:** Nivel, Beneficio, Prob., Suelo, Por día. Beneficio = lo que queda de lo cobrado en %; Suelo = el `floor` del deal (en % de lo que se arriesga); Por día = rentab. esperada ÷ días hasta el vencimiento.
 6. **Lista de deals:** la misma fila que la ficha más el símbolo (`dealRow` y `sortDeals` de `hoy-calc.js` / `hoy.js`). Tocar una fila abre la ficha en ese deal (`data-hoy="cell"`).
@@ -84,7 +86,9 @@ La pantalla de todas las acciones, con el esquema de la ficha. De arriba abajo:
 - **"Las que tengo"** = las acciones con un deal abierto en Mis deals + las marcadas a mano.
 - **Cuando no sale nada:** `emptyBox` con los tres filtros que más devolverían al quitarlos ("Quitar Ancho hasta $100 · saldrían 18"; `criteria`, `blockers`, acción `drop`) y "Quitar todos los filtros".
 - **Datos:** `qualityDeals` (motor) con tope de prob. de 30 %, calculados una vez por barrido, reglas, precio y acciones (caché), puntuados con el mismo nivel 0–5 que Hoy. Valores de fábrica: niveles 3, 4 y 5, uno por nombre.
-- Los filtros viven en `centinela.buscador.v1`.
+- Los filtros viven en `centinela.buscador.v1`; `cleanFilters` los sanea y es el mismo saneado que usan las combinaciones guardadas.
+- **Ayuda en las etiquetas:** Nivel, Margen y Las que tengo llevan un subrayado de puntos; tocar la etiqueta abre una frase de explicación debajo (`HELP` en `buscador.js`, `help` de `filterRow` en `filtros.js`, solo en memoria). Los textos usan el vocabulario de `docs/calculo.md`.
+- **Precálculo:** con Hoy en pantalla, en un rato libre (`requestIdleCallback`) `app.js` llama a `buscador.warm()`, que calcula los deals; al abrir el Buscador ya están (la caché es por barrido, reglas, precio y acciones).
 
 ## 7. Hoy (`hoy.js`, `hoy-vistas.js`)
 
@@ -97,6 +101,12 @@ La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × venci
 - **Tocar una fecha** (cabecera de columna o chips "Vencimiento": Todas y cada fecha) **no** lleva a la nube: enfoca la matriz en ese vencimiento (`hoy.mapExp`, acción `mexp`, solo en memoria): una sola columna, ordenada por ese día, con el deal de cada casilla al lado (corto/largo, cobras neto y % abajo; `hoy-detail`), y el contador cuenta solo esa fecha. "Todas" vuelve a la matriz completa. La nube y las barras abren en la fecha enfocada.
 - **Avisos generales** de Mapa, Nube y Barras ("A precio medio: es una hipótesis", la línea "Plazo · comisión · horquilla máxima") van al final de la pantalla, antes de "Cómo se puntúa" (`notes`), para no empujar lo importante. Precios con el mercado cerrado: aviso ámbar.
 - **Barras:** encima de la lista, tras una línea fina, una sola cabecera: a la izquierda cuántos deals hay y a la derecha el orden ("Por lo que queda" / "Por el suelo"), que cambia al tocarlo. La leyenda de los símbolos va al final, antes de los avisos. Detalle del cálculo en `docs/calculo.md` §6.
+
+## 7b. Reglas: "Tus datos" (`copia.js`)
+
+- "Copiar mis datos" saca un texto JSON (`{centinela: 1, guardado, datos}`) con las claves de `KEYS`: reglas, Hoy, Mis deals, Buscador, combinaciones guardadas, las que tengo y la pestaña. Se queda a la vista en un campo para copiarlo a mano si el portapapeles falla.
+- "Restaurar": se pega la copia y "Revisar" enseña qué trae ("2 deals abiertos y 1 cerrado, 3 acciones marcadas…"); "Sí, restaurar" reemplaza lo del dispositivo y recarga la app. Solo se aceptan las claves de `KEYS` (`parseBackup`, con prueba).
+- **Nunca** entran en la copia la llave de GitHub (`centinela.github.v1`), el puente, los barridos guardados ni las marcas de lectura. No se sube a ningún sitio.
 
 ## 8. La ficha (`sheet` de `hoy.js`)
 

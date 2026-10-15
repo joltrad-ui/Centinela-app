@@ -8,6 +8,7 @@ import { qualityDeals, nyToday } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
+const LS_PRESETS = "centinela.buscador.guardados.v1";
 const LS_HOY = "centinela.hoy.v1";
 const LS_MISDEALS = "centinela.misdeals.v1";
 const W_MIN = W.min;
@@ -29,31 +30,49 @@ const norm = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "
 export function createBuscador(ctx) {
   const { state, root, listSymbols, allSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig } = ctx;
 
+  /** Los filtros que se guardan y se comparten con las combinaciones guardadas, saneados. */
+  const cleanFilters = (f = {}) => ({
+    lv: Array.isArray(f.lv) ? f.lv.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [...DEFAULT_LV],
+    days: Number.isInteger(f.days) && f.days > 0 ? f.days : null, // vence en N días o menos; null = todos
+    blocks: Array.isArray(f.blocks) ? f.blocks.filter((b) => typeof b === "string").slice(0, 40) : [],
+    w: Number.isInteger(f.w) && f.w >= W_MIN && f.w < W_MAX && f.w % W_STEP === 0 ? f.w : null,
+    pr: Number.isInteger(f.pr) && f.pr >= PR_MIN && f.pr < PR_MAX ? f.pr : null,
+    hide: f.hide === true, // ocultar los que están fuera de Reglas
+    earn: f.earn === true, // ocultar los que tienen resultados dentro del plazo
+    trend: f.trend === true, // ocultar los que llevan aviso de tendencia
+    margin: f.margin === true || f.margin === "yes" ? "yes" : f.margin === "no" ? "no" : "all", // punto de seguridad: todos, solo con margen o solo sin margen (antes era un booleano)
+    tengo: f.tengo === "hide" || f.tengo === "only" ? f.tengo : "all",
+  });
+  const FILTER_KEYS = ["lv", "days", "blocks", "w", "pr", "hide", "earn", "trend", "margin", "tengo"];
+
   const saved = readLocal(LS) ?? {};
   const bs = {
     q: "",
-    lv: Array.isArray(saved.lv) ? saved.lv.filter((l) => Number.isInteger(l) && l >= 0 && l <= 5) : [...DEFAULT_LV],
-    days: Number.isInteger(saved.days) && saved.days > 0 ? saved.days : null, // vence en N días o menos; null = todos
-    blocks: Array.isArray(saved.blocks) ? saved.blocks.filter((b) => typeof b === "string").slice(0, 40) : [],
-    w: Number.isInteger(saved.w) && saved.w >= W_MIN && saved.w < W_MAX && saved.w % W_STEP === 0 ? saved.w : null,
-    pr: Number.isInteger(saved.pr) && saved.pr >= PR_MIN && saved.pr < PR_MAX ? saved.pr : null,
-    hide: saved.hide === true, // ocultar los que están fuera de Reglas
-    earn: saved.earn === true, // ocultar los que tienen resultados dentro del plazo
-    trend: saved.trend === true, // ocultar los que llevan aviso de tendencia
-    margin: saved.margin === true || saved.margin === "yes" ? "yes" : saved.margin === "no" ? "no" : "all", // punto de seguridad: todos, solo con margen o solo sin margen
+    ...cleanFilters(saved),
     one: saved.one !== false, // uno por nombre
     tengo: saved.tengo === "hide" || saved.tengo === "only" ? saved.tengo : "all",
     ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
     shown: SHOW,
     namesOpen: false,
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
-    open: "", // la fila de filtros desplegada (blk, solo, hide), como "Ya tengo" de Hoy
+    open: "", // la fila de filtros desplegada (blk, hide, guardados), como "Ya tengo" de Hoy
+    help: "", // la etiqueta con su explicación abierta (lv, margin, tengo); solo en memoria
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
   const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, fOpen: bs.fOpen });
 
   let tengoList = (Array.isArray(readLocal(LS_TENGO)) ? readLocal(LS_TENGO) : []).filter((s) => typeof s === "string").slice(0, 200);
   const keepTengo = () => writeLocal(LS_TENGO, tengoList);
+
+  // Combinaciones de filtros con nombre (solo en este dispositivo, como todo lo del dueño).
+  const MAX_PRESETS = 8;
+  let presets = (Array.isArray(readLocal(LS_PRESETS)) ? readLocal(LS_PRESETS) : [])
+    .filter((p) => p && typeof p.n === "string" && p.n.trim())
+    .slice(0, MAX_PRESETS)
+    .map((p) => ({ n: p.n.trim().slice(0, 20), f: cleanFilters(p.f) }));
+  const keepPresets = () => writeLocal(LS_PRESETS, presets);
+  const snapshot = () => Object.fromEntries(FILTER_KEYS.map((k) => [k, structuredClone(bs[k])]));
+  const sameFilters = (f) => JSON.stringify(cleanFilters(f)) === JSON.stringify(cleanFilters(snapshot()));
 
   // ---------- datos: se calculan una vez por barrido, reglas, precio y acciones ----------
   let cache = { key: "", out: null };
@@ -132,6 +151,13 @@ export function createBuscador(ctx) {
   const chip = (act, value, label, on, extra = "") => `<button class="chip quiet" data-bs="${act}" data-v="${esc(value)}" aria-pressed="${on}"${extra}>${label}</button>`;
   const bar = (act, options, current, label) => `<div class="sortbar eq" role="group" aria-label="${label}">${options.map(([id, text]) => `<button data-bs="${act}" data-v="${id}" aria-pressed="${current === id}">${text}</button>`).join("")}</div>`;
 
+  const HELP = {
+    lv: "Nivel 0: la rentab. esperada no es positiva. Si lo es, parte de 1 y suma un punto por cada comprobación: margen (lo que queda supera el error del cálculo), costes razonables (ida y vuelta hasta el 40 % de lo cobrado) y bloque nuevo (no tienes ya uno abierto de ese bloque). El 5 exige además el doble de margen.",
+    margin: "Con margen: lo que queda tras restar lo que se espera pagar supera el error del cálculo (1 vez de fábrica; se cambia en Reglas, pestaña Hoy). Sin margen: no lo supera. Puede salir bien igualmente, pero su beneficio esperado es menor que la incertidumbre de la cuenta.",
+    tengo: "Las que tengo: acciones con un deal abierto en Mis deals, más las que marques a mano en Acciones, Marcar las que tengo. Ocultar las quita de la lista; Solo deja únicamente esas. Se guardan solo en este dispositivo.",
+  };
+  const help = (id) => ({ attr: `data-bs="help" data-v="${id}"`, open: bs.help === id, text: HELP[id] });
+
   function namesPanel(d0) {
     const all = allSymbols();
     const off = state.config.off ?? [];
@@ -191,14 +217,18 @@ export function createBuscador(ctx) {
     blockOpts.none = "todos";
     blockOpts[0].on = false;
     const hideOpts = [opt("earn", "", "Resultados", bs.earn), opt("trend", "", "Tendencia", bs.trend), opt("hide", "", "Fuera de Reglas", bs.hide)];
-    const rest = `${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
-        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
-        ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
+    const presetOpts = presets.map((p, i) => ({ label: esc(p.n), on: sameFilters(p.f), html: `<span class="bs-preset">${chip("preset", i, esc(p.n), sameFilters(p.f))}<button class="chip quiet bs-preset-x" data-bs="preset-del" data-v="${i}" aria-label="Borrar ${esc(p.n)}">×</button></span>` }));
+    if (presets.length < MAX_PRESETS) presetOpts.push({ label: "", on: false, html: `<form class="bs-save" data-bs-form="preset"><input name="n" maxlength="20" placeholder="Nombre" aria-label="Nombre de la combinación" autocomplete="off"><button class="chip quiet" type="submit">Guardar estos filtros</button></form>` });
+    const presetRow = fold("preset", "Guardados", presetOpts);
+    const rest = `${presetRow}
+        ${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
+        ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin, help("margin"))}
+        ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo, help("tengo"))}
         ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
         ${fold("hide", "Ocultar", hideOpts)}`;
     const head = moreHead('data-bs="filters-open"', bs.fOpen, n);
     return `<div class="fi-filters">
-        ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
+        ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv, help: help("lv") }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
         ${head}
         ${bs.fOpen ? rest : ""}
         ${bs.fOpen && n ? `<div class="bs-more"><button class="btn quiet" data-bs="reset">Quitar filtros</button></div>` : ""}
@@ -319,6 +349,14 @@ export function createBuscador(ctx) {
       keep();
     }
     else if (act === "open") bs.open = bs.open === value ? "" : value;
+    else if (act === "help") bs.help = bs.help === value ? "" : value;
+    else if (act === "preset") {
+      const p = presets[Number(value)];
+      if (p) Object.assign(bs, cleanFilters(p.f));
+    } else if (act === "preset-del") {
+      presets = presets.filter((_, i) => i !== Number(value));
+      keepPresets();
+    }
     else if (act === "tengo") bs.tengo = ["all", "hide", "only"].includes(value) ? value : "all";
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
@@ -334,12 +372,30 @@ export function createBuscador(ctx) {
     } else if (act === "reset") {
       Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", tengo: "all" });
     } else touched = false;
-    if (touched && act !== "names" && act !== "open" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
+    if (touched && act !== "names" && act !== "open" && act !== "help" && act !== "preset-del" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;
       keep();
     }
     return touched;
   }
 
-  return { view, click, setQuery, setRange };
+  /** Guardar la combinación de filtros de ahora con un nombre. Devuelve true si hay que repintar. */
+  function submit(form) {
+    if (!form.matches("[data-bs-form]")) return false;
+    const name = String(new FormData(form).get("n") ?? "").trim().slice(0, 20);
+    if (!name || presets.length >= MAX_PRESETS) return true;
+    const entry = { n: name, f: snapshot() };
+    const at = presets.findIndex((p) => p.n.toLowerCase() === name.toLowerCase());
+    if (at >= 0) presets[at] = entry;
+    else presets.push(entry);
+    keepPresets();
+    return true;
+  }
+
+  /** Calcula los deals de antemano (en un rato libre), para que al abrir el Buscador por primera vez ya estén. */
+  function warm() {
+    if (state.scan?.symbols?.length) data();
+  }
+
+  return { view, click, submit, setQuery, setRange, warm };
 }
