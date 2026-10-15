@@ -13,6 +13,8 @@ npm run ejemplo                  # app con cadenas inventadas en http://localhos
 node scanner/scan.mjs --limit 20 # barrido real de 20 nombres, escribe en out/data
 node scanner/scan.mjs --serve    # barrido real completo + app en http://localhost:8080
 npm run ordenador:movil          # igual, abierto a la red local (para el móvil)
+bash scripts/ejemplo-fondo.sh    # deja la app de ejemplo corriendo (solo si no lo está) y espera a que responda
+node scripts/ver.mjs …           # mirar la app como un móvil: errores, desbordes, medidas y textos
 ```
 
 El barrido real necesita salida a internet hacia `cdn.cboe.com`, `cdn-api.cboe.com`, `stockanalysis.com`, `raw.githubusercontent.com` y, para los avisos, `ntfy.sh`.
@@ -25,6 +27,7 @@ El barrido real necesita salida a internet hacia `cdn.cboe.com`, `cdn-api.cboe.c
 - **Pantallas** (`test/ui.test.mjs`, ~50 s): abren la app con datos de ejemplo en 360 y 390 px (desbordes, errores de consola, orden de filtros, plegables, vacíos, recuentos en una línea, alturas, Reglas y Avisos, pestaña recordada y aviso sin conexión, barras de Hoy y del Buscador, privacidad: ninguna petición a otro sitio y fuentes propias; servidor: rechaza otros `Host` y `Origin`). Arrancan su propio servidor en otro puerto y dejan `config.json` y `config.local.json` como estaban.
 - **GitHub:** `pruebas.yml` corre `npm test` (Playwright y Chromium instalados al vuelo; `PRUEBAS_EXIGENTES=1` para que no se salte ninguna) en cada PR, y `publicar.yml` la llama antes de publicar: si fallan, no se publica. Para publicar sin pruebas en una emergencia: ejecutar "Publicar" a mano con `sin_pruebas`. Las pruebas no usan secretos ni red.
 - **Entregar un cambio:** `bash scripts/entrega.sh "mensaje"` (con `CLAUDE_SESSION_URL` para el trailer). Comprueba la sintaxis, elige las pruebas según lo cambiado (motor si tocas `scanner/` o `engine.js`; pantallas si tocas `web/`; ninguna si solo es texto), restaura `config.json`, hace el commit y sube refrescando la referencia remota (así el hook de git no da el falso "commits sin subir"). `TESTS=todo|motor|ui|nada` fuerza qué pruebas; `SIN_SUBIR=1` solo commit. Antes de subir a producción: `TESTS=todo`.
+- **Mirar la app sin escribir un script cada vez:** `node scripts/ver.mjs --pestana Buscador --clic '[data-bs=filters-open]' --medir '.fi-f' --texto '#bs-bar' --ancho 360,390`. Imprime por cada ancho si desborda, los errores de consola y lo que se pida (`--medir` alto×ancho y texto, `--texto`, `--contar`; pasos `--clic`, `--escribir SEL=texto`, `--barra SEL=valor`, `--esperar ms`). Arranca la app de ejemplo si no está. Sale con código 1 si desborda o hay errores. `scripts/playwright.mjs` es lo que encuentra Playwright y Chromium (lo comparten las pruebas y `ver.mjs`).
 - **A producción:** PR de la rama a `main`, fusión con rebase, y comprobar que "Publicar" termina en `success`.
 
 ## 3. Estructura del repositorio
@@ -35,7 +38,7 @@ El barrido real necesita salida a internet hacia `cdn.cboe.com`, `cdn-api.cboe.c
 - `scanner/universe.json`: la lista base, genérica: 33 nombres con opciones líquidas, cada uno con su bloque. Es lo único que se barre y lo que enseña la app, entera. Un índice (XSP, Mini-SPX: europeas, liquidación en efectivo, sin asignación) lleva `c` (código en CBOE, `_XSP`) y `r` (raíces de sus contratos: `XSP` mensuales y `XSPW` semanales). `loadUniverse` las guarda en `feeds`, `fetchChain` pide `c`, `readCboeChain(…, roots)` lee las dos raíces y `cierres.mjs` pide la historia con `c` y la guarda con el símbolo de la app. Sin `c`, el código es el símbolo. Si CBOE no lo tuviera, el barrido lo dice en el motivo ("CBOE no tiene ese símbolo"). Va como `etf` (sin consulta de resultados).
 - `config.json`: reglas de fábrica (públicas). `config.local.json`: lo que guarda el dueño en el modo ordenador, ignorado por git (nunca en el repositorio). Solo se usan en el modo ordenador.
 - `scripts/rama.sh`: escribe en `gh-pages` solo su parte (`app` = todo menos `data/` e `historia/`; `datos` = solo `data/`; `historia` = solo `historia/`), con un único commit en la rama y reintento si el otro ha publicado entre medias.
-- `scripts/entrega.sh`: ver §2.
+- `scripts/entrega.sh`, `scripts/ver.mjs`, `scripts/ejemplo-fondo.sh`, `scripts/playwright.mjs`: ver §2.
 
 ## 4. Flujos de GitHub Actions
 
