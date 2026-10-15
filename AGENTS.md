@@ -23,6 +23,13 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 - Las reglas de cálculo (crédito a precio natural, prob. de asignación del mercado, prob. máxima como regla del corto, crédito mínimo en dólares por contrato, ancho como máximo, rentabilidad y equilibrio, nivel de 0 a 5 y su error) **no se cambian sin preguntar**: están en `docs/calculo.md`.
 - Un mismo criterio, en un solo sitio: filtros en `web/filtros.js`, piezas de pantalla en `web/ui.js`, alturas y colores en las variables de `app.css`. Antes de copiar un patrón, comprobar si ya existe (`docs/interfaz.md` §4 y §5).
 
+## Cómo responder al dueño
+
+- Respuesta final de 5 a 8 líneas: primero el resultado (qué se hizo y si está en producción), después lo que el dueño debe saber.
+- Nunca se recortan: qué se subió, si pasó la comprobación, lo que no se pudo comprobar y cualquier riesgo o cambio de costumbre (por ejemplo, una orden que cambia).
+- No repetir lo que ya se ve en la conversación ni listar "qué cambia" cuando él lo pidió. Sin capturas de pantalla salvo que las pida. El detalle, solo si lo pide.
+- No republicar la app de prueba tras cada cambio: solo si lo pide.
+
 ## Privacidad (el repositorio es público)
 
 - Nada personal en el repositorio, en `data/`, en los mensajes de commit ni en el registro de Actions: ni reglas, ni favoritos, ni avisos, ni nombres añadidos, ni correos.
