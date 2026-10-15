@@ -53,13 +53,13 @@ npm run ejemplo                     # app con datos de ejemplo en http://localho
 node scripts/ver.mjs --pestana Buscador --medir '.fi-f'   # mirar la app como un móvil, sin escribir un script nuevo
 ```
 
-Probar con la muestra y las pruebas, no con barridos reales. Agrupar los cambios en un solo envío. Antes de subir a producción: `TESTS=todo bash scripts/entrega.sh …`, PR a `main`, fusión con rebase y comprobar que "Publicar" termina en `success` (`docs/operacion.md` §2).
+Probar con la muestra y las pruebas, no con barridos reales. Agrupar los cambios en un solo envío. A producción: `bash scripts/produccion.sh`, PR a `main`, fusión con rebase y `bash scripts/esperar-ci.sh pr|main <sha>`; después `bash scripts/produccion.sh reiniciar` (`docs/operacion.md` §2).
 
 ## Mapa de archivos
 
 - `web/`: la app, sin framework. `app.js` (arranque y eventos), `hoy.js` + `hoy-vistas.js` + `hoy-calc.js` (Hoy y la ficha), `buscador.js`, `reglas.js`, `avisos.js`, `conexion.js`, `copia.js` (copia de seguridad), `filtros.js` y `ui.js` (piezas comunes), `engine.js` (motor puro, compartido con el barrido; las estrategias se registran en `STRATEGIES`, hoy solo `bullPut`), `sw.js` (offline), `app.css`, `fonts/`. Al añadir un archivo: ponerlo en `SHELL` de `sw.js` y subir `CACHE`.
 - `scanner/`: `scan.mjs` (barrido, avisos por ntfy y servidor local), `cierres.mjs` (histórico de 5 años), `universe.json` (la lista base).
-- `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml`, `cierres.yml`. `scripts/`: `rama.sh` (publica en `gh-pages`), `entrega.sh`, `ver.mjs`, `ejemplo-fondo.sh` y `playwright.mjs`.
+- `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml`, `cierres.yml`. `scripts/`: `rama.sh` (publica en `gh-pages`), `entrega.sh`, `produccion.sh`, `esperar-ci.sh`, `ver.mjs`, `ejemplo-fondo.sh` y `playwright.mjs`.
 - `config.json` (reglas de fábrica) y `config.local.json` (el dueño, ignorado por git). `test/`: `engine.test.mjs` y `ui.test.mjs`. `docs/`: el detalle.
 
 ## Estado
