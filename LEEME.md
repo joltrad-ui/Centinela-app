@@ -64,7 +64,7 @@ Con Node.js 22, dentro de esta carpeta:
 node scanner/scan.mjs --serve
 ```
 
-Abre `http://localhost:8080`. Solo barre con el ordenador encendido y el móvil solo la ve en el mismo Wi-Fi. En este modo las reglas se guardan en `config.json`.
+Abre `http://localhost:8080`. Solo barre con el ordenador encendido. Por defecto solo se abre desde ese ordenador; para verlo también en el móvil, en el mismo Wi-Fi, usa `npm run ordenador:movil` (abre el servidor a la red local: solo en una red de confianza). En este modo lo que cambias en la app (reglas, nombres quitados) se guarda en `config.local.json`, que git ignora; `config.json` queda con los valores de fábrica.
 
 ## Para ver la app sin datos reales
 
@@ -103,7 +103,7 @@ El barrido de la lista base lee los 33 nombres en unos segundos. Cada barrido de
 - `web/` la app (`engine.js` es el motor: reglas, columnas y orden).
 - `scanner/scan.mjs` el barrido y los avisos.
 - `scanner/universe.json` la lista base, por bloques.
-- `config.json` reglas de fábrica. Solo se usa en el modo ordenador.
+- `config.json` reglas de fábrica (públicas). `config.local.json` lo que guardas tú en el modo ordenador: git lo ignora. Solo se usan en el modo ordenador.
 - `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
 - `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar las otras.
 - `scanner/cierres.mjs` baja una vez al día los cierres diarios de la lista (carpeta `historia/`), para las cuentas con historia de Hoy y del Buscador. Un push no lo lanza.

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
-import { keepPrevious } from "../scanner/scan.mjs";
+import { keepPrevious, hostAllowed, originAllowed } from "../scanner/scan.mjs";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -951,4 +951,22 @@ test("readCboeChain: XSP lee las mensuales (XSP) y las semanales (XSPW) con las 
   const both = readCboeChain("XSP", body, today, ["XSP", "XSPW"]);
   assert.deepEqual(both.x.map((e) => e[0]), ["2026-10-30", "2026-11-20"]);
   assert.equal(both.x[0][2][0][0], 740);
+});
+
+test("el servidor del ordenador: solo este ordenador, o la red local si se pide con --lan", () => {
+  for (const host of ["localhost:8080", "127.0.0.1:8080", "[::1]:8080"]) assert.equal(hostAllowed(host, false), true, host);
+  for (const host of ["192.168.1.20:8080", "10.0.0.5:8080", "172.20.3.4:8080", "mi-portatil.local:8080"]) {
+    assert.equal(hostAllowed(host, false), false, `${host} sin --lan`);
+    assert.equal(hostAllowed(host, true), true, `${host} con --lan`);
+  }
+  // una página de fuera que apunte a tu ordenador (por nombre) no entra, ni con --lan
+  for (const host of ["evil.example.com", "evil.example.com:8080", "8.8.8.8:8080", "172.32.0.1:8080"]) assert.equal(hostAllowed(host, true), false, host);
+});
+
+test("escribir en el servidor del ordenador solo desde su propia página", () => {
+  assert.equal(originAllowed(undefined, "localhost:8080"), true); // curl y pruebas: sin Origin
+  assert.equal(originAllowed("http://localhost:8080", "localhost:8080"), true);
+  assert.equal(originAllowed("https://evil.example.com", "localhost:8080"), false);
+  assert.equal(originAllowed("http://localhost:9999", "localhost:8080"), false);
+  assert.equal(originAllowed("no es una url", "localhost:8080"), false);
 });

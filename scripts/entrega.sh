@@ -48,7 +48,7 @@ fi
 [ "$motor$ui" = 00 ] && paso "sin pruebas (nada de motor ni de pantallas ha cambiado)"
 
 # 4. Commit
-git checkout -q -- config.json 2>/dev/null || true # el modo ordenador la reescribe con las reglas reales: nunca al repositorio
+git checkout -q -- config.json 2>/dev/null || true # por si alguien la tocó: es solo de fábrica; lo del dueño va en config.local.json (git lo ignora)
 git add -A
 [ -n "${CLAUDE_SESSION_URL:-}" ] && mensaje="$mensaje
 
