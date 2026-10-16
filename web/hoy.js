@@ -487,8 +487,10 @@ export function createHoy(ctx) {
         </div>`;
         return `<li class="dl-card">
           <div class="dl-top">${badge}<div class="dl-t">
-            <div class="dl-l1"><span><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="small muted">×${deal.qty}</span>` : ""}</span><b class="num dl-days">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b></div>
-            <div class="dl-l2"><span class="small muted">${esc(labelOf(deal.expiry))}${before}</span><span class="pill st-${st.state}">${LABEL[st.state]}</span></div>
+            <span class="dl-n"><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="small muted">×${deal.qty}</span>` : ""}</span>
+            <b class="num dl-days">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b>
+            <span class="pill st-${st.state}">${LABEL[st.state]}</span>
+            <span class="small muted dl-date">${esc(labelOf(deal.expiry))}${before}</span>
           </div></div>
           ${scale}${boxes}
           ${
