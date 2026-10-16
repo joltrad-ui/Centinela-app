@@ -70,6 +70,7 @@ export function createHoy(ctx) {
     error: "",
     copied: "",
     confirm: null, // id del deal que se va a borrar
+    draft: null, // lo escrito en «Apuntar uno que ya tengo», para no perderlo si hay un error
   };
   const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort, fOpen: hoy.fOpen });
 
@@ -93,6 +94,7 @@ export function createHoy(ctx) {
       price0: n(row.price0),
       closedAt: n(row.closedAt),
       result: n(row.result),
+      manual: row.manual === true,
     };
   };
   const rawDeals = ctx.readLocal(LS_DEALS);
@@ -418,12 +420,34 @@ export function createHoy(ctx) {
     const bySymbol = new Map((state.scan?.symbols ?? []).map((sym) => [sym.s, sym]));
     const open = openDeals().sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : a.s.localeCompare(b.s)));
     const closed = deals.filter((deal) => deal.closedAt).sort((a, b) => b.closedAt - a.closedAt);
+    const md = hoy.draft ?? {};
+    const mv = (name, fallback = "") => ` value="${esc(md[name] ?? fallback)}"`;
+    const manual =
+      hoy.form === "manual"
+        ? `<form class="hoy-form" data-hoy-form="manual" novalidate>
+            <label class="small muted" for="hoy-m-s">Símbolo</label>
+            <input class="textfield" id="hoy-m-s" name="s" autocapitalize="characters" autocomplete="off" maxlength="8"${mv("s")}>
+            <label class="small muted" for="hoy-m-e" style="display:block;margin-top:10px">Vencimiento</label>
+            <input class="textfield" id="hoy-m-e" name="expiry" type="date"${mv("expiry")}>
+            <label class="small muted" for="hoy-m-k" style="display:block;margin-top:10px">Strike corto (el que vendes)</label>
+            <input class="textfield" id="hoy-m-k" name="short" inputmode="decimal" autocomplete="off"${mv("short")}>
+            <label class="small muted" for="hoy-m-l" style="display:block;margin-top:10px">Strike largo (el que compras)</label>
+            <input class="textfield" id="hoy-m-l" name="long" inputmode="decimal" autocomplete="off"${mv("long")}>
+            <label class="small muted" for="hoy-m-c" style="display:block;margin-top:10px">Crédito que cobraste, por acción</label>
+            <input class="textfield" id="hoy-m-c" name="credit" inputmode="decimal" autocomplete="off"${mv("credit")}>
+            <label class="small muted" for="hoy-m-q" style="display:block;margin-top:10px">Contratos</label>
+            <input class="textfield" id="hoy-m-q" name="qty" inputmode="numeric" autocomplete="off"${mv("qty", "1")}>
+            ${hoy.error ? `<p class="small down" role="alert" style="margin-top:8px">${esc(hoy.error)}</p>` : ""}
+            <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" type="submit">Apuntar</button><button class="btn" type="button" data-hoy="form-cancel">Cancelar</button></div>
+            <p class="xs muted" style="margin-top:8px">Va a Mis deals sin nivel (M) y no entra en el recuento por nivel. Solo en este dispositivo.</p>
+          </form>`
+        : `<div class="hoy-actions" style="margin-top:14px"><button class="btn" data-hoy="form-manual">Apuntar uno que ya tengo</button></div>`;
     if (!deals.length) {
-      return emptyBox("Todavía no has apuntado ningún deal.", ["Se apuntan desde la ficha de un deal, con «La he abierto». Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.", "Se guardan solo en este dispositivo."]);
+      return emptyBox("Todavía no has apuntado ningún deal.", ["Se apuntan desde la ficha de un deal, con «La he abierto», o a mano si ya lo tienes abierto en tu bróker. Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.", "Se guardan solo en este dispositivo."]) + manual;
     }
     const LABEL = { lejos: "lejos del corto", cerca: "cerca del corto", debajo: "por debajo del corto", vencido: "vencido", "sin-precio": "sin precio" };
     const title = (deal) => `<b>${esc(deal.s)}</b> <span class="muted">${fmtStrike(deal.short)}/${fmtStrike(deal.long)} · ${esc(labelOf(deal.expiry))}${deal.qty > 1 ? ` · ${deal.qty} contratos` : ""}</span>`;
-    const levelOf = (deal) => (deal.level == null ? '<span class="lv lvh sm">H</span>' : levelTag(deal.level, " sm"));
+    const levelOf = (deal) => (deal.manual ? '<span class="lv lvh sm" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh sm">H</span>' : levelTag(deal.level, " sm"));
     const openList = open
       .map((deal) => {
         const st = dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today);
@@ -477,6 +501,7 @@ export function createHoy(ctx) {
       )
       .join("");
     return `
+      ${manual}
       ${open.length ? `${sectionHead("Abiertos", open.length)}<ul class="rows">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
       ${
         closed.length
@@ -600,8 +625,12 @@ export function createHoy(ctx) {
     } else if (act === "form-open") {
       hoy.form = "abrir";
       hoy.error = "";
+    } else if (act === "form-manual") {
+      hoy.form = "manual";
+      hoy.error = "";
     } else if (act === "form-cancel") {
       hoy.form = null;
+      hoy.draft = null;
       hoy.error = "";
     } else if (act === "deal-close") {
       hoy.form = { close: el.dataset.id };
@@ -659,6 +688,45 @@ export function createHoy(ctx) {
         hoy.view = "mis";
         keep();
         window.scrollTo(0, 0);
+      }
+    } else if (form.dataset.hoyForm === "manual") {
+      const symbol = String(data.get("s") ?? "").trim().toUpperCase();
+      const expiry = String(data.get("expiry") ?? "");
+      const short = parseNumber(data.get("short"));
+      const long = parseNumber(data.get("long"));
+      const credit = parseNumber(data.get("credit"));
+      const qty = parseNumber(data.get("qty"));
+      hoy.draft = Object.fromEntries(["s", "expiry", "short", "long", "credit", "qty"].map((k) => [k, String(data.get(k) ?? "")]));
+      if (!/^[A-Z][A-Z.]{0,7}$/.test(symbol)) hoy.error = "Escribe el símbolo, por ejemplo AAPL.";
+      else if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry) || Number.isNaN(Date.parse(expiry))) hoy.error = "Elige la fecha de vencimiento.";
+      else if (!(short > 0) || !(long > 0) || !(long < short)) hoy.error = "Escribe los dos strikes: el largo tiene que ser menor que el corto.";
+      else if (!(credit > 0) || !(credit < short - long)) hoy.error = `Escribe el crédito por acción, entre 0,01 y ${num(short - long, 2)}.`;
+      else if (!Number.isInteger(qty) || qty < 1 || qty > 50) hoy.error = "Escribe cuántos contratos, de 1 a 50.";
+      else if (deals.length >= MAX_DEALS) hoy.error = "Hay demasiados deals apuntados. Borra alguno cerrado.";
+      else {
+        const sym = (state.scan?.symbols ?? []).find((item) => item.s === symbol);
+        deals.push({
+          id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+          s: symbol,
+          b: sym?.b ?? "",
+          expiry,
+          short: Math.round(short * 1000) / 1000,
+          long: Math.round(long * 1000) / 1000,
+          credit: Math.round(credit * 1000) / 1000,
+          qty,
+          fee: options().opts.fee,
+          openedAt: Date.now(),
+          level: null,
+          retExp: null,
+          price0: sym?.p ?? null,
+          closedAt: null,
+          result: null,
+          manual: true,
+        });
+        keepDeals();
+        hoy.form = null;
+        hoy.draft = null;
+        hoy.error = "";
       }
     } else if (form.dataset.hoyForm === "cerrar") {
       const deal = deals.find((item) => item.id === form.dataset.id);
