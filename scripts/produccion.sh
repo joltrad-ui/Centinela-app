@@ -21,7 +21,16 @@ if [ "${1:-}" = "reiniciar" ]; then
   [ -z "$(git status --porcelain)" ] || falla "hay cambios sin guardar"
   if git diff --quiet origin/main HEAD; then
     git reset -q --hard origin/main
-    paso "rama igual que main ($(git rev-parse --short HEAD))"
+    # También la rama de GitHub: si no, sigue con los commits viejos y el hook de git cuenta "commits sin subir" que no lo son.
+    remoto="$(git rev-parse -q --verify "refs/remotes/origin/$rama" || true)"
+    if [ "$remoto" = "$(git rev-parse HEAD)" ]; then
+      paso "rama igual que main ($(git rev-parse --short HEAD)), local y en GitHub"
+    elif git push -q -u origin "$rama" "--force-with-lease=$rama${remoto:+:$remoto}" 2>/dev/null; then
+      git fetch -q origin "+refs/heads/$rama:refs/remotes/origin/$rama" 2>/dev/null || true
+      paso "rama igual que main ($(git rev-parse --short HEAD)), local y en GitHub"
+    else
+      paso "rama igual que main ($(git rev-parse --short HEAD)) en local; no se pudo subir a GitHub: repite 'git push --force-with-lease origin $rama'"
+    fi
     exit 0
   fi
   falla "la rama tiene cosas que main no tiene: no se reinicia"
