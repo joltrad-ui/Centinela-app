@@ -318,6 +318,26 @@ nav.dock svg { width: 20px; height: 20px; }
 .hoy-form { margin-top: 12px; }
 .hoy-form .textfield { margin-top: 4px; }
 .hoy-deal { padding: 12px 0; }
+/* Mis deals abiertos: una tarjeta por deal con nivel, días, barra de precio y tres cajas. */
+.dl-card { list-style: none; padding: 12px 14px; margin-top: 10px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
+.dl-top { display: flex; align-items: center; gap: 12px; }
+.dl-top .lv.mid { width: 40px; height: 40px; font-size: 1.25rem; }
+.dl-t { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.dl-l1, .dl-l2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dl-sym { font-size: 1.125rem; }
+.dl-k { color: var(--muted); }
+.dl-days { font-size: 1.125rem; font-weight: 600; }
+.dl-days small { font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
+.dl-scale { position: relative; height: 6px; border-radius: 999px; background: var(--line); margin: 14px 4px 6px; }
+.dl-scale .z { position: absolute; top: 0; height: 100%; background: var(--down-solid); opacity: 0.55; border-radius: 999px; }
+.dl-scale .k { position: absolute; top: -4px; width: 2px; height: 14px; margin-left: -1px; background: var(--fg); }
+.dl-scale .p { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--fg); box-shadow: 0 0 0 3px var(--surface); }
+.dl-ends { display: flex; justify-content: space-between; padding: 0 4px; }
+.dl-list { list-style: none; margin: 0; padding: 0; }
+.dl-card .dl-boxes { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; }
+.dl-boxes .fi-box { padding: 8px 10px; align-content: start; }
+.dl-boxes .fi-lab { white-space: nowrap; font-size: 0.75rem; }
+.dl-boxes .fi-box b { font-size: 1.0625rem; }
 .hoy-rec { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; }
 .hoy-rec b { font-weight: 500; }
 .hoy-link { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; }

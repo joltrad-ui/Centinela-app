@@ -91,6 +91,7 @@ export function createHoy(ctx) {
       openedAt: n(row.openedAt, 0),
       level: n(row.level),
       retExp: n(row.retExp),
+      prob0: n(row.prob0),
       price0: n(row.price0),
       closedAt: n(row.closedAt),
       result: n(row.result),
@@ -106,7 +107,7 @@ export function createHoy(ctx) {
   // ---------- opciones y cuentas ----------
 
   /** Bloques que ya están abiertos: los que él marca a mano y los de sus deals apuntados sin cerrar. */
-  const heldBlocks = () => [...new Set([...hoy.held, ...openDeals().map((deal) => deal.b).filter(Boolean)])];
+  const heldBlocks = (except = null) => [...new Set([...hoy.held, ...openDeals().filter((deal) => deal !== except).map((deal) => deal.b).filter(Boolean)])];
 
   function options() {
     const rules = state.config.rules;
@@ -448,20 +449,48 @@ export function createHoy(ctx) {
     const LABEL = { lejos: "lejos del corto", cerca: "cerca del corto", debajo: "por debajo del corto", vencido: "vencido", "sin-precio": "sin precio" };
     const title = (deal) => `<b>${esc(deal.s)}</b> <span class="muted">${fmtStrike(deal.short)}/${fmtStrike(deal.long)} · ${esc(labelOf(deal.expiry))}${deal.qty > 1 ? ` · ${deal.qty} contratos` : ""}</span>`;
     const levelOf = (deal) => (deal.manual ? '<span class="lv lvh sm" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh sm">H</span>' : levelTag(deal.level, " sm"));
-    const openList = open
-      .map((deal) => {
-        const st = dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today);
+    const o = options();
+    const RANK = { vencido: 0, debajo: 1, cerca: 2, lejos: 3, "sin-precio": 4 };
+    const live = (deal) => {
+      const sym = bySymbol.get(deal.s);
+      if (!sym) return null;
+      const opts = { ...o.opts, held: heldBlocks(deal) }; // su propio bloque no cuenta contra él
+      const rows = dealRows(sym, deal, opts, today);
+      if (!rows.nat) return null;
+      const checks = dealChecks(rows.nat, opts);
+      return { level: gateReason(rows.nat, opts.gapPct) || !checks.scored ? null : checks.level, prob: rows.nat.prob, mid: rows.nat.midCredit };
+    };
+    const cards = open
+      .map((deal) => ({ deal, st: dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today), lv: live(deal) }))
+      .sort((x, y) => RANK[x.st.state] - RANK[y.st.state] || (x.deal.expiry < y.deal.expiry ? -1 : x.deal.expiry > y.deal.expiry ? 1 : x.deal.s.localeCompare(y.deal.s)));
+    const openList = cards
+      .map(({ deal, st, lv }) => {
         const closing = hoy.form && hoy.form.close === deal.id;
-        const lines =
-          st.state === "vencido"
-            ? `Venció el ${esc(labelOf(deal.expiry))}. Apunta el resultado para cerrarlo.`
-            : st.price == null
-              ? `Quedan ${st.dte} d · sin precio en el último barrido`
-              : `Quedan ${st.dte} d · precio ${usd2(st.price)} · ${st.above >= 0 ? `${num(st.above, 1)} % por encima del corto` : `${num(-st.above, 1)} % por debajo del corto`}`;
-        return `<li class="hoy-deal">
-          <p>${levelOf(deal)} ${title(deal)} <span class="pill st-${st.state}">${LABEL[st.state]}</span></p>
-          <p class="small muted" style="margin-top:4px">${lines}</p>
-          <p class="small muted">Cobraste ${usd2(cobrado(deal))} · abierto el ${esc(labelOf(new Date(deal.openedAt).toISOString().slice(0, 10)))}</p>
+        const cur = lv?.level ?? null;
+        const badge = cur != null ? levelTag(cur, " mid") : deal.manual ? '<span class="lv lvh mid" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh mid">H</span>' : levelTag(deal.level, " mid");
+        const before = cur != null && deal.level != null && deal.level !== cur ? ` · antes ${deal.level}` : "";
+        const loss = (deal.short - deal.long) * 100 * deal.qty - cobrado(deal);
+        const now = lv?.mid != null ? cobrado(deal) - lv.mid * 100 * deal.qty : null;
+        let scale = "";
+        if (st.price != null) {
+          const lo = deal.long * 0.97;
+          const hi = Math.max(st.price, deal.short) * 1.02;
+          const at = (v) => (((v - lo) / (hi - lo)) * 100).toFixed(1);
+          scale = `<div class="dl-scale" role="img" aria-label="Largo ${fmtStrike(deal.long)}, corto ${fmtStrike(deal.short)}, precio ${usd2(st.price)}"><i class="z" style="left:${at(deal.long)}%;width:${(at(deal.short) - at(deal.long)).toFixed(1)}%"></i><i class="k" style="left:${at(deal.short)}%"></i><i class="p" style="left:${at(st.price)}%"></i></div>
+            <div class="dl-ends small muted num"><span>largo ${fmtStrike(deal.long)}</span><span>precio ${usd2(st.price)}</span></div>`;
+        }
+        const box = (label, value, cls = "", note = "") => `<div class="fi-box"><span class="fi-lab">${label}</span><b class="num ${cls}">${value}</b>${note}</div>`;
+        const boxes = `<div class="fi-boxes dl-boxes">
+          ${box("Prob.", lv?.prob == null ? "—" : `${num(lv.prob, 1)} %`, "", deal.prob0 != null && lv?.prob != null && deal.prob0 !== lv.prob ? `<span class="xs muted">antes ${num(deal.prob0, 1)} %</span>` : "")}
+          ${box("Llevas", now == null ? "—" : signedUsd(Math.round(now)), now == null ? "" : tone(now))}
+          ${box("Pérdida máx.", usd2(loss).replace(/,00$/, ""), "down")}
+        </div>`;
+        return `<li class="dl-card">
+          <div class="dl-top">${badge}<div class="dl-t">
+            <div class="dl-l1"><span><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="small muted">×${deal.qty}</span>` : ""}</span><b class="num dl-days">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b></div>
+            <div class="dl-l2"><span class="small muted">${esc(labelOf(deal.expiry))}${before}</span><span class="pill st-${st.state}">${LABEL[st.state]}</span></div>
+          </div></div>
+          ${scale}${boxes}
           ${
             closing
               ? `<form class="hoy-form" data-hoy-form="cerrar" data-id="${esc(deal.id)}" novalidate>
@@ -502,7 +531,7 @@ export function createHoy(ctx) {
       .join("");
     return `
       ${manual}
-      ${open.length ? `${sectionHead("Abiertos", open.length)}<ul class="rows">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
+      ${open.length ? `${sectionHead("Abiertos", open.length)}<ul class="dl-list">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
       ${
         closed.length
           ? `${sectionHead("Lo que pasó, por nivel", `${closed.length} ${closed.length === 1 ? "cerrado" : "cerrados"}`)}
@@ -677,6 +706,7 @@ export function createHoy(ctx) {
           openedAt: Date.now(),
           level: gate || !checks.scored ? null : checks.level, // el nivel a precio visible; apartada = sin nivel
           retExp: rows.nat.retExp ?? null,
+          prob0: rows.nat.prob ?? null,
           price0: sym.p,
           closedAt: null,
           result: null,
@@ -705,6 +735,8 @@ export function createHoy(ctx) {
       else if (deals.length >= MAX_DEALS) hoy.error = "Hay demasiados deals apuntados. Borra alguno cerrado.";
       else {
         const sym = (state.scan?.symbols ?? []).find((item) => item.s === symbol);
+        const o = options();
+        const now = sym ? dealRows(sym, { expiry, short, long }, o.opts, o.today).nat : null;
         deals.push({
           id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
           s: symbol,
@@ -718,6 +750,7 @@ export function createHoy(ctx) {
           openedAt: Date.now(),
           level: null,
           retExp: null,
+          prob0: now?.prob ?? null,
           price0: sym?.p ?? null,
           closedAt: null,
           result: null,

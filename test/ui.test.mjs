@@ -183,9 +183,10 @@ test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
   assert.match(await page.locator('[data-hoy-form="manual"] [role=alert]').innerText(), /crédito/);
   await page.fill("#hoy-m-c", "1,25");
   await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
-  const list = await page.locator(".hoy-deal").first().innerText();
+  const list = await page.locator(".dl-card").first().innerText();
   assert.match(list, /AAPL/);
-  assert.match(list, /Cobraste \$12\d,\d\d/); // 125 menos la comisión
+  assert.match(list, /Pérdida máx\.\s*\$37\d/); // (5 − 1,25) × 100 más la comisión
+  assert.match(list, /Prob\./);
   assert.deepEqual(page.errors, []);
   await page.close();
 });
