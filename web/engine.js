@@ -849,6 +849,34 @@ function volatilitiesOf(closes) {
   return { recent, long, recentPct: recent == null ? null : r1(recent * 100), longPct: long == null ? null : r1(long * 100) };
 }
 
+/** Media simple de los últimos `n` cierres; null si no hay tantos. */
+export function sma(closes, n) {
+  if (!Array.isArray(closes) || !(n > 0) || closes.length < n) return null;
+  let sum = 0;
+  for (let i = closes.length - n; i < closes.length; i++) sum += closes[i];
+  return sum / n;
+}
+
+/** La media simple de cada día (`n` cierres hasta ese día); null mientras no haya `n`. Misma longitud que `closes`. */
+export function smaSeries(closes, n) {
+  if (!Array.isArray(closes) || !(n > 0)) return [];
+  const out = new Array(closes.length).fill(null);
+  let sum = 0;
+  for (let i = 0; i < closes.length; i++) {
+    sum += closes[i];
+    if (i >= n) sum -= closes[i - n];
+    if (i >= n - 1) out[i] = sum / n;
+  }
+  return out;
+}
+
+/** Cambio en % del precio de ahora frente al cierre de hace `n` sesiones (el último cierre guardado cuenta como la sesión 1). Null sin datos. */
+export function changeOver(closes, n, price) {
+  if (!Array.isArray(closes) || !(n > 0) || closes.length < n || !(price > 0)) return null;
+  const before = closes[closes.length - n];
+  return before > 0 ? (price / before - 1) * 100 : null;
+}
+
 /** Notas de tendencia (avisos, no filtros): precio en el 10 % más bajo de su rango de 52 semanas y precio
  *  por debajo de la media de sus últimos 200 cierres. */
 export function trendNotes(closes, price) {
