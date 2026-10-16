@@ -7,7 +7,7 @@
 #
 # Qué pruebas: scanner/, web/engine.js o test/engine → motor (menos de 1 s); web/ o test/ui → pantallas (~50 s).
 # Salida corta: una línea por paso. Si algo falla, enseña solo las líneas del fallo y no hace el commit.
-# La línea final de trailer del commit sale de $CLAUDE_SESSION_URL si existe (no va escrita en el repositorio).
+# Los commits no llevan enlace de sesión. (Si algún día se quiere una línea final, se puede poner con $CLAUDE_SESSION_URL.)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 mensaje="${1:?Falta el mensaje del commit}"

@@ -33,7 +33,7 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 ## Privacidad (el repositorio es público)
 
 - Nada personal en el repositorio, en `data/`, en los mensajes de commit ni en el registro de Actions: ni reglas, ni favoritos, ni avisos, ni nombres añadidos, ni correos.
-- Los commits se firman con una dirección `@users.noreply.github.com`.
+- Los commits se firman con una dirección `@users.noreply.github.com` y no llevan enlace de sesión (decisión del dueño, 16 oct); las PR tampoco.
 - Las reglas viven en el dispositivo (`localStorage`) y, para los avisos, en el secreto `CENTINELA_CONFIG`. La lista de nombres es pública (`scanner/universe.json`). El estado de los avisos va cifrado en `data/privado.json` con clave derivada de `NTFY_TOPIC` y tamaño fijo.
 - En modo `--public` solo se barre la lista base (33 nombres), nunca favoritos ni nombres añadidos, y `scan.json` va por orden alfabético. La lista es pública: antes de añadir o quitar nombres a petición del dueño, avisarle de que el cambio se ve en el repositorio y de que una lista recortada a lo que opera lo delata.
 - Qué nombres quita o deja el dueño (`off`) vive solo en `localStorage` y en `CENTINELA_CONFIG`; nunca en el repositorio ni en `data/`. El barrido público sigue leyendo los 33.
@@ -47,7 +47,7 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 ## Comandos de cada día
 
 ```
-bash scripts/entrega.sh "mensaje"   # comprueba, prueba lo que toca, commit y sube (usa CLAUDE_SESSION_URL para el trailer)
+bash scripts/entrega.sh "mensaje"   # comprueba, prueba lo que toca, commit y sube
 npm test                            # motor + pantallas; npm run test:motor, solo el motor (1 s)
 npm run ejemplo                     # app con datos de ejemplo en http://localhost:8080 (bash scripts/ejemplo-fondo.sh: solo si no corre ya)
 node scripts/ver.mjs --pestana Buscador --medir '.fi-f'   # mirar la app como un móvil, sin escribir un script nuevo

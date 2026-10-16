@@ -266,7 +266,9 @@ export function createBuscador(ctx) {
   function countHtml(d0) {
     const list = filtered(d0);
     const names = new Set(list.map((d) => d.sym.s)).size;
-    const count = bs.one ? `${names} ${names === 1 ? "nombre" : "nombres"} · ${list.length} ${list.length === 1 ? "deal" : "deals"}` : `${list.length} ${list.length === 1 ? "deal" : "deals"}`;
+    const total = d0.deals.length;
+    const deals = `${list.length} de ${total} ${total === 1 ? "deal" : "deals"}`;
+    const count = bs.one ? `${names} ${names === 1 ? "nombre" : "nombres"} · ${deals}` : deals;
     return `<span class="small muted num">${count}</span>${chip("one", "", "Uno por nombre", bs.one)}`;
   }
 

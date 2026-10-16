@@ -116,7 +116,7 @@ test("Más filtros se comprime, se despliega y se recuerda", { skip }, async () 
 test("el Buscador: barra de ancho filtra, vacío con botón y Quitar filtros", { skip }, async () => {
   const page = await open(390);
   await goTab(page, "Buscador");
-  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) deals?/)[1]);
+  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) de \d+ deals?/)[1]);
   const total = await count();
   await page.$eval("#bs-w-range", (e) => {
     e.value = 300;
@@ -235,7 +235,7 @@ test("Buscador: Margen y Las que tengo son barras de tres posiciones", { skip },
   const page = await open(390);
   await goTab(page, "Buscador");
   await page.locator('[data-bs="filters-open"]').click();
-  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) deals?/)[1]);
+  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) de \d+ deals?/)[1]);
   const pick = async (act, value) => {
     await page.locator(`[data-bs="${act}"][data-v="${value}"]`).click();
     await page.waitForTimeout(400);
@@ -321,7 +321,7 @@ test("Buscador sin resultados: dice qué filtro quitar y cuántos saldrían", { 
   await page.waitForTimeout(400);
   assert.equal(await page.locator("#bs-q").inputValue(), "");
   assert.equal(await page.locator("#bs-list .empty").count(), 0);
-  const shown = Number((await page.locator("#bs-bar").innerText()).match(/(\d+) deals?/)[1]);
+  const shown = Number((await page.locator("#bs-bar").innerText()).match(/(\d+) de \d+ deals?/)[1]);
   assert.equal(shown, promised, "el número prometido debe ser el que sale");
   // y con un filtro de menos, el botón de quitar todos sigue ahí
   await page.fill("#bs-q", "zzzz");
