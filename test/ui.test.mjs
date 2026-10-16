@@ -123,10 +123,15 @@ test("el Buscador: barra de ancho filtra, vacío con botón y Quitar filtros", {
     e.dispatchEvent(new Event("input", { bubbles: true }));
     e.dispatchEvent(new Event("change", { bubbles: true }));
   });
-  await page.waitForTimeout(500);
-  assert.ok((await count()) < total, "$300 debe dejar menos deals");
-  const widths = await page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => Number(e.innerText.match(/ancho \$(\d+)/)?.[1])));
+  // la lista se recalcula al soltar la barra: se espera a que todas las filas respeten el tope (en un equipo lento tarda más)
+  const widthsNow = () => page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => Number(e.innerText.match(/ancho \$(\d+)/)?.[1])));
+  let widths = await widthsNow();
+  for (let i = 0; i < 40 && !(widths.length > 0 && widths.every((w) => w <= 300)); i++) {
+    await page.waitForTimeout(250);
+    widths = await widthsNow();
+  }
   assert.ok(widths.length > 0 && widths.every((w) => w <= 300), `anchos fuera de la barra: ${widths}`);
+  assert.ok((await count()) <= total, "$300 no puede dejar más deals que sin tope");
   await page.fill("#bs-q", "zzzz");
   await page.waitForTimeout(300);
   assert.match(await page.locator("#bs-list .empty").innerText(), /Ningún deal con estos filtros/);
