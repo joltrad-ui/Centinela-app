@@ -321,9 +321,10 @@ nav.dock svg { width: 20px; height: 20px; }
 /* Mis deals abiertos: una tarjeta por deal con nivel, días, barra de precio y tres cajas. */
 .dl-card { list-style: none; padding: 12px 14px; margin-top: 10px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
 .dl-top { display: flex; align-items: center; gap: 12px; }
-.dl-top .lv.mid { width: 40px; height: 40px; font-size: 1.25rem; }
-.dl-t { flex: 1; min-width: 0; display: grid; gap: 4px; }
-.dl-l1, .dl-l2 { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.dl-top .lv.mid { width: 52px; height: 52px; font-size: 1.5rem; flex: none; }
+.dl-t { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
+.dl-t .pill { justify-self: start; }
+.dl-t .dl-days, .dl-t .dl-date { justify-self: end; }
 .dl-sym { font-size: 1.125rem; }
 .dl-k { color: var(--muted); }
 .dl-days { font-size: 1.125rem; font-weight: 600; }
