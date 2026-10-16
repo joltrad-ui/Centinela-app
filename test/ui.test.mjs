@@ -168,6 +168,28 @@ test("estados vacíos con el mismo bloque y alturas de las tres escalas", { skip
   await page.close();
 });
 
+test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
+  const page = await open(390);
+  await page.locator('[data-hoy="view"][data-v="mis"]').click();
+  await page.locator('[data-hoy="form-manual"]').click();
+  await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
+  assert.match(await page.locator('[data-hoy-form="manual"] [role=alert]').innerText(), /símbolo/);
+  await page.fill("#hoy-m-s", "aapl");
+  await page.fill("#hoy-m-e", "2099-01-15");
+  await page.fill("#hoy-m-k", "100");
+  await page.fill("#hoy-m-l", "95");
+  await page.fill("#hoy-m-c", "6"); // más que el ancho: debe rechazarlo
+  await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
+  assert.match(await page.locator('[data-hoy-form="manual"] [role=alert]').innerText(), /crédito/);
+  await page.fill("#hoy-m-c", "1,25");
+  await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
+  const list = await page.locator(".hoy-deal").first().innerText();
+  assert.match(list, /AAPL/);
+  assert.match(list, /Cobraste \$12\d,\d\d/); // 125 menos la comisión
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test("Reglas y Avisos: pasos, interruptores, avisos y restaurar funcionan", { skip }, async () => {
   const page = await open(390);
   await goTab(page, "Reglas");
