@@ -4,10 +4,12 @@
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
-import { qualityDeals, nyToday } from "./engine.js";
+import { qualityDeals, nyToday, volatilities } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
+const VOL_HIGH = 1.2; // IV alta: la IV a 30 días es al menos 1,2 veces la volatilidad realizada reciente
+const VOL_LOW = 0.8; // IV baja: como mucho 0,8 veces
 const LS_PRESETS = "centinela.buscador.guardados.v1";
 const LS_HOY = "centinela.hoy.v1";
 const LS_MISDEALS = "centinela.misdeals.v1";
@@ -42,8 +44,9 @@ export function createBuscador(ctx) {
     trend: f.trend === true, // ocultar los que llevan aviso de tendencia
     margin: f.margin === true || f.margin === "yes" ? "yes" : f.margin === "no" ? "no" : "all", // punto de seguridad: todos, solo con margen o solo sin margen (antes era un booleano)
     tengo: f.tengo === "hide" || f.tengo === "only" ? f.tengo : "all",
+    vol: f.vol === "high" || f.vol === "low" ? f.vol : "all", // IV frente a la volatilidad realizada: todas, IV alta o IV baja
   });
-  const FILTER_KEYS = ["lv", "days", "blocks", "w", "pr", "hide", "earn", "trend", "margin", "tengo"];
+  const FILTER_KEYS = ["lv", "days", "blocks", "w", "pr", "hide", "earn", "trend", "margin", "tengo", "vol"];
 
   const saved = readLocal(LS) ?? {};
   const bs = {
@@ -93,7 +96,17 @@ export function createBuscador(ctx) {
       );
       cache = { key, out };
     }
-    return { deals: cache.out.deals, price, openNames: new Set(mine.map((d) => d.s)) };
+    if (!cache.volRatio || cache.volKey !== key) {
+      // IV a 30 días frente a la volatilidad realizada reciente (la mayor de 20 y 60 sesiones): por encima de 1, el mercado pide más de lo que se ha movido.
+      const ratios = new Map();
+      for (const sym of symbols) {
+        const recent = volatilities(state.hist?.symbols?.[sym.s]?.c)?.recentPct;
+        if (sym.iv30 > 0 && recent > 0) ratios.set(sym.s, sym.iv30 / recent);
+      }
+      cache.volRatio = ratios;
+      cache.volKey = key;
+    }
+    return { deals: cache.out.deals, price, volRatio: cache.volRatio, openNames: new Set(mine.map((d) => d.s)) };
   }
 
   /** Las acciones que "tengo": las que tienen un deal abierto en Mis deals y las marcadas a mano. */
@@ -129,6 +142,7 @@ export function createBuscador(ctx) {
       { key: "earn", on: bs.earn, label: "Ocultar resultados", test: (d) => !(d.row.earnInside && d.sym.er), drop: () => (bs.earn = false) },
       { key: "trend", on: bs.trend, label: "Ocultar tendencia", test: (d) => !(d.row.trend ?? []).length, drop: () => (bs.trend = false) },
       { key: "margin", on: bs.margin !== "all", label: "el filtro de Margen", test: (d) => (bs.margin === "yes") === Boolean(d.checks.safe), drop: () => (bs.margin = "all") },
+      { key: "vol", on: bs.vol !== "all", label: "el filtro de Volatilidad", test: (d) => { const r = d0.volRatio.get(d.sym.s); return r != null && (bs.vol === "high" ? r >= VOL_HIGH : r <= VOL_LOW); }, drop: () => (bs.vol = "all") },
       { key: "tengo", on: bs.tengo !== "all", label: "Las que tengo", test: (d) => (bs.tengo === "hide" ? !tengo.has(d.sym.s) : tengo.has(d.sym.s)), drop: () => (bs.tengo = "all") },
     ].filter((c) => c.on);
   }
@@ -154,6 +168,7 @@ export function createBuscador(ctx) {
   const HELP = [
     ["Nivel", "0 = la rentab. esperada no es positiva. Si lo es, parte de 1 y suma un punto por cada comprobación: margen (lo que queda supera el error del cálculo), costes razonables (ida y vuelta hasta el 40 % de lo cobrado) y bloque nuevo (no tienes ya uno abierto de ese bloque). El 5 exige además el doble de margen."],
     ["Margen", "Con = lo que queda tras restar lo que se espera pagar supera el error del cálculo (1 vez de fábrica; se cambia en Reglas, pestaña Hoy). Sin = no lo supera. Puede salir bien igualmente, pero su beneficio esperado es menor que la incertidumbre de la cuenta."],
+    ["Volatilidad", "IV alta = la volatilidad implícita a 30 días es al menos 1,2 veces lo que el valor se ha movido de verdad (la realizada reciente, de 20 a 60 sesiones): las opciones están caras frente a su movimiento. IV baja = como mucho 0,8 veces. Sin cierres guardados, el valor no tiene dato y no sale en ninguna."],
     ["Las que tengo", "Acciones con un deal abierto en Mis deals, más las que marques a mano en Acciones, Marcar las que tengo. Ocultar las quita de la lista; Solo deja únicamente esas. Se guardan solo en este dispositivo."],
   ];
   const helpPanel = () => (bs.help ? `<div class="fi-help-panel">${HELP.map(([name, text]) => `<p class="xs muted"><b>${name}</b> ${text}</p>`).join("")}</div>` : "");
@@ -194,7 +209,7 @@ export function createBuscador(ctx) {
 
   /** Cuántos filtros hay puestos (el nivel de fábrica no cuenta). */
   function activeFilters() {
-    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin !== "all", bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
+    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin !== "all", bs.vol !== "all", bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
   }
 
   /** Los filtros, en el orden de la pantalla Deals de antes: lo que más se toca arriba (nivel y las tres barras) y el resto plegado. */
@@ -218,6 +233,7 @@ export function createBuscador(ctx) {
     const rest = morePanel(`${presetRow}
         ${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
         ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
+        ${choiceRow("Volatilidad", 'data-bs="vol"', [["all", "Todas"], ["high", "IV alta"], ["low", "IV baja"]], bs.vol)}
         ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
         ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
         ${fold("hide", "Ocultar", hideOpts)}`);
@@ -358,6 +374,7 @@ export function createBuscador(ctx) {
     else if (act === "hide") bs.hide = !bs.hide;
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
+    else if (act === "vol") bs.vol = ["all", "high", "low"].includes(value) ? value : "all";
     else if (act === "margin") bs.margin = ["all", "yes", "no"].includes(value) ? value : "all";
     else if (act === "one") bs.one = !bs.one;
     else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : "lv";
@@ -367,7 +384,7 @@ export function createBuscador(ctx) {
     } else if (act === "drop") {
       criteria(data()).find((c) => c.key === value)?.drop();
     } else if (act === "reset") {
-      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", tengo: "all" });
+      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", vol: "all", tengo: "all" });
     } else touched = false;
     if (touched && act !== "names" && act !== "open" && act !== "help" && act !== "preset-del" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;

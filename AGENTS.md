@@ -68,9 +68,9 @@ En marcha en GitHub con un solo repositorio público. El barrido de la lista bas
 
 ## Pendiente
 
-- Media de 50 días, caída en 5 sesiones y gráfico de precio (en el Centinela original venían de Yahoo).
 - Ex-dividendo.
-- Filtro por volatilidad respecto a su historia (el barrido ya guarda la IV diaria en `data/iv.json`).
+- IV frente a su propia historia (el barrido guarda la IV diaria en `data/iv.json` desde el 4 oct; hacen falta unos 3 meses de datos para que signifique algo).
+- Convertir la media de 50 días y la caída en 5 sesiones en avisos o filtros, si el dueño lo pide (hoy son solo informativas).
 - Guardar calls para iron condor y estrategias bajistas.
 - Ampliar `FED_DATES` y la tabla de festivos antes de que se acaben (`docs/calculo.md` §3).
 

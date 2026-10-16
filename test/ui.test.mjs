@@ -421,3 +421,37 @@ test("Reglas: cada regla con número cabe en una fila compacta (título y −/+ 
   assert.ok(await noOverflow(page));
   await page.close();
 });
+
+test("Buscador: filtro de volatilidad (IV alta / IV baja) y la ficha con media de 50 días, 5 sesiones y gráfico", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="filters-open"]').click();
+  for (const l of [0, 1, 2]) await page.locator(`[data-bs="lv"][data-v="${l}"]`).click();
+  await page.locator('[data-bs="one"]').click();
+  await page.waitForTimeout(300);
+  const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) de \d+ deals?/)[1]);
+  const all = await count();
+  await page.locator('[data-bs="vol"][data-v="high"]').click();
+  await page.waitForTimeout(300);
+  const high = await count();
+  await page.locator('[data-bs="vol"][data-v="low"]').click();
+  await page.waitForTimeout(300);
+  const low = await count();
+  assert.ok(high > 0 && high < all, `IV alta ${high} de ${all}`);
+  assert.ok(low >= 0 && high + low <= all, `IV alta ${high} + IV baja ${low} no puede pasar de ${all}`);
+  await page.locator('[data-bs="vol"][data-v="all"]').click();
+  await page.waitForTimeout(300);
+  assert.equal(await count(), all);
+  // la ficha: gráfico de precio y los dos datos nuevos
+  await page.locator('[data-hoy="cell"]').first().click();
+  await page.waitForSelector(".sheet");
+  await page.locator('[data-hoy="fold"][data-v="vol"]').click();
+  assert.equal(await page.locator(".pchart svg").count(), 1);
+  assert.match(await page.locator(".pchart svg").getAttribute("aria-label"), /media de 50 días/);
+  const text = await page.locator(".sheet").innerText();
+  assert.match(text, /Media de 50 días/);
+  assert.match(text, /Últimas 5 sesiones/);
+  assert.ok(await noOverflow(page));
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

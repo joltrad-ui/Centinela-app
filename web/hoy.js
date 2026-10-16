@@ -15,7 +15,7 @@
 import { emptyBox, notice, sectionHead } from "./ui.js";
 import { createVistas } from "./hoy-vistas.js";
 import { PR, W, filterBars, filterRow } from "./filtros.js";
-import { PROBS, probOk, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals } from "./hoy-calc.js";
+import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals } from "./hoy-calc.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -32,6 +32,8 @@ import {
   nyToday,
   pricesOutsideMarket,
   qualityDeals,
+  changeOver,
+  sma,
   spreadRow,
   volatilities,
   withHistory,
@@ -355,7 +357,14 @@ export function createHoy(ctx) {
     const volMax = Math.max(1, ...volRows.map((r) => r[1])) * 1.1;
     const ratio = vols?.recentPct != null && vols.longPct > 0 ? vols.recentPct / vols.longPct : null;
     const volNote = ratio == null ? "" : ratio < 0.75 ? "Ahora se mueve bastante menos que de costumbre: el cálculo reciente es el optimista." : ratio > 1.33 ? "Ahora se mueve bastante más que de costumbre." : "";
-    const vol = `${ends(year && year.sessions > 250 ? "52 sem." : year ? `${year.sessions} ses.` : "", year)}${ends("1 mes", month)}
+    const m50 = sma(closes, 50);
+    const ch5 = changeOver(closes, 5, sym.p);
+    const kvr = (label, value, note, cls = "") => `<div class="fi-kv"><div><span>${label}</span><small class="xs muted">${note}</small></div><b class="num ${cls}">${value}</b></div>`;
+    const chart = priceChart(closes, sym.p, row?.shortStrike);
+    const trendRows =
+      (m50 ? kvr("Media de 50 días", usd2(m50), `El precio está un ${num(Math.abs((sym.p / m50 - 1) * 100), 1)} % ${sym.p >= m50 ? "por encima" : "por debajo"}.`) : "") +
+      (ch5 != null ? kvr("Últimas 5 sesiones", signedPct(ch5), "Cambio del precio frente al cierre de hace 5 sesiones.", tone(ch5)) : "");
+    const vol = `${chart}${trendRows}${ends(year && year.sessions > 250 ? "52 sem." : year ? `${year.sessions} ses.` : "", year)}${ends("1 mes", month)}
       ${
         volRows.length
           ? `<p class="xs muted" style="margin:12px 0 0">Volatilidad: cuánto se mueve al año</p>${volRows.map(([label, value, kind]) => `<div class="vol-row"><span class="vol-label">${esc(label)}</span><span class="vol-track"><i class="${kind}" style="width:${((value / volMax) * 100).toFixed(1)}%"></i></span><b class="num">${num(value, 0)} %</b></div>`).join("")}${volNote ? `<p class="xs muted" style="margin-top:6px">${volNote}</p>` : ""}`

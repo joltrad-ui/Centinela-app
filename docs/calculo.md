@@ -48,6 +48,14 @@ La pestaña "Igual riesgo" se quitó el 12 oct (su pantalla y sus controles); qu
 - **Mensajes:** ninguna fila con rentab. esperada > 0; prob. objetivo por debajo del 5 %; precios tomados con el mercado cerrado (`pricesOutsideMarket`, cuenta los 15 min de retraso).
 - El equilibrio de las Reglas no usa nada de esto.
 
+### Medias, cambio reciente e IV frente a la realizada (informativo)
+
+- **Media de 50 días** (`sma`, `smaSeries`): media simple de los últimos 50 cierres guardados. La ficha enseña también cuánto está el precio por encima o por debajo. Sin 50 cierres, no sale.
+- **Últimas 5 sesiones** (`changeOver`): el precio de ahora frente al cierre de hace 5 sesiones (el último cierre guardado cuenta como la sesión 1), en %.
+- **Gráfico de precio** (`priceChart` en `hoy-calc.js`): el último año de cierres (hasta 252) más el precio de hoy, con la media de 50 y la de 200 días y el strike corto del deal. Sin 60 cierres, no sale.
+- **Ninguna de las tres cosas entra en el nivel, en el orden, en los avisos ni en "Ocultar tendencia".**
+- **Volatilidad en el Buscador** (`vol` en `centinela.buscador.v1`): IV alta = IV a 30 días ≥ 1,2 × la volatilidad realizada reciente (la mayor de 20 y 60 sesiones, la misma de `volatilities`); IV baja = ≤ 0,8 ×. Sin cierres o sin IV, el nombre no tiene dato y no sale en ninguna de las dos. Los umbrales (`VOL_HIGH`, `VOL_LOW` en `buscador.js`) son una propuesta del agente, no una regla del dueño.
+
 ## 4. Nivel de un deal (`dealChecks`, `levelCell`, `levelGrid`), de 0 a 5
 
 Decidido el 8 oct tras la revisión del modelo.

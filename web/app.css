@@ -518,3 +518,20 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-fc-open { gap: 8px; }
 .fi-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .fi-fnote { margin: 0; }
+
+/* Gráfico de precio de la ficha */
+.pchart { margin: 4px 0 12px; }
+.pchart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.pc-line { fill: none; stroke: var(--fg); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.pc-s50 { fill: none; stroke: var(--brass); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.pc-s200 { fill: none; stroke: var(--muted); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
+.pc-strike { stroke: var(--down-solid); stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.pc-dot { fill: var(--fg); }
+.pc-t { fill: var(--fg); font-size: 10px; font-family: var(--sans); }
+.pc-ts { fill: var(--down); }
+.pc-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; }
+.pc-k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.pc-sw { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--fg); }
+.pc-sw.pc-s50 { border-top-color: var(--brass); }
+.pc-sw.pc-s200 { border-top-color: var(--muted); }
+.pc-sw.pc-strike { border-top: 2px dashed var(--down-solid); }

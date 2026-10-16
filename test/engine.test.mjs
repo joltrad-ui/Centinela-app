@@ -5,6 +5,7 @@ import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, deal
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious, hostAllowed, originAllowed } from "../scanner/scan.mjs";
 import { parseBackup } from "../web/copia.js";
+import { sma, smaSeries, changeOver } from "../web/engine.js";
 
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
@@ -999,4 +1000,21 @@ test("copia de seguridad: textos que no son una copia se rechazan", () => {
   for (const text of ["", "hola", "[]", "null", "{}", JSON.stringify({ centinela: 2, datos: {} }), JSON.stringify({ centinela: 1, datos: [] }), JSON.stringify({ centinela: 1, datos: { "otra.cosa": 1 } })]) {
     assert.ok(parseBackup(text).error, `debería rechazar: ${text}`);
   }
+});
+
+test("media simple, serie de medias y cambio en n sesiones", () => {
+  const closes = [10, 11, 12, 13, 14, 15];
+  assert.equal(sma(closes, 3), 14);
+  assert.equal(sma(closes, 6), 12.5);
+  assert.equal(sma(closes, 7), null);
+  assert.equal(sma(null, 3), null);
+  assert.deepEqual(smaSeries(closes, 3), [null, null, 11, 12, 13, 14]);
+  assert.equal(smaSeries(closes, 3).length, closes.length);
+  assert.deepEqual(smaSeries(closes, 10), new Array(6).fill(null));
+  // el último cierre cuenta como la sesión 1: con n = 5, se compara con el cierre 11
+  assert.equal(changeOver(closes, 5, 16.5), (16.5 / 11 - 1) * 100);
+  assert.equal(changeOver(closes, 1, 15), 0);
+  assert.equal(changeOver(closes, 7, 15), null);
+  assert.equal(changeOver(closes, 5, 0), null);
+  assert.equal(changeOver([0, 0, 0, 0, 0], 5, 3), null);
 });
