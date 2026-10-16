@@ -15,7 +15,7 @@
 import { emptyBox, notice, sectionHead } from "./ui.js";
 import { createVistas } from "./hoy-vistas.js";
 import { PR, W, filterBars, filterRow } from "./filtros.js";
-import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals } from "./hoy-calc.js";
+import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars } from "./hoy-calc.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -482,8 +482,8 @@ export function createHoy(ctx) {
         const box = (label, value, cls = "", note = "") => `<div class="fi-box"><span class="fi-lab">${label}</span><b class="num ${cls}">${value}</b>${note}</div>`;
         const boxes = `<div class="fi-boxes dl-boxes">
           ${box("Prob.", lv?.prob == null ? "—" : `${num(lv.prob, 1)} %`, "", deal.prob0 != null && lv?.prob != null && deal.prob0 !== lv.prob ? `<span class="xs muted">antes ${num(deal.prob0, 1)} %</span>` : "")}
-          ${box("Llevas", now == null ? "—" : signedUsd(Math.round(now)), now == null ? "" : tone(now))}
-          ${box("Pérdida máx.", usd2(loss).replace(/,00$/, ""), "down")}
+          ${box("Llevas", now == null ? "—" : signedUsd(now), now == null ? "" : tone(now))}
+          ${box("Pierdes máx.", dollars(loss), "down")}
         </div>`;
         return `<li class="dl-card">
           <div class="dl-top">${badge}<div class="dl-t">
