@@ -335,8 +335,8 @@ nav.dock svg { width: 20px; height: 20px; }
 .dl-ends { display: flex; justify-content: space-between; padding: 0 4px; }
 .dl-list { list-style: none; margin: 0; padding: 0; }
 .dl-card .dl-boxes { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 8px; }
-.dl-boxes .fi-box { padding: 8px 10px; align-content: start; }
-.dl-boxes .fi-lab { white-space: nowrap; font-size: 0.75rem; }
+.dl-boxes .fi-box { padding: 8px 10px; align-content: start; align-items: start; min-height: 64px; }
+.dl-boxes .fi-lab { white-space: nowrap; font-size: 0.8125rem; }
 .dl-boxes .fi-box b { font-size: 1.0625rem; }
 .hoy-rec { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; }
 .hoy-rec b { font-weight: 500; }

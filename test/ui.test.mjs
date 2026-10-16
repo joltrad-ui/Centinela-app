@@ -185,7 +185,7 @@ test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
   await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
   const list = await page.locator(".dl-card").first().innerText();
   assert.match(list, /AAPL/);
-  assert.match(list, /Pérdida máx\.\s*\$37\d/); // (5 − 1,25) × 100 más la comisión
+  assert.match(list, /Pierdes máx\.\s*\$37\d/); // (5 − 1,25) × 100 más la comisión
   assert.match(list, /Prob\./);
   assert.deepEqual(page.errors, []);
   await page.close();
