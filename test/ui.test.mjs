@@ -71,11 +71,11 @@ const ORDER = ["Nivel", "Vence hasta", "Ancho hasta", "Prob. hasta"];
 for (const width of [360, 390]) {
   test(`${width} px: ninguna pantalla desborda ni da errores`, { skip }, async () => {
     const page = await open(width);
-    for (const tab of ["Hoy", "Buscador", "Avisos", "Reglas"]) {
+    for (const tab of ["Hoy", "Buscador", "Avisos", "Mis deals", "Reglas"]) {
       await goTab(page, tab);
       assert.ok(await noOverflow(page), `${tab} desborda a ${width} px`);
     }
-    for (const view of ["nube", "barras", "mis", "mapa"]) {
+    for (const view of ["nube", "barras", "mapa"]) {
       await goTab(page, "Hoy");
       await page.locator(`[data-hoy="view"][data-v="${view}"]`).click();
       await page.waitForTimeout(300);
@@ -158,7 +158,7 @@ test("los recuentos de nivel ocupan una sola línea", { skip }, async () => {
 
 test("estados vacíos con el mismo bloque y alturas de las tres escalas", { skip }, async () => {
   const page = await open(390);
-  await page.locator('[data-hoy="view"][data-v="mis"]').click();
+  await page.locator('[data-tab="deals"]').click();
   assert.match(await page.locator(".empty h2").innerText(), /Todavía no has apuntado/);
   const heights = await page.evaluate(() => {
     const h = (s) => Math.round(document.querySelector(s)?.getBoundingClientRect().height ?? -1);
@@ -170,7 +170,7 @@ test("estados vacíos con el mismo bloque y alturas de las tres escalas", { skip
 
 test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
   const page = await open(390);
-  await page.locator('[data-hoy="view"][data-v="mis"]').click();
+  await page.locator('[data-tab="deals"]').click();
   await page.locator('[data-hoy="form-manual"]').click();
   await page.locator('[data-hoy-form="manual"] button[type=submit]').click();
   assert.match(await page.locator('[data-hoy-form="manual"] [role=alert]').innerText(), /símbolo/);
@@ -199,7 +199,7 @@ test("Mis deals: barra de orden y días en ámbar cuando quedan 7 o menos", { sk
     localStorage.setItem("centinela.misdeals.v1", JSON.stringify([d("a", "ZZA", 30, 1), d("b", "ZZB", 5, 2), d("c", "ZZC", 12, 0.5)]));
   });
   await page.reload();
-  await page.locator('[data-hoy="view"][data-v="mis"]').click();
+  await page.locator('[data-tab="deals"]').click();
   const order = async () => (await page.locator(".dl-sym").allInnerTexts()).join(",");
   await page.locator('[data-hoy="msort"][data-v="dias"]').click();
   assert.equal(await order(), "ZZB,ZZC,ZZA");

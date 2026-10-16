@@ -24,7 +24,7 @@ const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
 const LS_SEEN = "centinela.avisos.vistos";
 const LS_TAB = "centinela.pestana.v1";
-const TABS = ["hoy", "buscador", "avisos", "reglas"];
+const TABS = ["hoy", "buscador", "avisos", "deals", "reglas"];
 const LS_COPIED = "centinela.secreto.copiado";
 const LS_EQUAL = "centinela.igual.v1";
 const root = document.getElementById("app");
@@ -678,6 +678,7 @@ const ICONS = {
   hoy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="4" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="4" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="4" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="9.75" width="4.5" height="4.5" rx="1" fill="currentColor"/><rect x="15.5" y="9.75" width="4.5" height="4.5" rx="1"/><rect x="4" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="9.75" y="15.5" width="4.5" height="4.5" rx="1"/><rect x="15.5" y="15.5" width="4.5" height="4.5" rx="1"/></svg>',
   buscador: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
+  deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
 
@@ -770,7 +771,13 @@ function foot() {
 
 
 // La pestaña "Hoy" (mapa, nube, ficha del deal y Mis deals) vive en hoy.js.
-const hoy = createHoy({ state, render, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
+const goTab = (tab) => {
+  state.tab = tab;
+  writeLocal(LS_TAB, tab);
+  window.scrollTo(0, 0);
+  render();
+};
+const hoy = createHoy({ state, render, goTab, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
 // El Buscador sustituye a Lista y a Deals: todos los deals de todas las acciones con el esquema de la ficha (buscador.js).
 const buscador = createBuscador({ state, root, listSymbols, allSymbols: allListSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig });
 const reload = () => void load().then(loadHist, loadHist);
@@ -785,13 +792,13 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("hoy", "Hoy")}${item("buscador", "Buscador")}${item("avisos", "Avisos")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("buscador", "Buscador")}${item("avisos", "Avisos")}${item("deals", "Mis deals")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "hoy" ? hoy.view() : state.tab === "reglas" ? reglas.view() : state.tab === "avisos" ? avisos.view() : buscador.view();
+    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? hoy.mis() : state.tab === "reglas" ? reglas.view() : state.tab === "avisos" ? avisos.view() : buscador.view();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}`;

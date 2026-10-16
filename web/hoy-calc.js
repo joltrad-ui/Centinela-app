@@ -15,7 +15,7 @@ export const FL_W_STEP = W.step;
 export const FL_PR_MIN = PR.min;
 export const FL_PR_MAX = PR.max;
 export const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
-export const VIEWS = ["mapa", "nube", "barras", "mis"];
+export const VIEWS = ["mapa", "nube", "barras"];
 export const MAX_DEALS = 300;
 
 export const usd2 = (n) => `$${num(n, 2)}`;
