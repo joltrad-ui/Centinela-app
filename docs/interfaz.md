@@ -79,7 +79,7 @@ La pantalla de todas las acciones, con el esquema de la ficha. De arriba abajo:
 1. **Caja de búsqueda** (símbolo, nombre o bloque). Al escribir solo se repinta la lista (`setQuery`).
 2. **Panel plegable "Acciones"** (chips por bloque). Tocar quita o pone una acción: el mismo `config.off` de siempre, que la oculta en toda la app. Con "Marcar las que tengo", tocar marca "la tengo" (`centinela.tengo.v1`, solo en el dispositivo).
 3. **Filtros:** Nivel 0–5, Vence hasta, Ancho hasta, Prob. hasta; y en "Más filtros": **Guardados** (plegable: combinaciones con nombre; tocar una la aplica, la × la borra, y un campo "Nombre" + "Guardar estos filtros" guarda la de ahora; se marca la que coincide con los filtros actuales), Bloque (plegable), **Margen** (Todos / Con / Sin), **Las que tengo** (Todas / Ocultar / Solo), **Precio** (Bid/Ask / Mid, el mismo de Hoy), **Ocultar** (plegable: Resultados, Tendencia, Fuera de Reglas), "Quitar filtros".
-4. **Recuentos de nivel** (`stats`) y una línea con la cuenta de nombres y deals a la izquierda y "Uno por nombre" a la derecha.
+4. **Recuentos de nivel** (`stats`) y una línea con el recuento real a la izquierda ("30 nombres · 1336 de 1575 deals": los que salen de los que hay) y "Uno por nombre" a la derecha.
 5. **Barra de orden:** Nivel, Beneficio, Prob., Suelo, Por día. Beneficio = lo que queda de lo cobrado en %; Suelo = el `floor` del deal (en % de lo que se arriesga); Por día = rentab. esperada ÷ días hasta el vencimiento.
 6. **Lista de deals:** la misma fila que la ficha más el símbolo (`dealRow` y `sortDeals` de `hoy-calc.js` / `hoy.js`). Tocar una fila abre la ficha en ese deal (`data-hoy="cell"`).
 

@@ -469,7 +469,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .stat .xs { font-size: 0.75rem; }
 .stat b { font-size: 0.8125rem; font-weight: 500; color: var(--fg); }
 .bs-bar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; margin: 6px 2px 8px; }
-.bs-bar > span { white-space: nowrap; }
+.bs-bar > span { white-space: nowrap; font-size: 0.75rem; }
+.bs-bar > .chip { margin-left: auto; }
 .fi-f-note { margin: 0 0 2px calc(var(--lab) + 8px); }
 .fi-f-c:not(.sl):not(.wrap) { flex: 1 1 0; }
 /* La barra de elegir una opción dentro de una fila de filtro: de la misma altura que un chip, para que todas las filas lleven el mismo ritmo */
