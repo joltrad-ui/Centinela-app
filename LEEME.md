@@ -2,25 +2,33 @@
 
 Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da órdenes ni consejos: barre, filtra con tus reglas, ordena con tu orden y te avisa.
 
-## Qué hace
-
-- **Hoy**: la pantalla que se abre al entrar. Un mapa de nombres por vencimientos, con un nivel de 0 a 4 por casilla (cuánto tiene a favor el bull put de igual riesgo de esa casilla); una nube para comparar los de un vencimiento; unas barras con los mismos deals, una fila cada uno, que enseñan lo que cobra, lo que se espera pagar y lo que queda con su error; la ficha única de cada deal (lo que cobras, lo que apartas para pérdidas y lo que te queda, con los puntos que dan el nivel y, al final, todos los deals puntuados del mismo nombre con filtros); y **Mis deals**, donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
-- **Tus datos** (en Reglas): copia de seguridad de lo que vive solo en tu dispositivo (Mis deals, las que tengo, filtros guardados, reglas) como un texto que guardas tú; sirve para cambiar de móvil o si borras los datos del navegador. No se sube a ningún sitio.
-- **Buscador**: todos los bull puts de las 33 acciones con opciones líquidas de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), con caja de búsqueda y los filtros de la ficha: nivel, vencimiento, ancho (en $ por contrato) y probabilidad de asignación hasta el 30 %, y los que ocultan fuera de Reglas, con resultados o con aviso de tendencia. Se pueden quitar y poner acciones una a una y marcar las que ya tienes. La lista está en `scanner/universe.json`; para cambiarla se cambia ese archivo. Cada nombre se queda aunque no pase, con el motivo.
-- **Avisos**: cuando un nombre de la lista pasa a cumplir. Llegan al móvil con la app gratuita ntfy.
-- **Reglas**: días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional e interruptores.
-
 Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de resultados, de StockAnalysis.
+
+## Las cuatro pantallas
+
+- **Hoy** (la que se abre al entrar):
+  - **Mapa:** nombres por vencimientos, con un nivel de 0 a 5 por casilla (cuánto tiene a favor ese bull put).
+  - **Nube y Barras:** los deals de un vencimiento, para compararlos. Las barras enseñan lo que cobra, lo que se espera pagar y lo que queda con su error.
+  - **Ficha:** la de cada deal. Lo que cobras, lo que apartas para pérdidas, lo que te queda, los puntos que dan el nivel y, al final, todos los deals puntuados del mismo nombre con filtros.
+  - **Mis deals:** donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
+- **Buscador:** todos los bull puts de las 33 acciones de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), cada nombre con su motivo si no pasa.
+  - Caja de búsqueda; quitar y poner acciones una a una y marcar las que ya tienes.
+  - Filtros: Nivel, Vence hasta, Ancho hasta y Prob. hasta (barras). En "Más filtros": Margen, Las que tengo y Precio (barras), y Bloque, Ocultar (resultados, tendencia, fuera de Reglas) y Guardados (combinaciones con nombre) como filas plegables. El "?" explica Nivel, Margen y Las que tengo.
+  - Cuando no sale nada, te dice qué filtro quitar y cuántos deals saldrían.
+- **Avisos:** cuándo un nombre de la lista pasa a cumplir tus reglas. Llegan al móvil con la app gratuita ntfy.
+- **Reglas:** días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional, interruptores, comisión y horquilla, y las reglas del nivel de Hoy (punto de seguridad y error). Aquí también está **Tus datos**: una copia de seguridad, como un texto que guardas tú, de lo que vive solo en tu dispositivo (Mis deals, las que tengo, filtros guardados, reglas). Sirve para cambiar de móvil o por si borras los datos del navegador, y no se sube a ningún sitio.
+
+La lista está en `scanner/universe.json`; para cambiarla se cambia ese archivo.
 
 ## Cómo está montado
 
-Un solo repositorio público de GitHub. La app y el barrido se publican juntos en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/` (rama `gh-pages`), pero cada uno por su lado:
+Un solo repositorio público de GitHub. La app y el barrido se publican juntos en `https://TU-USUARIO.github.io/NOMBRE-DEL-REPOSITORIO/` (rama `gh-pages`), cada uno por su lado:
 
-- **Publicar** (`.github/workflows/publicar.yml`): cada cambio en `web/` que llega a `main` publica la app en un par de minutos, con el barrido que ya hubiera. No barre nunca.
-- **Barrido** (`.github/workflows/barrido.yml`): solo por horario o a mano. Barre la lista base cada media hora en horario de mercado y tarda menos de un minuto.
+- **Publicar** (`publicar.yml`): cada cambio en `web/` que llega a `main` publica la app en un par de minutos. No barre nunca.
+- **Pruebas** (`pruebas.yml`): corren en cada PR y antes de publicar. Si fallan, no se publica.
+- **Barrido** (`barrido.yml`): solo por horario o a mano. Barre la lista base cada media hora en horario de mercado y tarda menos de un minuto; deja un resumen en **Actions** ("Leídos N, sin lectura M" y el motivo).
 - Ninguno pisa al otro: publicar solo cambia los archivos de la app y el barrido solo la carpeta `data/`.
-
-La app guarda el último barrido en el dispositivo: al abrirla lo enseña al momento y solo descarga lo que haya cambiado.
+- La app guarda el último barrido en el dispositivo: al abrirla lo enseña al momento y solo descarga lo que haya cambiado. Sin conexión, enseña ese último barrido con un aviso.
 
 En repositorios públicos todo esto es gratis y sin límite de minutos.
 
@@ -31,17 +39,18 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | El código y la pantalla de la app | Repositorio y página | Sí |
 | La lista y su barrido (precios y cadenas de los 33 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
 | Reglas y orden | En tu dispositivo | No |
-| Mis deals y los bloques que marcas como ya abiertos | En tu dispositivo | No. No se suben a ningún sitio; si borras los datos del navegador, se pierden |
+| Mis deals, las que tengo, filtros guardados y los bloques que marcas como ya abiertos | En tu dispositivo | No. No se suben a ningún sitio; si borras los datos del navegador, se pierden (por eso existe la copia de **Tus datos**) |
 | Reglas para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |
 | Qué nombre cumplía y qué se avisó hoy | `data/privado.json`, cifrado | El archivo se ve, el contenido no. La clave sale del secreto `NTFY_TOPIC` y el tamaño es fijo |
 | Los avisos | App ntfy | Solo quien conozca el nombre del canal. Por eso tiene que ser largo y al azar |
 
-Consecuencias de que sea así:
+Consecuencias:
 
 - La lista es pública: cualquier cambio en `scanner/universe.json` (añadir o quitar un nombre) se ve en el repositorio. Mientras sea una lista amplia y genérica no dice qué opera nadie; si se recorta a lo que uno opera, lo dice.
 - Las reglas no pasan solas de un dispositivo a otro.
 - Los avisos no se anotan en la app; se ven en ntfy.
 - El registro de cada barrido en **Actions** también es público: solo dice cuántos nombres se han leído.
+- La app no pide nada a otros sitios al abrirla: las fuentes van dentro.
 
 ## Puesta en marcha
 
@@ -62,16 +71,15 @@ Consecuencias de que sea así:
 Con Node.js 22, dentro de esta carpeta:
 
 ```
-node scanner/scan.mjs --serve
+node scanner/scan.mjs --serve     # solo desde este ordenador, en http://localhost:8080
+npm run ordenador:movil           # además, desde el móvil en el mismo Wi-Fi
 ```
 
-Abre `http://localhost:8080`. Solo barre con el ordenador encendido. Por defecto solo se abre desde ese ordenador; para verlo también en el móvil, en el mismo Wi-Fi, usa `npm run ordenador:movil` (abre el servidor a la red local: solo en una red de confianza). En este modo lo que cambias en la app (reglas, nombres quitados) se guarda en `config.local.json`, que git ignora; `config.json` queda con los valores de fábrica.
+- Solo barre con el ordenador encendido.
+- `ordenador:movil` abre el servidor a la red local: úsalo solo en una red de confianza.
+- Lo que cambias en la app (reglas, nombres quitados) se guarda en `config.local.json`, que git ignora. `config.json` queda con los valores de fábrica.
 
-## Para ver la app sin datos reales
-
-```
-npm run ejemplo
-```
+Para ver la app sin datos reales, con cadenas inventadas: `npm run ejemplo` (o `bash scripts/ejemplo-fondo.sh`, que la deja corriendo solo si no lo está).
 
 ## Por qué la regla principal es la probabilidad
 
@@ -79,14 +87,16 @@ npm run ejemplo
 
 ## Cómo se calcula cada columna
 
-- **Crédito (cobras)**: bid del put corto menos ask del put largo, por 100.
-- **% del ancho**: crédito partido por el ancho.
-- **Ancho**: la regla es un máximo. Vale ese ancho y cualquiera menor que tenga la cadena.
-- **Pérdida máx.**: ancho menos crédito, por 100.
-- **Rentabilidad**: crédito partido por la pérdida máxima.
-- **Prob. de asignación**: probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio (la misma cuenta que crédito / ancho en un spread estrecho). Si faltan precios, se usa la fórmula con la volatilidad implícita del strike. No mide la asignación anticipada.
-- **Equilibrio**: lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. En 1 se igualan. Como la probabilidad sale de los mismos precios que el crédito, suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.
-- **Movimiento esperado**: precio × volatilidad implícita al dinero × raíz de (días / 365).
+- **Crédito (cobras):** bid del put corto menos ask del put largo, por 100.
+- **% del ancho:** crédito partido por el ancho.
+- **Ancho:** la regla es un máximo. Vale ese ancho y cualquiera menor que tenga la cadena.
+- **Pérdida máx.:** ancho menos crédito, por 100.
+- **Rentabilidad:** crédito partido por la pérdida máxima.
+- **Prob. de asignación:** probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio. Si faltan precios, se usa la fórmula con la volatilidad implícita del strike. No mide la asignación anticipada.
+- **Equilibrio:** lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. En 1 se igualan. Suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.
+- **Movimiento esperado:** precio × volatilidad implícita al dinero × raíz de (días / 365).
+
+El nivel de 0 a 5, lo que "se espera pagar" y su error están explicados con detalle en `docs/calculo.md`.
 
 ## Qué no está todavía
 
@@ -95,18 +105,12 @@ npm run ejemplo
 - Filtro por volatilidad respecto a su historia (el barrido ya guarda la volatilidad diaria).
 - Otras estrategias (iron condor, bajistas). El motor está preparado: ver `web/engine.js`.
 
-## Estado de las pruebas
-
-El barrido de la lista base lee los 33 nombres en unos segundos. Cada barrido deja un resumen en **Actions**: "Leídos N, sin lectura M" y el motivo.
-
 ## Carpetas
 
-- `web/` la app (`engine.js` es el motor: reglas, columnas y orden).
-- `scanner/scan.mjs` el barrido y los avisos.
-- `scanner/universe.json` la lista base, por bloques.
-- `.github/workflows/pruebas.yml` corre las pruebas en cada PR y antes de publicar la app: si fallan, no se publica.
-- `config.json` reglas de fábrica (públicas). `config.local.json` lo que guardas tú en el modo ordenador: git lo ignora. Solo se usan en el modo ordenador.
-- `.github/workflows/barrido.yml` los barridos automáticos; `publicar.yml` la publicación de la app.
-- `scripts/rama.sh` escribe cada parte en `gh-pages` sin pisar las otras.
-- `scanner/cierres.mjs` baja una vez al día los cierres diarios de la lista (carpeta `historia/`), para las cuentas con historia de Hoy y del Buscador. Un push no lo lanza.
-- `test/` pruebas y generador de datos de ejemplo.
+- `web/`: la app (`engine.js` es el motor; `fonts/` las fuentes).
+- `scanner/`: `scan.mjs` (el barrido y los avisos), `cierres.mjs` (los cierres diarios de 5 años, una vez al día, carpeta `historia/`; un push no lo lanza) y `universe.json` (la lista base, por bloques).
+- `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml` y `cierres.yml`.
+- `scripts/`: `rama.sh` (escribe cada parte en `gh-pages` sin pisar las otras) y las herramientas de trabajo (`entrega.sh`, `produccion.sh`, `esperar-ci.sh`, `ver.mjs`, `ejemplo-fondo.sh`).
+- `config.json`: reglas de fábrica (públicas). `config.local.json`: lo que guardas tú en el modo ordenador, ignorado por git.
+- `test/`: pruebas del motor y de las pantallas, y el generador de datos de ejemplo.
+- `docs/` y `AGENTS.md`: la guía para quien trabaje en el código (cálculo, interfaz y operación).
