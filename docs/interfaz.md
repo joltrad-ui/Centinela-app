@@ -5,7 +5,7 @@ App sin framework: `render()` reconstruye `#app`; los eventos se delegan en `app
 
 ## 1. Pantallas y navegación
 
-- **Cuatro pantallas**, en la barra de abajo en este orden: **Hoy, Buscador, Avisos, Reglas**. La app se abre en la última usada (`centinela.pestana.v1`); la primera vez, Hoy.
+- **Cinco pantallas**, en la barra de abajo en este orden: **Hoy, Buscador, Avisos, Mis deals, Reglas**. La app se abre en la última usada (`centinela.pestana.v1`); la primera vez, Hoy.
 - Sin título a la vista (el `h1` queda solo para lectores de pantalla) y sin botón Actualizar, salvo uno al principio de Reglas con su estado debajo: qué pasó en la última comprobación, la fecha del barrido y de los cierres, y si el mercado está abierto o cerrado (`refreshBox`, `state.refresh`). En las demás pantallas se actualiza arrastrando hacia abajo.
 - **Sin conexión:** se enseña el último barrido guardado en el dispositivo (`DATA_CACHE`) con un aviso gris con su fecha y antigüedad; al volver la conexión, se recarga sola (`online` / `offline` en `app.js`).
 - **Instalable** (manifest y `sw.js`): primero la red y, sin conexión, la última copia guardada. Pide siempre a la red con `cache: "no-cache"`.
@@ -22,7 +22,7 @@ Ninguno pasa de ~900 líneas. Los que tienen pantalla se crean con `createX(ctx)
 | `reglas.js`, `avisos.js` | pestañas Reglas y Avisos |
 | `conexion.js` | secreto, puente y GitHub, con sus botones y formularios |
 | `copia.js` | "Tus datos" en Reglas: copia de seguridad como texto y restaurar (`createCopia`, `parseBackup`) |
-| `hoy.js` | estado de Hoy, ficha, Mis deals y eventos (`createHoy`: `view`, `sheet`, `click`, `submit`, `escape`, `setProb`, `setWidth`, `setFl`, `openName`, `dealRow`, `sortDeals`, `stats`) |
+| `hoy.js` | estado de Hoy, ficha, Mis deals y eventos (`createHoy`: `view`, `mis`, `sheet`, `click`, `submit`, `escape`, `setProb`, `setWidth`, `setFl`, `openName`, `dealRow`, `sortDeals`, `stats`) |
 | `hoy-vistas.js` | controles de Hoy, mapa, nube y barras |
 | `hoy-calc.js` | constantes, formatos y cuentas puras de la ficha y las listas |
 | `buscador.js` | el Buscador (`createBuscador`) |
@@ -92,7 +92,7 @@ La pantalla de todas las acciones, con el esquema de la ficha. De arriba abajo:
 
 ## 7. Hoy (`hoy.js`, `hoy-vistas.js`)
 
-La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × vencimientos, un nivel de 0 a 4 por casilla) → **Nube** (un vencimiento: coste de ida y vuelta sobre lo cobrado frente a rentab. esperada) → **Barras** (los mismos deals, una fila cada uno en una sola escala: lo que cobra, lo que se espera pagar y lo que queda con su error) → **la ficha** con un "Resumen para tu bróker" que solo se copia → **Mis deals** (lo que el dueño apunta que ha abierto y cómo acabó, con el recuento por nivel); también se apunta a mano uno que ya tiene en su bróker, «Apuntar uno que ya tengo»: símbolo, vencimiento, strikes, crédito y contratos; lleva la etiqueta M, sin nivel, y no entra en el recuento por nivel). Los abiertos son tarjetas: nivel de ahora (y «antes N» si cambió), días que quedan, barra de precio con largo, corto y precio, y tres cajas (prob. de asignación de ahora con la de apuntar, lo que llevas a precio medio y pérdida máx.). Una barra de orden (Estado, Días, Prob., Llevas, Pérdida; `hoy.misSort`, se recuerda) aparece con dos o más; por Estado van primero vencidos y por debajo del corto, luego por fecha. Los días salen en ámbar con 7 o menos.
+La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × vencimientos, un nivel de 0 a 4 por casilla) → **Nube** (un vencimiento: coste de ida y vuelta sobre lo cobrado frente a rentab. esperada) → **Barras** (los mismos deals, una fila cada uno en una sola escala: lo que cobra, lo que se espera pagar y lo que queda con su error) → **la ficha** con un "Resumen para tu bróker" que solo se copia. **Mis deals** ya no es una vista de Hoy: es la pestaña de abajo (`hoy.mis()`) (lo que el dueño apunta que ha abierto y cómo acabó, con el recuento por nivel); también se apunta a mano uno que ya tiene en su bróker, «Apuntar uno que ya tengo»: símbolo, vencimiento, strikes, crédito y contratos; lleva la etiqueta M, sin nivel, y no entra en el recuento por nivel). Los abiertos son tarjetas: nivel de ahora (y «antes N» si cambió), días que quedan, barra de precio con largo, corto y precio, y tres cajas (prob. de asignación de ahora con la de apuntar, lo que llevas a precio medio y pérdida máx.). Una barra de orden (Estado, Días, Prob., Llevas, Pérdida; `hoy.misSort`, se recuerda) aparece con dos o más; por Estado van primero vencidos y por debajo del corto, luego por fecha. Los días salen en ámbar con 7 o menos.
 
 - `createHoy(ctx)` recibe de `app.js` el estado y las utilidades; sus botones llevan `data-hoy` y sus formularios `data-hoy-form`. Usa las mismas cuentas que antes tenía "Igual riesgo" (`spreadRow`, `withHistory`, `gateReason`) y las reglas `equalFee` y `equalGapPct`.
 - **Controles:** Ancho hasta (`hoy-w-range`, $100–$1000; `hoy.setWidth`) y Prob. hasta (`hoy-pr-range`, 3–30 %, "X % o menos": `hoy.setProb`, pasa `orLess: true` a `equalRisk`), siempre a la vista; en "Más filtros", Precio (barra) y "Ya tengo". El ancho por defecto sale de las Reglas (`nearest(WIDTHS, rules.width)`); un ancho guardado se conserva en puntos y se ve en $.

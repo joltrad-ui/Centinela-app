@@ -563,12 +563,20 @@ export function createHoy(ctx) {
   function view() {
     const o = options();
     const closed = state.scan && !state.scan.example && pricesOutsideMarket(state.scan.at);
-    const body = hoy.view === "mis" ? viewMis() : hoy.view === "nube" ? viewNube(o) : hoy.view === "barras" ? viewBarras(o) : viewMapa(o);
+    const body = hoy.view === "nube" ? viewNube(o) : hoy.view === "barras" ? viewBarras(o) : viewMapa(o);
     return `
       ${ctx.header("Hoy", false)}
-      ${closed && hoy.view !== "mis" ? notice("watch", "Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.") : ""}
+      ${closed ? notice("watch", "Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.") : ""}
       ${segmented()}
       ${body}
+      ${ctx.foot()}`;
+  }
+
+  /** La pestaña "Mis deals" (barra de abajo, entre Avisos y Reglas). */
+  function mis() {
+    return `
+      ${ctx.header("Mis deals", false)}
+      ${viewMis()}
       ${ctx.foot()}`;
   }
 
@@ -733,9 +741,7 @@ export function createHoy(ctx) {
         hoy.deal = null;
         hoy.form = null;
         hoy.error = "";
-        hoy.view = "mis";
-        keep();
-        window.scrollTo(0, 0);
+        ctx.goTab("deals");
       }
     } else if (form.dataset.hoyForm === "manual") {
       const symbol = String(data.get("s") ?? "").trim().toUpperCase();
@@ -844,5 +850,5 @@ export function createHoy(ctx) {
     return true;
   }
 
-  return { view, sheet, click, submit, escape, setProb, setWidth, setFl, openName, dealRow, sortDeals, stats };
+  return { view, mis, sheet, click, submit, escape, setProb, setWidth, setFl, openName, dealRow, sortDeals, stats };
 }

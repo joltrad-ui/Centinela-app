@@ -4,19 +4,19 @@ Filtro de bull puts sobre una lista corta de acciones y ETF de EE. UU. No da ór
 
 Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de resultados, de StockAnalysis.
 
-## Las cuatro pantallas
+## Las cinco pantallas
 
 - **Hoy** (la que se abre al entrar):
   - **Mapa:** nombres por vencimientos, con un nivel de 0 a 5 por casilla (cuánto tiene a favor ese bull put).
   - **Nube y Barras:** los deals de un vencimiento, para compararlos. Las barras enseñan lo que cobra, lo que se espera pagar y lo que queda con su error.
   - **Ficha:** la de cada deal. Lo que cobras, lo que apartas para pérdidas, lo que te queda, los puntos que dan el nivel, un gráfico del precio con sus medias de 50 y 200 días y el strike, y, al final, todos los deals puntuados del mismo nombre con filtros.
-  - **Mis deals:** donde apuntas lo que abres y cómo acabó. La app no envía órdenes: da un resumen para copiar.
 - **Buscador:** todos los bull puts de las 33 acciones de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), cada nombre con su motivo si no pasa.
   - Caja de búsqueda; quitar y poner acciones una a una y marcar las que ya tienes.
   - Filtros: Nivel, Vence hasta, Ancho hasta y Prob. hasta (barras). En "Más filtros": Margen, Las que tengo y Precio (barras), y Bloque, Ocultar (resultados, tendencia, fuera de Reglas) y Guardados (combinaciones con nombre) como filas plegables. El "?" explica Nivel, Margen y Las que tengo.
   - Cuando no sale nada, te dice qué filtro quitar y cuántos deals saldrían.
   - Volatilidad: IV alta o IV baja frente a lo que el valor se ha movido de verdad.
 - **Avisos:** cuándo un nombre de la lista pasa a cumplir tus reglas. Llegan al móvil con la app gratuita ntfy.
+- **Mis deals:** donde apuntas lo que abres (o lo que ya tienes en tu bróker) y cómo acabó, con una tarjeta por deal y orden a elegir. La app no envía órdenes: da un resumen para copiar.
 - **Reglas:** días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional, interruptores, comisión y horquilla, y las reglas del nivel de Hoy (punto de seguridad y error). Aquí también está **Tus datos**: una copia de seguridad, como un texto que guardas tú, de lo que vive solo en tu dispositivo (Mis deals, las que tengo, filtros guardados, reglas). Sirve para cambiar de móvil o por si borras los datos del navegador, y no se sube a ningún sitio.
 
 La lista está en `scanner/universe.json`; para cambiarla se cambia ese archivo.

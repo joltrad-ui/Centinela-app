@@ -9,9 +9,8 @@ export function createVistas(h) {
   const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
 
     function segmented() {
-      const open = openDeals().length;
       const item = (id, label) => `<button data-hoy="view" data-v="${id}" aria-pressed="${hoy.view === id}">${label}</button>`;
-      return `<div class="seg" role="group" aria-label="Vistas de Hoy">${item("mapa", "Mapa")}${item("nube", "Nube")}${item("barras", "Barras")}${item("mis", `Mis deals${open ? ` · ${open}` : ""}`)}</div>`;
+      return `<div class="seg" role="group" aria-label="Vistas de Hoy">${item("mapa", "Mapa")}${item("nube", "Nube")}${item("barras", "Barras")}</div>`;
     }
 
     function controls(o) {

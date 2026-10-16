@@ -5,7 +5,7 @@
 //
 // Opciones (las repetibles se pueden poner varias veces, y se aplican en el orden dado):
 //   --ancho 360,390        anchos de pantalla (por defecto 360 y 390)
-//   --pestana Nombre       Hoy | Buscador | Avisos | Reglas
+//   --pestana Nombre       Hoy | Buscador | Avisos | Mis deals | Reglas
 //   --clic SEL             hacer clic en SEL (la primera coincidencia)
 //   --escribir SEL=texto   escribir en un campo
 //   --barra SEL=valor      mover una barra (input range) y soltarla
