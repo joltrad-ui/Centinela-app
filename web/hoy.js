@@ -57,6 +57,7 @@ export function createHoy(ctx) {
     held: Array.isArray(saved.held) ? saved.held.filter((name) => typeof name === "string").slice(0, 40) : [],
     expiry: typeof saved.expiry === "string" ? saved.expiry : null,
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
+    misSort: ["estado", "dias", "prob", "llevas", "perdida"].includes(saved.misSort) ? saved.misSort : "estado", // orden de Mis deals abiertos
     barSort: saved.barSort === "floor" ? "floor" : "left", // orden de la vista Barras: por lo que queda o por el suelo
     folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
@@ -72,7 +73,7 @@ export function createHoy(ctx) {
     confirm: null, // id del deal que se va a borrar
     draft: null, // lo escrito en «Apuntar uno que ya tengo», para no perderlo si hay un error
   };
-  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort, fOpen: hoy.fOpen });
+  const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort, misSort: hoy.misSort, fOpen: hoy.fOpen });
 
   const cleanDeal = (row) => {
     if (!row || typeof row !== "object" || typeof row.id !== "string" || typeof row.s !== "string" || typeof row.expiry !== "string") return null;
@@ -461,16 +462,28 @@ export function createHoy(ctx) {
       return { level: gateReason(rows.nat, opts.gapPct) || !checks.scored ? null : checks.level, prob: rows.nat.prob, mid: rows.nat.midCredit };
     };
     const cards = open
-      .map((deal) => ({ deal, st: dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today), lv: live(deal) }))
-      .sort((x, y) => RANK[x.st.state] - RANK[y.st.state] || (x.deal.expiry < y.deal.expiry ? -1 : x.deal.expiry > y.deal.expiry ? 1 : x.deal.s.localeCompare(y.deal.s)));
+      .map((deal) => {
+        const lv = live(deal);
+        const st = dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today);
+        return { deal, st, lv, loss: (deal.short - deal.long) * 100 * deal.qty - cobrado(deal), now: lv?.mid != null ? cobrado(deal) - lv.mid * 100 * deal.qty : null };
+      })
+      .sort((x, y) => {
+        const bySoon = x.deal.expiry < y.deal.expiry ? -1 : x.deal.expiry > y.deal.expiry ? 1 : x.deal.s.localeCompare(y.deal.s);
+        const by = (a, b) => (a == null) - (b == null) || (a == null ? 0 : a - b); // sin dato, al final
+        const key = hoy.misSort;
+        if (key === "dias") return bySoon;
+        if (key === "prob") return by(x.lv?.prob == null ? null : -x.lv.prob, y.lv?.prob == null ? null : -y.lv.prob) || bySoon;
+        if (key === "llevas") return by(x.now, y.now) || bySoon;
+        if (key === "perdida") return by(-x.loss, -y.loss) || bySoon;
+        return RANK[x.st.state] - RANK[y.st.state] || bySoon;
+      });
+    const sortBar = `<div class="sortbar eq dl-sort" role="group" aria-label="Orden de los deals">${[["estado", "Estado"], ["dias", "Días"], ["prob", "Prob."], ["llevas", "Llevas"], ["perdida", "Pérdida"]].map(([id, label]) => `<button data-hoy="msort" data-v="${id}" aria-pressed="${hoy.misSort === id}">${label}</button>`).join("")}</div>`;
     const openList = cards
-      .map(({ deal, st, lv }) => {
+      .map(({ deal, st, lv, loss, now }) => {
         const closing = hoy.form && hoy.form.close === deal.id;
         const cur = lv?.level ?? null;
         const badge = cur != null ? levelTag(cur, " mid") : deal.manual ? '<span class="lv lvh mid" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh mid">H</span>' : levelTag(deal.level, " mid");
         const before = cur != null && deal.level != null && deal.level !== cur ? ` · antes ${deal.level}` : "";
-        const loss = (deal.short - deal.long) * 100 * deal.qty - cobrado(deal);
-        const now = lv?.mid != null ? cobrado(deal) - lv.mid * 100 * deal.qty : null;
         let scale = "";
         if (st.price != null) {
           const lo = deal.long * 0.97;
@@ -488,7 +501,7 @@ export function createHoy(ctx) {
         return `<li class="dl-card">
           <div class="dl-top">${badge}<div class="dl-t">
             <span class="dl-n"><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="small muted">×${deal.qty}</span>` : ""}</span>
-            <b class="num dl-days">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b>
+            <b class="num dl-days${st.dte >= 0 && st.dte <= 7 ? " soon" : ""}">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b>
             <span class="pill st-${st.state}">${LABEL[st.state]}</span>
             <span class="small muted dl-date">${esc(labelOf(deal.expiry))}${before}</span>
           </div></div>
@@ -533,7 +546,7 @@ export function createHoy(ctx) {
       .join("");
     return `
       ${manual}
-      ${open.length ? `${sectionHead("Abiertos", open.length)}<ul class="dl-list">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
+      ${open.length ? `${sectionHead("Abiertos", open.length)}${open.length > 1 ? sortBar : ""}<ul class="dl-list">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
       ${
         closed.length
           ? `${sectionHead("Lo que pasó, por nivel", `${closed.length} ${closed.length === 1 ? "cerrado" : "cerrados"}`)}
@@ -585,6 +598,9 @@ export function createHoy(ctx) {
       hoy.legendOpen = !hoy.legendOpen;
     } else if (act === "help") {
       hoy.help = !hoy.help;
+    } else if (act === "msort") {
+      hoy.misSort = ["estado", "dias", "prob", "llevas", "perdida"].includes(value) ? value : "estado";
+      keep();
     } else if (act === "bsort") {
       hoy.barSort = value === "floor" ? "floor" : "left";
       keep();

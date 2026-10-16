@@ -330,6 +330,8 @@ nav.dock svg { width: 20px; height: 20px; }
 .dl-n, .dl-days { line-height: 1.15; }
 .dl-k { color: var(--muted); }
 .dl-days { font-size: 1.0625rem; font-weight: 600; }
+.dl-days.soon { color: var(--brass); }
+.dl-sort { margin-top: 10px; }
 .dl-days small { font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
 .dl-scale { position: relative; height: 6px; border-radius: 999px; background: var(--line); margin: 14px 4px 6px; }
 .dl-scale .z { position: absolute; top: 0; height: 100%; background: var(--down-solid); opacity: 0.55; border-radius: 999px; }

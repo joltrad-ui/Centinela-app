@@ -187,6 +187,28 @@ test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
   assert.match(list, /AAPL/);
   assert.match(list, /Pierdes máx\.\s*\$37\d/); // (5 − 1,25) × 100 más la comisión
   assert.match(list, /Prob\./);
+  assert.equal(await page.locator(".dl-sort").count(), 0, "con un solo deal no hace falta ordenar");
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("Mis deals: barra de orden y días en ámbar cuando quedan 7 o menos", { skip }, async () => {
+  const page = await open(390);
+  await page.evaluate(() => {
+    const d = (id, s, days, credit) => ({ id, s, b: "", expiry: new Date(Date.now() + days * 864e5).toISOString().slice(0, 10), short: 100, long: 95, credit, qty: 1, fee: 0, openedAt: Date.now(), level: null, retExp: null, price0: null, closedAt: null, result: null, manual: true });
+    localStorage.setItem("centinela.misdeals.v1", JSON.stringify([d("a", "ZZA", 30, 1), d("b", "ZZB", 5, 2), d("c", "ZZC", 12, 0.5)]));
+  });
+  await page.reload();
+  await page.locator('[data-hoy="view"][data-v="mis"]').click();
+  const order = async () => (await page.locator(".dl-sym").allInnerTexts()).join(",");
+  await page.locator('[data-hoy="msort"][data-v="dias"]').click();
+  assert.equal(await order(), "ZZB,ZZC,ZZA");
+  await page.locator('[data-hoy="msort"][data-v="perdida"]').click();
+  assert.equal(await order(), "ZZC,ZZA,ZZB", "más pérdida máx. primero");
+  const color = (n) => page.locator(".dl-days").nth(n).evaluate((e) => getComputedStyle(e).color);
+  await page.locator('[data-hoy="msort"][data-v="dias"]').click();
+  assert.notEqual(await color(0), await color(1), "5 días lleva otro color que 12");
+  assert.equal(await color(1), await color(2));
   assert.deepEqual(page.errors, []);
   await page.close();
 });
