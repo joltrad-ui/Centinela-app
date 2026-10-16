@@ -321,13 +321,15 @@ nav.dock svg { width: 20px; height: 20px; }
 /* Mis deals abiertos: una tarjeta por deal con nivel, días, barra de precio y tres cajas. */
 .dl-card { list-style: none; padding: 12px 14px; margin-top: 10px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
 .dl-top { display: flex; align-items: center; gap: 12px; }
-.dl-top .lv.mid { width: 52px; height: 52px; font-size: 1.5rem; flex: none; }
-.dl-t { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
-.dl-t .pill { justify-self: start; }
+.dl-top .lv.mid { width: 40px; height: 40px; font-size: 1.25rem; flex: none; }
+.dl-t { flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; }
+.dl-t .pill { justify-self: start; font-size: 0.6875rem; line-height: 1.2; padding: 2px 8px; }
+.dl-t .dl-date { font-size: 0.75rem; line-height: 1.2; }
 .dl-t .dl-days, .dl-t .dl-date { justify-self: end; }
-.dl-sym { font-size: 1.125rem; }
+.dl-sym { font-size: 1.0625rem; }
+.dl-n, .dl-days { line-height: 1.15; }
 .dl-k { color: var(--muted); }
-.dl-days { font-size: 1.125rem; font-weight: 600; }
+.dl-days { font-size: 1.0625rem; font-weight: 600; }
 .dl-days small { font-size: 0.8125rem; font-weight: 400; color: var(--muted); }
 .dl-scale { position: relative; height: 6px; border-radius: 999px; background: var(--line); margin: 14px 4px 6px; }
 .dl-scale .z { position: absolute; top: 0; height: 100%; background: var(--down-solid); opacity: 0.55; border-radius: 999px; }
