@@ -402,3 +402,22 @@ test("Reglas: copiar mis datos y restaurarlos desde la copia", { skip }, async (
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Reglas: cada regla con número cabe en una fila compacta (título y −/+ en la misma línea)", { skip }, async () => {
+  const page = await open(360);
+  await goTab(page, "Reglas");
+  const rows = await page.$$eval(".field:not(.stack)", (els) =>
+    els.map((e) => {
+      const t = e.querySelector("b").getBoundingClientRect();
+      const s = e.querySelector(".stepper").getBoundingClientRect();
+      return { h: Math.round(e.getBoundingClientRect().height), sameLine: Math.abs(t.top + t.height / 2 - (s.top + s.height / 2)) < 30, text: e.innerText.slice(0, 30) };
+    }),
+  );
+  assert.ok(rows.length >= 8);
+  for (const r of rows) {
+    assert.ok(r.sameLine, `${r.text}: el título y el −/+ no van en la misma línea`);
+    assert.ok(r.h < 170, `${r.text}: fila de ${r.h} px`);
+  }
+  assert.ok(await noOverflow(page));
+  await page.close();
+});

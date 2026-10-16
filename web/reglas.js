@@ -88,7 +88,7 @@ export function createReglas(ctx) {
         ${sectionHead("Pestaña Hoy")}
         <p class="small muted">Solo cuenta ahí. Usa la comisión y la horquilla de la sección de abajo.</p>
         <div class="panel">
-          <div class="field" style="display:block">
+          <div class="field stack">
             <div class="txt"><b>Punto de seguridad del nivel</b><span class="small muted">Es uno de los puntos que suman al nivel. Elige qué se le pide a lo que queda tras pagar lo que se espera.</span></div>
             <div class="seg" role="group" aria-label="Punto de seguridad" style="margin:10px 0 4px">
               ${[["margin", "Con margen"], ["both", "Los dos cálculos"], ["off", "No cuenta"]].map(([id, label]) => `<button data-rule-set="levelSafety" data-v="${id}" aria-pressed="${state.config.rules.levelSafety === id}">${label}</button>`).join("")}

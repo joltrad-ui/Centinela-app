@@ -20,6 +20,7 @@
   --h-lg: 44px;
   --h-md: 36px;
   --h-sm: 32px;
+  --r-card: 16px; /* esquinas de todo recuadro: paneles, filas, vacíos, avisos y "Más filtros" */
   --lab: 100px; /* ancho de la columna de etiquetas de los filtros: Nivel, Vence hasta, Las que tengo... */
   --border: 0 0 0 1px rgba(232, 239, 233, 0.08);
   --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
@@ -70,7 +71,7 @@ header.top { padding: max(12px, env(safe-area-inset-top)) 0 8px; }
 .top-row + .status { margin-top: 12px; }
 .rules-line { margin-top: 4px; display: inline-block; text-align: left; color: var(--fg); border-bottom: 1px dashed var(--line); }
 
-.notice { margin: 12px 0; padding: 10px 14px; border-radius: 14px; background: var(--surface-2); color: var(--muted); }
+.notice { margin: 12px 0; padding: 10px 14px; border-radius: var(--r-card); background: var(--surface-2); color: var(--muted); }
 .notice.watch { background: var(--brass-dim); color: var(--brass); }
 .notice.bad { background: var(--down-dim); color: var(--down); }
 
@@ -109,11 +110,15 @@ tbody tr:hover td { background: var(--surface-2); }
 td .star { width: 32px; height: 32px; margin: -6px 0; font-size: 1.05rem; }
 td .name { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 0.75rem; }
 
-.panel { background: var(--surface); border-radius: 16px; box-shadow: var(--border); padding: 0 16px; }
+.panel { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--border); padding: 0 16px; }
 .panel > * + * { border-top: 1px solid var(--line); }
-.field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
-.field .txt { min-width: 0; }
-.field .txt b { font-weight: 500; display: block; }
+/* Una regla con número: el título y el −/+ en la misma línea, y la explicación debajo, a todo el ancho */
+.field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; row-gap: 2px; padding: 12px 0; }
+.field .txt { display: contents; }
+.field .txt b { font-weight: 500; grid-column: 1; grid-row: 1; }
+.field .txt .small { grid-column: 1 / -1; grid-row: 2; }
+.field .stepper { grid-column: 2; grid-row: 1; }
+.field.stack, .field.stack .txt, .field.stack .txt b { display: block; }
 .stepper { display: flex; align-items: center; gap: 4px; flex: none; }
 .stepper button { width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2); font-size: 1.25rem; line-height: 1; }
 .stepper span { width: 76px; text-align: center; font-weight: 500; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
@@ -140,7 +145,7 @@ details dd { margin: 0; color: var(--muted); font-size: 0.875rem; }
 .add input { flex: 1; min-width: 0; height: var(--h-lg); padding: 0 12px; border-radius: 12px; background: var(--surface); border: 0; box-shadow: var(--border); text-transform: uppercase; }
 .add input::placeholder { text-transform: none; color: var(--muted); }
 
-.rows { list-style: none; margin: 0; padding: 0 14px; background: var(--surface); border-radius: 16px; box-shadow: var(--border); }
+.rows { list-style: none; margin: 0; padding: 0 14px; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--border); }
 .rows li + li { border-top: 1px solid var(--line); }
 .deal { display: block; width: 100%; text-align: left; padding: 11px 0; }
 .deal-top { display: block; position: relative; padding-right: 64px; }
@@ -174,7 +179,7 @@ nav.dock svg { width: 20px; height: 20px; }
 .empty .btn { margin-top: 14px; }
 .empty-actions { display: grid; gap: 8px; justify-items: center; margin-top: 14px; }
 .empty-actions .btn { margin-top: 0; max-width: 100%; white-space: normal; height: auto; min-height: var(--h-md); padding-block: 6px; }
-.empty { background: var(--surface); border-radius: 16px; box-shadow: var(--border); padding: 28px 16px; text-align: center; }
+.empty { background: var(--surface); border-radius: var(--r-card); box-shadow: var(--border); padding: 28px 16px; text-align: center; }
 
 @media (min-width: 560px) {
 }
@@ -489,7 +494,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fhead-i { width: 22px; height: 22px; padding: 0; border-radius: 50%; font-size: 0.75rem; line-height: 1; color: var(--muted); box-shadow: var(--border); }
 .fhead-i[aria-expanded="true"] { color: var(--fg); background: var(--surface-2); }
 /* Las filas de "Más filtros" juntas, sobre un fondo suave, y la explicación de los filtros con el mismo aire */
-.fi-more, .fi-help-panel { display: grid; gap: 8px; padding: 10px 8px; margin: 0 -8px 8px; /* el fondo sale 8 px a cada lado: las filas siguen alineadas con las barras de arriba */ border-radius: 14px; background: var(--surface); box-shadow: var(--border); }
+.fi-more, .fi-help-panel { display: grid; gap: 8px; padding: 10px 8px; margin: 0 -8px 8px; /* el fondo sale 8 px a cada lado: las filas siguen alineadas con las barras de arriba */ border-radius: var(--r-card); background: var(--surface); box-shadow: var(--border); }
 .fi-help-panel { gap: 6px; }
 .fi-help-panel p { margin: 0; }
 .fi-help-panel b { color: var(--fg); font-weight: 500; }

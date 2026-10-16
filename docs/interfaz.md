@@ -108,6 +108,12 @@ La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × venci
 - "Restaurar": se pega la copia y "Revisar" enseña qué trae ("2 deals abiertos y 1 cerrado, 3 acciones marcadas…"); "Sí, restaurar" reemplaza lo del dispositivo y recarga la app. Solo se aceptan las claves de `KEYS` (`parseBackup`, con prueba).
 - **Nunca** entran en la copia la llave de GitHub (`centinela.github.v1`), el puente, los barridos guardados ni las marcas de lectura. No se sube a ningún sitio.
 
+## 7c. Reglas y Avisos (`reglas.js`, `avisos.js`)
+
+- Mismo vocabulario visual que el resto: `sectionHead` para los títulos, recuadros `.panel` con divisores (esquinas `--r-card`, igual que `.fi-more`, `.empty` y `.notice`), `notice` para los avisos, `emptyBox` para los vacíos y alturas solo de la escala.
+- **Regla con número** (`stepper`, clase `.field`): el título y el −/+ en la misma línea y la explicación debajo, a todo el ancho; el −/+ mide 44 px (`--h-lg`). Una regla con elección propia (el punto de seguridad) usa `.field.stack`.
+- Los interruptores (`.gate`, `.switch`) y los botones (`.btn`) usan las alturas de la escala. Los números de las reglas se cambian con −/+, no con barras (decisión del dueño).
+
 ## 8. La ficha (`sheet` de `hoy.js`)
 
 Una sola para las tres pantallas: tocar una casilla de Hoy o una fila del Buscador la abre. Con un nombre sin deal elegido, `hoy.openName` carga el mejor deal puntuado (el de más nivel que cumple las Reglas o, si ninguno, el de más nivel; sin deals puntuados enseña solo la cabecera y un aviso).
