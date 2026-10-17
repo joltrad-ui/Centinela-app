@@ -213,6 +213,23 @@ test("Mis deals: barra de orden y días en ámbar cuando quedan 7 o menos", { sk
   await page.close();
 });
 
+test("La ficha de un deal apuntado enseña «Tu deal»", { skip }, async () => {
+  const page = await open(390);
+  await page.locator('button.lv[data-hoy="cell"]:not(.lvh)').first().click();
+  assert.equal(await page.locator(".fi-mine").count(), 0, "un deal no apuntado no lleva franja");
+  await page.locator('button[data-hoy="fold"][data-v="bro"]').click();
+  await page.locator('[data-hoy="form-open"]').click();
+  await page.locator('[data-hoy-form="abrir"] button[type=submit]').click();
+  await page.locator('[data-tab="deals"]').click();
+  await page.locator('[data-hoy="cell"]').first().click();
+  const mine = await page.locator(".fi-mine").innerText();
+  assert.match(mine, /Tu deal/);
+  assert.match(mine, /Cobraste/);
+  assert.match(mine, /Prob\. al apuntar/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
 test("Reglas y Avisos: pasos, interruptores, avisos y restaurar funcionan", { skip }, async () => {
   const page = await open(390);
   await goTab(page, "Reglas");

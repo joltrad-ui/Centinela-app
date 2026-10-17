@@ -116,7 +116,7 @@ La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × venci
 
 ## 8. La ficha (`sheet` de `hoy.js`)
 
-Una sola para las tres pantallas: tocar una casilla de Hoy o una fila del Buscador la abre. Con un nombre sin deal elegido, `hoy.openName` carga el mejor deal puntuado (el de más nivel que cumple las Reglas o, si ninguno, el de más nivel; sin deals puntuados enseña solo la cabecera y un aviso).
+Una sola para las tres pantallas: tocar una casilla de Hoy o una fila del Buscador la abre. Con un nombre sin deal elegido, `hoy.openName` carga el mejor deal puntuado (el de más nivel que cumple las Reglas o, si ninguno, el de más nivel; sin deals puntuados enseña solo la cabecera y un aviso). Si ese spread está abierto en Mis deals, bajo la cabecera sale la franja «Tu deal» (`mineStrip`): cobraste, lo que llevas a precio medio y la prob. al apuntar.
 
 - **Arriba:** nombre, precio y variación del día (`fi-head`); nombre largo y bloque; el nivel con strikes, vencimiento, días y ancho por contrato (`fi-deal`).
 - **El ticket** (`fi-ticket`), el protagonista: "Cobras" (cobras neto, en azul), "Apartas para pérdidas" (= se espera pagar, en rojo), una línea de puntos y "Tu beneficio" (cobras neto menos lo que se espera pagar, grande, en verde o en rojo si no pasa de 0) con su % sobre lo cobrado; una barra fina (rojo = apartas, verde = beneficio); la frase "De cada $X que cobras, el N % es tuyo"; y "Si el cálculo se queda corto" (el peor de `marginRecent` y `marginHist`, en $ y %).
