@@ -104,6 +104,20 @@ export function createHoy(ctx) {
   const keepDeals = () => ctx.writeLocal(LS_DEALS, deals);
   const openDeals = () => deals.filter((deal) => !deal.closedAt);
   const cobrado = (deal) => deal.credit * 100 * deal.qty - deal.fee * deal.qty;
+  const box = (label, value, cls = "", note = "") => `<div class="fi-box"><span class="fi-lab">${label}</span><b class="num ${cls}">${value}</b>${note}</div>`;
+  /** Lo que llevas de un deal apuntado a precio medio de hoy (sin la comisión de cierre); null sin precio. */
+  const nowOf = (deal, mid) => (mid == null ? null : cobrado(deal) - mid * 100 * deal.qty);
+  /** «Tu deal»: franja de la ficha cuando el spread abierto es uno de Mis deals. */
+  function mineStrip(target, mid) {
+    const mine = openDeals().find((d) => d.s === target.s && d.expiry === target.expiry && d.short === target.short && d.long === target.long);
+    if (!mine) return "";
+    const now = nowOf(mine, mid);
+    const day = labelOf(new Date(mine.openedAt).toISOString().slice(0, 10));
+    return `<section class="fi-mine" aria-label="Tu deal">
+      <p class="small"><b>Tu deal</b> <span class="muted">· ${mine.qty} ${mine.qty === 1 ? "contrato" : "contratos"} · apuntado el ${esc(day)}${mine.manual ? " · a mano" : ""}</span></p>
+      <div class="fi-boxes dl-boxes">${box("Cobraste", dollars(cobrado(mine)))}${box("Llevas", now == null ? "—" : signedUsd(now), now == null ? "" : tone(now))}${box("Prob. al apuntar", mine.prob0 == null ? "—" : `${num(mine.prob0, 1)} %`)}</div>
+    </section>`;
+  }
 
   // ---------- opciones y cuentas ----------
 
@@ -253,7 +267,7 @@ export function createHoy(ctx) {
     }
     const rows = dealRows(sym, hoy.deal, o.opts, o.today);
     if (!rows.row) {
-      return wrap(`${fiHead(sym)}<p class="small muted" style="margin-top:16px">Ese bull put ya no tiene precio${rows.why ? `: ${esc(rows.why.toLowerCase())}` : ""}.</p>${dealsSection(sym, o, null)}`);
+      return wrap(`${fiHead(sym)}<p class="small muted" style="margin-top:16px">Ese bull put ya no tiene precio${rows.why ? `: ${esc(rows.why.toLowerCase())}` : ""}.</p>${mineStrip(hoy.deal, null)}${dealsSection(sym, o, null)}`);
     }
     const row = rows.row;
     const key = dealKey(row);
@@ -402,6 +416,7 @@ export function createHoy(ctx) {
 
     return wrap(`${fiHead(sym)}
       ${deal}
+      ${mineStrip(hoy.deal, rows.nat?.midCredit ?? null)}
       ${ticket}
       ${boxes}
       ${pillRow}
@@ -465,7 +480,7 @@ export function createHoy(ctx) {
       .map((deal) => {
         const lv = live(deal);
         const st = dealStatus(deal, bySymbol.get(deal.s)?.p ?? null, today);
-        return { deal, st, lv, loss: (deal.short - deal.long) * 100 * deal.qty - cobrado(deal), now: lv?.mid != null ? cobrado(deal) - lv.mid * 100 * deal.qty : null };
+        return { deal, st, lv, loss: (deal.short - deal.long) * 100 * deal.qty - cobrado(deal), now: nowOf(deal, lv?.mid ?? null) };
       })
       .sort((x, y) => {
         const bySoon = x.deal.expiry < y.deal.expiry ? -1 : x.deal.expiry > y.deal.expiry ? 1 : x.deal.s.localeCompare(y.deal.s);
@@ -492,7 +507,6 @@ export function createHoy(ctx) {
           scale = `<div class="dl-scale" role="img" aria-label="Largo ${fmtStrike(deal.long)}, corto ${fmtStrike(deal.short)}, precio ${usd2(st.price)}"><i class="z" style="left:${at(deal.long)}%;width:${(at(deal.short) - at(deal.long)).toFixed(1)}%"></i><i class="k" style="left:${at(deal.short)}%"></i><i class="p" style="left:${at(st.price)}%"></i></div>
             <div class="dl-ends small muted num"><span>largo ${fmtStrike(deal.long)}</span><span>precio ${usd2(st.price)}</span></div>`;
         }
-        const box = (label, value, cls = "", note = "") => `<div class="fi-box"><span class="fi-lab">${label}</span><b class="num ${cls}">${value}</b>${note}</div>`;
         const boxes = `<div class="fi-boxes dl-boxes">
           ${box("Prob.", lv?.prob == null ? "—" : `${num(lv.prob, 1)} %`, "", deal.prob0 != null && lv?.prob != null && deal.prob0 !== lv.prob ? `<span class="xs muted">antes ${num(deal.prob0, 1)} %</span>` : "")}
           ${box("Llevas", now == null ? "—" : signedUsd(now), now == null ? "" : tone(now))}
