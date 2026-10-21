@@ -20,6 +20,8 @@ jobs:
       PRUEBAS_EXIGENTES: "1" # sin Playwright, las pruebas de pantalla fallan en vez de saltarse
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # para comparar con la rama base en la comprobación de privacidad
 
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +31,10 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
           npx playwright install --with-deps chromium
+
+      - name: Privacidad (solo en PR: mensajes y líneas nuevas)
+        if: github.event_name == 'pull_request'
+        run: node scripts/privacidad.mjs --desde origin/${{ github.base_ref }}
 
       - name: Pruebas
         run: npm test

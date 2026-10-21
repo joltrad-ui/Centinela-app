@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Rechaza el commit si lo preparado lleva una clave o un correo ajeno.
+exec node "$(git rev-parse --show-toplevel)/scripts/privacidad.mjs" --staged

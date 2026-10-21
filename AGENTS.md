@@ -42,6 +42,7 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 - Lo que cambia el dueño en el modo ordenador va a `config.local.json` (git lo ignora); `config.json` es solo de fábrica y no debe llegar con datos del dueño.
 - La app no debe pedir nada a otros sitios al abrirla: las fuentes son propias (`web/fonts/`) y una prueba de pantalla lo vigila. El servidor del ordenador solo escucha en `127.0.0.1` salvo con `--lan`, y rechaza otros `Host` y otros `Origin` (`docs/operacion.md` §6).
 - Las pruebas y los flujos de pruebas no usan secretos ni red.
+- `scripts/privacidad.mjs` lo vigila solo: el hook `commit-msg`/`pre-commit` (`scripts/hooks/`, se activa con `git config core.hooksPath scripts/hooks`) y `pruebas.yml` en cada PR rechazan enlaces de sesión, correos ajenos y claves. Si salta, se corrige el mensaje o la línea; no se desactiva la comprobación.
 - Antes de añadir cualquier archivo a `data/` o cualquier línea al registro, comprobar que no depende de la configuración personal.
 
 ## Comandos de cada día

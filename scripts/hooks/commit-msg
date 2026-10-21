@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Rechaza el commit si el mensaje lleva un enlace de sesión, un correo ajeno o una clave.
+exec node "$(git rev-parse --show-toplevel)/scripts/privacidad.mjs" --mensaje "$1"
