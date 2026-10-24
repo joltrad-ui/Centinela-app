@@ -15,7 +15,7 @@
 import { emptyBox, notice, sectionHead } from "./ui.js";
 import { createVistas } from "./hoy-vistas.js";
 import { PR, W, filterBars, filterRow } from "./filtros.js";
-import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars, riskTag } from "./hoy-calc.js";
+import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars, riskTag, DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -62,7 +62,7 @@ export function createHoy(ctx) {
     folds: Array.isArray(saved.folds) ? saved.folds.filter((id) => FOLDS.includes(id)) : [], // bloques de la ficha que estaban abiertos
     // solo en memoria
     deal: null, // ficha abierta: { s, expiry, short, long } o { s, none: true } si el nombre no tiene deals puntuados
-    fl: { lv: [0, 1, 2, 3, 4, 5], days: null, w: null, pr: null, hide: false, ord: "lv", shown: 30 }, // filtros de la lista de deals de la ficha
+    fl: { lv: [0, 1, 2, 3, 4, 5], days: null, w: null, pr: null, hide: false, ord: DEAL_ORDER_DEFAULT, shown: 30 }, // filtros de la lista de deals de la ficha
     heldOpen: false,
     mapExp: null, // el mapa enfocado en un vencimiento (null = todas las fechas)
     legendOpen: false, // la leyenda del mapa, plegada al final de la matriz
@@ -243,7 +243,7 @@ export function createHoy(ctx) {
         ${chipRow("Ocultar", chip("fl-hide", "", "Fuera de Reglas", f.hide))}
       </div>`;
     // El orden va abajo del todo de los filtros, pegado a la lista y a todo el ancho, sin rótulo.
-    const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${[["lv", "Nivel"], ["ben", "Beneficio"], ["prob", "Prob."], ["floor", "Suelo"], ["day", "Por día"]].map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
+    const sortBar = `<div class="fi-sort sortbar eq" role="group" aria-label="Orden">${DEAL_ORDERS.map(([id, label]) => `<button data-hoy="fl-ord" data-v="${id}" aria-pressed="${f.ord === id}">${label}</button>`).join("")}</div>`;
     const rowHtml = (d) => dealRow(d, { selectedKey });
     return `<section class="fi-deals">
         ${sectionHead(`Deals de ${esc(sym.s)}`, `${list.length} de ${all.length}`)}
@@ -306,6 +306,7 @@ export function createHoy(ctx) {
           <div class="fi-total"><span class="fi-lab-big">Tu beneficio</span><span class="fi-total-n"><b class="fi-huge num ${tone(left)}">${usdS(left)}</b>${share == null ? "" : `<b class="fi-pct num ${tone(left)}">${share < 0 ? "−" : ""}${num(Math.abs(share), 0)} %</b>`}</span></div>
           ${bar == null ? "" : `<div class="fi-bar" role="img" aria-label="De lo que cobras, ${num(bar, 0)} % se aparta para pérdidas y ${num(100 - bar, 0)} % es tuyo"><i class="r" style="width:${bar.toFixed(1)}%"></i><i class="g" style="width:${(100 - bar).toFixed(1)}%"></i></div>`}
           <p class="fi-cap small muted">${share == null ? "" : left > 0 ? `De cada ${usd2(cob)} que cobras, el ${num(share, 0)} % es tuyo.` : "Lo que cobras no cubre lo que se espera pagar."}</p>
+          ${row.retExp == null ? "" : `<p class="fi-short small" id="fi-retexp"><span class="muted">Rentab. esperada</span> <b class="num ${tone(row.retExp)}">${row.retExp > 0 ? "+" : ""}${num(row.retExp, 1)} %</b>${row.balanceHist == null || row.balanceHist >= 999 ? "" : `<br><span class="xs muted">Equilibrio (cobras neto ÷ se espera pagar) <b class="num">${num(row.balanceHist, 1)}</b></span>`}</p>`}
           <p class="fi-short small"><span class="muted">Si el cálculo se queda corto</span> <b class="num ${tone(worst)}">${usdS(worst)}</b>${worstPct == null ? "" : ` <span class="num ${tone(worst)}">${worstPct < 0 ? "−" : ""}${num(Math.abs(worstPct), 0)} %</span>`}</p>
         </div>`
       : `<div class="fi-ticket">
@@ -648,7 +649,7 @@ export function createHoy(ctx) {
       hoy.fl.lv = hoy.fl.lv.includes(l) ? hoy.fl.lv.filter((x) => x !== l) : [...hoy.fl.lv, l].sort();
       hoy.fl.shown = 30;
     } else if (act === "fl-ord") {
-      hoy.fl.ord = ["ben", "prob", "floor", "day"].includes(value) ? value : "lv";
+      hoy.fl.ord = DEAL_ORDERS.some(([id]) => id === value) ? value : DEAL_ORDER_DEFAULT;
     } else if (act === "fl-hide") {
       hoy.fl.hide = !hoy.fl.hide;
       hoy.fl.shown = 30;

@@ -20,7 +20,7 @@ Esta guía es corta a propósito: lo que siempre hay que tener presente. El deta
 - Simple: lo que necesita, ni más ni menos. **Antes de añadir una columna, un filtro o una pantalla, preguntar.**
 - Node 22, sin dependencias. No añadir paquetes de npm sin preguntar.
 - Hoy solo bull put. Más adelante: iron condor y estrategias bajistas.
-- Las reglas de cálculo (crédito a precio natural, prob. de asignación del mercado, prob. máxima como regla del corto, crédito mínimo en dólares por contrato, ancho como máximo, rentabilidad y equilibrio, nivel de 0 a 5 y su error) **no se cambian sin preguntar**: están en `docs/calculo.md`.
+- Las reglas de cálculo (crédito a precio natural, prob. de asignación del mercado, prob. máxima como regla del corto, crédito mínimo en dólares por contrato, ancho como máximo, rentabilidad y rentab. esperada, nivel de 0 a 5 y su error) **no se cambian sin preguntar**: están en `docs/calculo.md`.
 - Un mismo criterio, en un solo sitio: filtros en `web/filtros.js`, piezas de pantalla en `web/ui.js`, alturas y colores en las variables de `app.css`. Antes de copiar un patrón, comprobar si ya existe (`docs/interfaz.md` §4 y §5).
 
 ## Cómo responder al dueño
