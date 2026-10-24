@@ -8,19 +8,20 @@
 export const RATE = 0.04; // tipo sin riesgo de la fórmula de reserva de la prob. de asignación
 
 // Versión de las reglas. La 2 fija el riesgo con la prob. de asignación (la misma
-// vara para todos los nombres) en vez de con "% abajo" y "% del ancho".
-export const RULES_V = 2;
+// vara para todos los nombres) en vez de con "% abajo" y "% del ancho". La 3 (24 oct) amplía la búsqueda:
+// de 15 a 60 días, prob. máxima 15 % y ancho máximo $10; las guardadas antes pasan a esos valores una vez.
+export const RULES_V = 3;
 export const LEVEL_SAFETY = ["margin", "both", "off"];
 
 export const DEFAULT_RULES = {
   v: RULES_V,
-  minDte: 20,
-  maxDte: 30,
-  maxProb: 10, // prob. de asignación máxima: la regla que elige el corto. 50 = sin límite
+  minDte: 15,
+  maxDte: 60,
+  maxProb: 15, // prob. de asignación máxima: la regla que elige el corto. 50 = sin límite
   otmOn: false, // limitar además el % abajo
   minOtm: 8, // % abajo, desde
   maxOtm: 12, // % abajo, hasta
-  width: 5, // ancho máximo: vale ese y cualquiera menor
+  width: 10, // ancho máximo: vale ese y cualquiera menor (y nunca más que `widthCap` del nombre)
   minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
   minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
   equalFee: 1.4, // pestaña "Igual riesgo": comisión por spread al abrir, en dólares; la de salir cuenta otra vez en el coste de ida y vuelta
@@ -60,6 +61,17 @@ export const ORDERS = [
 ];
 
 export const PROB_OFF = 50;
+
+// Anchos que se buscan: hasta $5 en todos los nombres y hasta $10 solo en estos ETF e índices caros.
+// En las acciones, nunca $10.
+export const WIDE_NAMES = new Set(["QQQ", "SPY", "IWM", "DIA", "GLD", "XSP"]);
+export const NARROW_WIDTH = 5;
+export const WIDE_WIDTH = 10;
+/** El ancho máximo que se busca en un nombre, en dólares por acción. */
+export const widthCap = (symbol) => (WIDE_NAMES.has(symbol) ? WIDE_WIDTH : NARROW_WIDTH);
+
+// SPY y XSP son la misma apuesta (el S&P 500): si pasan los dos, queda uno como candidato y el otro es "mismo bloque".
+export const TWINS = { SPY: "XSP", XSP: "SPY" };
 export const MAX_FAVORITES = 40;
 
 // ---------- utilidades ----------
@@ -109,17 +121,20 @@ export function normalizeRules(input) {
   const lossMax = Math.max(lossMin, clamp(g.lossMax, 20, 5000, base.gates.lossMax));
   // Reglas guardadas antes de la versión 2: la prob. máxima estaba apagada de fábrica
   // y el crédito mínimo iba en % del ancho. Pasan a los valores de fábrica nuevos.
-  const old = row.v !== RULES_V;
-  const maxProb = old && !(Number(row.maxProb) < PROB_OFF) ? base.maxProb : clamp(row.maxProb, 1, PROB_OFF, base.maxProb);
+  const v = Number(row.v) || 0;
+  const old = v < 2;
+  // Antes de la versión 3: plazo, prob. máxima y ancho pasan una vez a los de fábrica nuevos; después se respeta lo que ponga el dueño.
+  const pre3 = v < 3;
+  const maxProb = pre3 ? base.maxProb : clamp(row.maxProb, 1, PROB_OFF, base.maxProb);
   return {
     v: RULES_V,
-    minDte,
-    maxDte,
+    minDte: pre3 ? base.minDte : minDte,
+    maxDte: pre3 ? base.maxDte : maxDte,
     maxProb,
     otmOn: !old && row.otmOn === true,
     minOtm,
     maxOtm,
-    width: clamp(row.width, 1, 50, base.width),
+    width: pre3 ? base.width : clamp(row.width, 1, 50, base.width),
     minCredit: Math.round(clamp(row.minCredit, 0, 500, base.minCredit)),
     minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
     equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
@@ -415,7 +430,7 @@ function buildBullPuts(sym, rules, today) {
         if (inProb && inOtm) out.tooCheap = true;
         continue;
       }
-      for (const long of longLegs(rows, ks, rules.width)) {
+      for (const long of longLegs(rows, ks, Math.min(rules.width, widthCap(sym.s)))) {
         const width = r2(ks - long[K]);
         const credit = r2(sb - long[ASK]);
         if (credit <= 0) continue;
@@ -538,7 +553,8 @@ export function defaultExpiry(list) {
  *  entre los que tienen precio). Crédito a precio natural; comisión por spread al abrir.
  *  No aplica crédito mínimo, equilibrio ni interruptores. Estados: ok, sin-strike, sin-ancho, sin-vencimiento, sin-precio. */
 export function equalRisk(sym, opts, today = nyToday()) {
-  const { prob: target, width, expiry, fee = 0 } = opts;
+  const { prob: target, expiry, fee = 0 } = opts;
+  const width = Math.min(opts.width, widthCap(sym.s));
   const entry = (sym.x ?? []).find((item) => item[0] === expiry);
   if (!entry) return { sym, status: "sin-vencimiento", why: "Sin ese vencimiento" };
   const rows = entry[2];
@@ -1278,6 +1294,7 @@ export function qualityDeals(symbols, opts, today = nyToday()) {
   let unscored = 0;
   for (const sym of symbols) {
     if (!(sym.p > 0)) continue;
+    const capW = Math.min(maxWidth, widthCap(sym.s));
     const byRules = new Map();
     for (const sp of STRATEGIES.bullPut.build(sym, rules, today)) byRules.set(`${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`, sp);
     for (const entry of sym.x ?? []) {
@@ -1292,7 +1309,7 @@ export function qualityDeals(symbols, opts, today = nyToday()) {
         if (p == null || p > maxProb + 1e-9) continue;
         for (const long of rows) {
           const width = short[K] - long[K];
-          if (!(width > 1e-6) || width > maxWidth + 1e-6 || !(long[ASK] > 0)) continue;
+          if (!(width > 1e-6) || width > capW + 1e-6 || !(long[ASK] > 0)) continue;
           let row = spreadRow(sym, expiry, short[K], long[K], fee, today);
           if (row.status !== "ok") continue;
           if (hist) row = withHistory(row, hist[sym.s], today, err);

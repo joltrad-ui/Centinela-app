@@ -17,6 +17,11 @@ export const FL_PR_MAX = PR.max;
 export const FOLDS = ["why", "vol", "ren", "prob", "bro"]; // los bloques plegables de la ficha
 export const VIEWS = ["mapa", "nube", "barras"];
 export const MAX_DEALS = 300;
+// Riesgo por operación de referencia, en dólares por contrato: los deals que pueden perder más llevan "arriesga más de $500".
+// No hay una regla de riesgo por operación en Reglas; si se añade, la etiqueta debe salir de ella.
+export const RISK_TAG = 500;
+/** La etiqueta de riesgo de un deal, o "" si no pasa del tope. No lo oculta: solo avisa (los de $10 arriesgan cerca de $1000). */
+export const riskTag = (row) => (row?.loss > RISK_TAG + 1e-6 ? `arriesga más de $${RISK_TAG}` : "");
 
 export const usd2 = (n) => `$${num(n, 2)}`;
 export const dollars = (n) => (Math.abs(n) >= 10 ? `$${num(Math.round(n), 0)}` : usd2(n));
