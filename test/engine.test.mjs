@@ -60,6 +60,10 @@ test("regla de rentab. esperada mínima: con cierres aparta, sin cierres no se m
   const bare = assessSymbol(sym, R({ minRetExp: 5 }), "rentexp", today);
   assert.equal(bare.status, "entrada");
   assert.equal(bare.best.retExp, null);
+  // los avisos (rankUniverse) miden igual con los cierres
+  const ranked = rankUniverse([sym], R({ minRetExp: Math.min(5, sp.retExp + 0.1) }), "rentexp", today, { XYZ: series });
+  assert.equal(ranked.rows.length, sp.retExp + 0.1 <= 5 ? 0 : 1);
+  assert.equal(rankUniverse([sym], R({ minRetExp: Math.min(5, sp.retExp + 0.1) }), "rentexp", today).rows.length, 1);
   assert.equal(normalizeRules({}).minRetExp, 0);
   assert.equal(normalizeRules({ v: 3, minRetExp: 9 }).minRetExp, 5);
   assert.equal(normalizeRules({ v: 3, minRetExp: -1.234 }).minRetExp, -1.2);

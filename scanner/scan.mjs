@@ -332,9 +332,19 @@ function marketOpenNow(now = new Date()) {
   return minutes >= 9 * 60 + 40 && minutes <= 16 * 60 + 30;
 }
 
-function buildAlerts(config, symbols, state, today, commit) {
+/** Los cierres de 5 años que publica cierres.mjs (`historia/cierres.json`, públicos y sin nada personal), para que los avisos
+ *  midan la rentab. esperada igual que la app. Sin ellos (null) se ordena por rentabilidad neta y la mínima no se aplica. */
+async function loadHist() {
+  try {
+    return JSON.parse(await readFile(path.join(OUT, "historia", "cierres.json"), "utf8")).symbols ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function buildAlerts(config, symbols, state, today, commit, hist = null) {
   const born = [];
-  const { rows, bySymbol } = rankUniverse(symbols, config.rules, config.order, today);
+  const { rows, bySymbol } = rankUniverse(symbols, config.rules, config.order, today, hist);
   const keyOf = (sp) => `${sp.expiry}:${sp.shortStrike}/${sp.longStrike}`;
 
   const fav = {};
@@ -551,7 +561,9 @@ export async function scanOnce({ force = false, replace = false } = {}) {
 
     // Una sola lista: avisa cualquier nombre barrido que pase a cumplir.
     const open = force || FIXTURES ? true : marketOpenNow();
-    const { alerts: live, passing } = canAlert ? buildAlerts({ ...config, favorites: symbols.map((sym) => sym.s).filter((s) => !config.off.includes(s)) }, symbols, state, today, open) : { alerts: [], passing: 0 };
+    const hist = canAlert ? await loadHist() : null;
+    if (canAlert) log(hist ? `Avisos con rentab. esperada (cierres de ${Object.keys(hist).length} nombres)` : "Avisos sin cierres: por rentabilidad neta y sin la rentab. esperada mínima");
+    const { alerts: live, passing } = canAlert ? buildAlerts({ ...config, favorites: symbols.map((sym) => sym.s).filter((s) => !config.off.includes(s)) }, symbols, state, today, open, hist) : { alerts: [], passing: 0 };
     const pushed = await pushAlerts(live);
     const at = Date.now();
     state.log = [...live.map((alert) => ({ at, ...alert })), ...(state.log ?? [])].slice(0, 80);

@@ -35,11 +35,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Barrido anterior
+      # El barrido anterior (data/) y los cierres de 5 años (historia/, públicos) para medir la rentab. esperada de los avisos.
+      - name: Barrido anterior y cierres
         run: |
           mkdir -p out
           if git fetch --depth=1 origin gh-pages 2>/dev/null; then
             git archive FETCH_HEAD data 2>/dev/null | tar -x -C out || true
+            git archive FETCH_HEAD historia 2>/dev/null | tar -x -C out || true
           fi
 
       - name: Barrer
