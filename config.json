@@ -11,7 +11,7 @@
     "maxOtm": 12,
     "width": 10,
     "minCredit": 20,
-    "minBalance": 0.5,
+    "minRetExp": 0,
     "gates": {
       "event": false,
       "liquid": false,
@@ -23,7 +23,7 @@
       "room": false
     }
   },
-  "order": "equilibrio",
+  "order": "rentexp",
   "favorites": [
     "AAPL",
     "NVDA",
