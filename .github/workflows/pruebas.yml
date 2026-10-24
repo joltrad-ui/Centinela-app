@@ -14,7 +14,8 @@ permissions:
 
 jobs:
   pruebas:
-    runs-on: ubuntu-latest
+    # Fijado: en ubuntu-latest (26.04) Playwright 1.56.1 no instala Chromium (24 oct).
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       PRUEBAS_EXIGENTES: "1" # sin Playwright, las pruebas de pantalla fallan en vez de saltarse
