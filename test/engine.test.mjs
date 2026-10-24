@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, widthCap, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious, hostAllowed, originAllowed } from "../scanner/scan.mjs";
@@ -10,7 +10,7 @@ import { sma, smaSeries, changeOver } from "../web/engine.js";
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
 // acotado a 8–12 y un cobro mínimo de $50, salvo lo que cada prueba cambie.
-const R = (extra = {}) => normalizeRules({ v: 2, maxProb: 50, otmOn: true, minOtm: 8, maxOtm: 12, minCredit: 50, minBalance: 0, ...extra });
+const R = (extra = {}) => normalizeRules({ v: 3, maxProb: 50, otmOn: true, minOtm: 8, maxOtm: 12, minCredit: 50, minBalance: 0, ...extra });
 // [strike, bid, ask, interés abierto, iv, delta]
 const sym = {
   s: "XYZ",
@@ -80,7 +80,7 @@ test("probabilidad de asignación: sale de los precios de los strikes vecinos", 
 });
 
 test("la probabilidad máxima es la regla que elige el corto", () => {
-  const wide = assessSymbol(sym, normalizeRules({ v: 2, maxProb: 12, minCredit: 0, minBalance: 0 }), "prob", today);
+  const wide = assessSymbol(sym, normalizeRules({ v: 3, maxProb: 12, minCredit: 0, minBalance: 0 }), "prob", today);
   assert.equal(wide.status, "entrada");
   const ok = wide.all.filter((sp) => sp.ok);
   assert.ok(ok.length > 0 && ok.every((sp) => sp.prob <= 12 && sp.shortStrike <= 85));
@@ -90,10 +90,10 @@ test("la probabilidad máxima es la regla que elige el corto", () => {
   // sin el % abajo encendido, estar a un 15 % no descarta
   assert.ok(ok.every((sp) => !sp.fails.includes("fuera del punto")));
   // lo que queda muy por encima de la probabilidad máxima ni se lista
-  assert.equal(assessSymbol(sym, normalizeRules({ v: 2, maxProb: 5, minCredit: 0, minBalance: 0 }), "prob", today).all.some((sp) => sp.shortStrike >= 90), false);
+  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, maxProb: 5, minCredit: 0, minBalance: 0 }), "prob", today).all.some((sp) => sp.shortStrike >= 90), false);
   // un nombre con puts dentro de la probabilidad pero que no dan para el cobro mínimo
   // cuenta como que pasa la probabilidad y se queda en el crédito
-  const { funnel } = rankUniverse([sym], normalizeRules({ v: 2, maxProb: 5, minCredit: 100, minBalance: 0 }), "prob", today);
+  const { funnel } = rankUniverse([sym], normalizeRules({ v: 3, maxProb: 5, minCredit: 100, minBalance: 0 }), "prob", today);
   assert.equal(funnel.prob, 1);
   assert.equal(funnel.ancho, 1);
   assert.equal(funnel.credito, 0);
@@ -108,17 +108,32 @@ test("cobras, mínimo: en dólares por contrato", () => {
 
 test("reglas guardadas antes del cambio pasan a las nuevas de fábrica", () => {
   const old = normalizeRules({ minDte: 21, maxDte: 35, minOtm: 8, maxOtm: 12, width: 10, minCreditPct: 10, maxProb: 50, minBalance: 0.7 });
-  assert.equal(old.v, 2);
-  assert.equal(old.maxProb, 10); // estaba apagada de fábrica
+  assert.equal(old.v, 3);
+  assert.equal(old.maxProb, 15);
   assert.equal(old.otmOn, false);
   assert.equal(old.minCredit, 20);
-  assert.equal(old.minDte, 21);
-  assert.equal(old.width, 10);
   assert.equal(old.minBalance, 0.7);
   assert.equal("minCreditPct" in old, false);
-  assert.equal(normalizeRules({ maxProb: 15 }).maxProb, 15); // si la había puesto, se respeta
-  assert.equal(normalizeRules({ v: 2, maxProb: 50 }).maxProb, 50);
-  assert.equal(normalizeRules({ v: 2, otmOn: true }).otmOn, true);
+  assert.equal(normalizeRules({ v: 3, maxProb: 50 }).maxProb, 50);
+  assert.equal(normalizeRules({ v: 3, otmOn: true }).otmOn, true);
+});
+
+test("versión 3: plazo, prob. máxima y ancho pasan una vez a los nuevos de fábrica; después se respetan", () => {
+  const v2 = normalizeRules({ v: 2, minDte: 20, maxDte: 30, maxProb: 10, width: 5, minCredit: 30, otmOn: true, equalFee: 2 });
+  assert.deepEqual([v2.v, v2.minDte, v2.maxDte, v2.maxProb, v2.width], [3, 15, 60, 15, 10]);
+  assert.deepEqual([v2.minCredit, v2.otmOn, v2.equalFee], [30, true, 2]); // lo demás no se toca
+  const mine = normalizeRules({ ...v2, minDte: 25, maxDte: 40, maxProb: 8, width: 5 });
+  assert.deepEqual([mine.minDte, mine.maxDte, mine.maxProb, mine.width], [25, 40, 8, 5]);
+  assert.deepEqual(normalizeRules(mine), mine); // una sola vez
+});
+
+test("anchos que se buscan: hasta $5 en todos y hasta $10 solo en QQQ, SPY, IWM, DIA, GLD y XSP", () => {
+  assert.deepEqual(["QQQ", "SPY", "IWM", "DIA", "GLD", "XSP", "AAPL", "XLF", "NVDA"].map(widthCap), [10, 10, 10, 10, 10, 10, 5, 5, 5]);
+  const rows = [[80, 0.1, 0.15, 500, 0.5, -0.03], [85, 0.3, 0.4, 800, 0.46, -0.08], [90, 1.0, 1.1, 1200, 0.42, -0.17], [95, 2.4, 2.5, 900, 0.4, -0.33]];
+  const rules = normalizeRules({ v: 3, maxProb: 50, minCredit: 0, minBalance: 0, minDte: 15, maxDte: 60 });
+  const widths = (s) => assessSymbol({ s, p: 100, c: 0, er: null, x: [["2026-10-30", 0.4, rows]] }, rules, "credito", today).all.map((sp) => sp.width);
+  assert.equal(Math.max(...widths("AAPL")), 5);
+  assert.equal(Math.max(...widths("SPY")), 10); // el 95/80 ($15) no se busca
 });
 
 test("interruptor de resultados", () => {
@@ -135,7 +150,7 @@ test("interruptor de pérdida por contrato", () => {
 });
 
 test("fuera del plazo y sin cadena", () => {
-  assert.equal(assessSymbol(sym, normalizeRules({ minDte: 40, maxDte: 50 }), "equilibrio", today).status, "sin-plazo");
+  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, minDte: 40, maxDte: 50 }), "equilibrio", today).status, "sin-plazo");
   assert.equal(assessSymbol({ s: "Q", p: 10, x: [] }, normalizeRules({}), "equilibrio", today).status, "sin-cadena");
 });
 
@@ -197,9 +212,9 @@ test("volatilidad implícita a partir del precio de la put", () => {
 });
 
 test("las reglas guardadas se sanean", () => {
-  const config = normalizeConfig({ rules: { minDte: 40, maxDte: 10, width: "x" }, favorites: ["aapl", "AAPL", "??"], alerts: { universeTop: 99 } });
+  const config = normalizeConfig({ rules: { v: 3, minDte: 40, maxDte: 10, width: "x" }, favorites: ["aapl", "AAPL", "??"], alerts: { universeTop: 99 } });
   assert.equal(config.rules.maxDte, 40);
-  assert.equal(config.rules.width, 5);
+  assert.equal(config.rules.width, 10);
   assert.deepEqual(config.favorites, ["AAPL"]);
   assert.equal(config.alerts.universeTop, 0);
 });
@@ -478,8 +493,10 @@ test("ficha: las cuentas de un bull put concreto, sin aplicar reglas", () => {
   assert.equal(row.breakeven, 93.01); // 95 − 1,986
   assert.equal(row.expiryLabel.length > 0, true);
   const target = Math.ceil(marketProbs(sym.x[0][2])[3]);
-  const same = equalRisk(sym, { prob: target, width: 10, expiry: "2026-10-30", fee: 1.4 }, today);
-  assert.deepEqual({ ...same, sym: null }, { ...row, sym: null }); // la pestaña y la ficha hacen la misma cuenta
+  const spy = { ...sym, s: "SPY" }; // $10 solo se busca en los ETF e índices caros
+  const same = equalRisk(spy, { prob: target, width: 10, expiry: "2026-10-30", fee: 1.4 }, today);
+  assert.deepEqual({ ...same, sym: null }, { ...spreadRow(spy, "2026-10-30", 95, 85, 1.4, today), sym: null }); // la pestaña y la ficha hacen la misma cuenta
+  assert.equal(equalRisk(sym, { prob: target, width: 10, expiry: "2026-10-30", fee: 1.4 }, today).width, 5); // en una acción, nunca $10
   assert.equal(spreadRow(sym, "2026-10-30", 95, 91, 0, today).status, "sin-ancho");
   assert.equal(spreadRow(sym, "2026-10-30", 96, 91, 0, today).status, "sin-strike");
 });
@@ -505,7 +522,7 @@ test("números a la española en los textos", () => {
   const sp = assessSymbol(sym, R(), "equilibrio", today).best;
   assert.equal(spreadLine(sp), "90/85 · 30 oct · 10,0 % abajo · 12 % del ancho");
   assert.match(alertText(sp), / · rentab\. 14 %$/);
-  assert.equal(rulesLine(normalizeRules({ v: 2, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20, minBalance: 0.5 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · equilibrio ≥0,50");
+  assert.equal(rulesLine(normalizeRules({ v: 3, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20, minBalance: 0.5 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · equilibrio ≥0,50");
 });
 
 test("barrido: con el mercado cerrado se conserva el último barrido de mercado abierto", () => {
@@ -600,7 +617,7 @@ test("reglas: la horquilla máxima de Igual riesgo, 35 % de fábrica y entre 10 
   assert.equal(normalizeRules({ equalFee: -3 }).equalFee, 0);
   assert.equal(normalizeRules({ equalFee: 99 }).equalFee, 20);
   assert.equal(normalizeRules({ equalFee: "x" }).equalFee, 1.4);
-  assert.equal(normalizeConfig({ rules: { v: 2, equalFee: 2 } }).rules.equalFee, 2);
+  assert.equal(normalizeConfig({ rules: { v: 3, equalFee: 2 } }).rules.equalFee, 2);
   assert.equal(normalizeConfig({ rules: { equalGapPct: 40 } }).rules.equalGapPct, 40);
   // en la lista, el límite de las reglas decide quién se aparta
   const strict = equalRiskList([sym], { ...tightOpts(1.4), gapPct: 25 }, today);
@@ -816,9 +833,9 @@ test("hoy: vencimientos del mapa, los comunes del plazo y como mucho cinco", () 
   const dates = ["2026-10-23", "2026-10-30", "2026-11-06", "2026-11-13", "2026-11-20", "2026-11-27"];
   const all = (s) => ({ ...tight(s), x: dates.map((d) => [d, 0.4, chain]) });
   const odd = { ...tight("ODD"), x: [["2026-10-28", 0.4, chain]] }; // un vencimiento que solo tiene un nombre
-  const rules = normalizeRules({ v: 2, minDte: 15, maxDte: 60 });
+  const rules = normalizeRules({ v: 3, minDte: 15, maxDte: 60 });
   assert.deepEqual(mapExpiries([all("A"), all("B"), all("C"), odd], rules, today), ["2026-10-23", "2026-10-30", "2026-11-06", "2026-11-13", "2026-11-20"]);
-  assert.deepEqual(mapExpiries([all("A"), all("B")], normalizeRules({ v: 2, minDte: 20, maxDte: 30 }), today), ["2026-10-30"]);
+  assert.deepEqual(mapExpiries([all("A"), all("B")], normalizeRules({ v: 3, minDte: 20, maxDte: 30 }), today), ["2026-10-30"]);
   assert.deepEqual(mapExpiries([], rules, today), []);
 });
 

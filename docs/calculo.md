@@ -7,13 +7,16 @@ Lo que se ve en pantalla está en `docs/interfaz.md`; de dónde salen los datos,
 
 - **Crédito a precio natural:** bid del corto menos ask del largo.
 - **Prob. de asignación:** la que descuenta el mercado, sacada del precio de los strikes vecinos a precio medio y alisada para que no baje al subir el strike (`marketProbs`). Si no se puede medir, la fórmula con la IV del strike (`probBelow`), y el spread lo marca con `probSrc: "formula"`.
-- **Prob. máxima:** es la regla que elige el corto (10 % de fábrica, 50 = sin límite).
+- **Prob. máxima:** es la regla que elige el corto (15 % de fábrica, 50 = sin límite).
+- **Plazo de fábrica:** de 15 a 60 días (CBOE se lee hasta 60).
 - **% abajo:** columna y regla opcional (`otmOn`).
 - **Crédito mínimo:** en dólares por contrato (`minCredit`), no en % del ancho. Esa regla forzaba una probabilidad de pérdida mínima.
-- **Versión de las reglas:** `v: 2`; las guardadas sin ella se migran en `normalizeRules`.
+- **Versión de las reglas:** `v: 3` (24 oct). En `normalizeRules`, las de antes de la 2 se migran como siempre y las de antes de la 3 pasan **una vez** a plazo 15–60, prob. máxima 15 % y ancho $10; lo demás se conserva y, desde ahí, se respeta lo que ponga el dueño. El barrido lee `CENTINELA_CONFIG` con la misma migración, sin escribir el secreto.
 - **Rentabilidad:** crédito / pérdida máxima.
 - **Equilibrio:** ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Regla de equilibrio mínimo: `minBalance`, 0,5 por defecto, 0 = sin mínimo.
-- **Ancho:** el de las reglas es un máximo. Para cada corto se consideran todos los largos que dejan ese ancho o menos.
+- **Ancho:** el de las reglas es un máximo ($10 de fábrica). Para cada corto se consideran todos los largos que dejan ese ancho o menos, y nunca más que el tope del nombre (`widthCap`): hasta $5 en todos y hasta $10 solo en QQQ, SPY, IWM, DIA, GLD y XSP (`WIDE_NAMES`). En las acciones, nunca $10. Vale en las Reglas, en Hoy (`equalRisk`) y en el Buscador y la ficha (`qualityDeals`).
+- **SPY y XSP** (`TWINS`): son la misma apuesta. En el Buscador, el que sale antes con el orden elegido es el candidato y las filas del otro llevan "mismo bloque que …".
+- **Riesgo a la vista** (`riskTag`, `RISK_TAG` en `hoy-calc.js`): un deal con pierdes máx. de más de $500 lleva "arriesga más de $500" en su fila y en la ficha. No se oculta. No hay regla de riesgo por operación en Reglas; si se añade, la cifra debe salir de ella.
 - **Orden por defecto:** equilibrio entre baja probabilidad de asignación y buena rentabilidad.
 - **Avisos del barrido:** avisa cualquier nombre de la lista que pase a cumplir. Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa. Si el estado anterior no se puede leer (salvo 404), el barrido falla en vez de sobrescribir.
 - `config.order` y `ORDERS` siguen en el motor porque el barrido de avisos los usa (ya no hay pantalla Lista).
@@ -38,7 +41,7 @@ La pestaña "Igual riesgo" se quitó el 12 oct (su pantalla y sus controles); qu
 - **Pérdida esperada histórica** = media de min(max(corto − final, 0), ancho) × 100.
 - **Volatilidad reciente** = la mayor entre la realizada de 20 y de 60 sesiones, × √252.
 - **Pérdida esperada reciente** = [L(corto) − L(largo)] × 100, sin tipo de interés.
-- **Se espera pagar** = la MEDIA de las dos, no la mayor. Con 3 años de cierres de los 32 nombres, la mayor daba un 7,6 % a caídas que ocurrieron un 3,5 %; la media, un 5,8 %. Si la mayor es más de 3 veces la menor, nota "estimaciones muy distintas".
+- **Se espera pagar** = la MEDIA de las dos, no la mayor. Con 3 años de cierres de los 32 nombres de entonces, la mayor daba un 7,6 % a caídas que ocurrieron un 3,5 %; la media, un 5,8 %. Si la mayor es más de 3 veces la menor, nota "estimaciones muy distintas".
 - **Rentab. esperada** = (cobras neto − se espera pagar) / pierdes máx. × 100. Es lo que ordena (de mayor a menor; sin cierres, detrás y por rentab. neta).
 - **Equilibrio con historia** = cobras neto / se espera pagar, con un decimal. Es un dato, no ordena: ordenar por una división dejaba salir primero spreads que cobran muy poco.
 - **"Poca historia"** = menos de 2 años de cierres.

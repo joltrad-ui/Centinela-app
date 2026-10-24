@@ -15,7 +15,7 @@
 import { emptyBox, notice, sectionHead } from "./ui.js";
 import { createVistas } from "./hoy-vistas.js";
 import { PR, W, filterBars, filterRow } from "./filtros.js";
-import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars } from "./hoy-calc.js";
+import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars, riskTag } from "./hoy-calc.js";
 import {
   LEVEL_COST_PCT,
   PROB_OFF,
@@ -211,10 +211,12 @@ export function createHoy(ctx) {
       const key = dealKey(r);
       const sel = key === selectedKey;
       const out = d.ok ? "" : `<small class="xs fi-out">fuera de Reglas${d.fails.length ? `: ${esc([...new Set(d.fails.map(failShort))].join(", "))}` : ""}</small>`;
+      const risk = riskTag(r);
+      const riskHtml = risk ? `<small class="xs fi-out">${risk}</small>` : "";
       return `<li><button class="fi-dr${sel ? " on" : ""}" data-hoy="${withName ? "cell" : "pick"}"${withName ? ` data-s="${esc(d.sym.s)}"` : ""} data-e="${r.expiry}" data-k="${r.shortStrike}|${r.longStrike}" aria-pressed="${sel}">
           <span class="lv lv${d.level} fi-dr-lv">${d.level}</span>
           <span class="fi-dr-m"><span class="fi-dr-t">${withName ? `<b>${esc(d.sym.s)}</b> ` : ""}<b class="num">${fmtStrike(r.shortStrike)}/${fmtStrike(r.longStrike)}</b> <span class="muted">· ${esc(r.expiryLabel)}</span></span>
-            <small class="xs muted num">prob. ${r.prob == null ? "—" : `${num(r.prob, 1)} %`} · ancho $${num(r.width * 100, 0)}</small>${out}${note ? `<small class="xs muted">${note}</small>` : ""}</span>
+            <small class="xs muted num">prob. ${r.prob == null ? "—" : `${num(r.prob, 1)} %`} · ancho $${num(r.width * 100, 0)}</small>${out}${riskHtml}${note ? `<small class="xs muted">${note}</small>` : ""}</span>
           <span class="fi-dr-r num"><span class="fi-dr-v"><b class="${tone(left)}">${usdS(left)}</b>${p == null ? "" : ` <span class="${tone(left)}">${p < 0 ? "−" : ""}${num(Math.abs(p), 0)} %</span>`}</span><small class="xs muted">queda</small></span>
         </button></li>`;
   }
@@ -329,6 +331,7 @@ export function createHoy(ctx) {
     if (row.shortHistory && row.histProb != null) am("poca historia");
     if (row.onlyOne) am("los dos cálculos no coinciden");
     else if (row.distinct) am("estimaciones muy distintas");
+    if (riskTag(row)) am(riskTag(row));
     if (entry && !entry.ok) am(`fuera de Reglas${entry.fails.length ? `: ${esc([...new Set(entry.fails.map(failShort))].join(", "))}` : ""}`);
     const lowers = [];
     if (checks.scored && checks.positive) {

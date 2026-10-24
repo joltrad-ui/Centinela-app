@@ -126,7 +126,7 @@ test("el Buscador: barra de ancho filtra, vacío con botón y Quitar filtros", {
   // la lista se recalcula al soltar la barra: se espera a que todas las filas respeten el tope (en un equipo lento tarda más)
   const widthsNow = () => page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => Number(e.innerText.match(/ancho \$(\d+)/)?.[1])));
   let widths = await widthsNow();
-  for (let i = 0; i < 40 && !(widths.length > 0 && widths.every((w) => w <= 300)); i++) {
+  for (let i = 0; i < 80 && !(widths.length > 0 && widths.every((w) => w <= 300)); i++) {
     await page.waitForTimeout(250);
     widths = await widthsNow();
   }
@@ -140,6 +140,25 @@ test("el Buscador: barra de ancho filtra, vacío con botón y Quitar filtros", {
   await page.locator('[data-bs="reset"]').click();
   await page.waitForTimeout(400);
   assert.equal(await count(), total);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("el Buscador: SPY y XSP, uno es \"mismo bloque\"; los de $10 llevan su riesgo a la vista", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  await page.fill("#bs-q", "S&P");
+  let text = "";
+  for (let i = 0; i < 40 && !/mismo bloque que/.test(text); i++) {
+    await page.waitForTimeout(250);
+    text = await page.locator("#bs-list").innerText();
+  }
+  assert.match(text, /mismo bloque que (SPY|XSP)/);
+  const rows = await page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => e.innerText));
+  for (const row of rows) {
+    const width = Number(row.match(/ancho \$(\d+)/)?.[1]);
+    if (width >= 1000) assert.match(row, /arriesga más de \$500/);
+  }
   assert.deepEqual(page.errors, []);
   await page.close();
 });

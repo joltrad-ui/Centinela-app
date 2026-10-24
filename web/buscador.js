@@ -4,7 +4,7 @@
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
-import { qualityDeals, nyToday, volatilities } from "./engine.js";
+import { TWINS, qualityDeals, nyToday, volatilities } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
@@ -269,13 +269,16 @@ export function createBuscador(ctx) {
         rows.push(d);
       }
     }
+    // SPY y XSP son la misma apuesta: el que sale antes con el orden de ahora es el candidato; el otro, "mismo bloque".
+    const lead = list.find((d) => TWINS[d.sym.s])?.sym.s;
+    const twinNote = (d) => (lead && TWINS[lead] === d.sym.s ? `mismo bloque que ${lead}` : "");
     const shown = rows.slice(0, bs.shown);
     if (!rows.length) {
       const ideas = blockers(d0).map((c) => ({ attrs: `data-bs="drop" data-v="${c.key}"`, label: `Quitar ${esc(c.label)} · saldrían ${c.count}` }));
       return emptyBox("Ningún deal con estos filtros.", ideas.length ? "Esto es lo que saldría quitando cada filtro por separado:" : "", [...ideas, { attrs: 'data-bs="reset"', label: "Quitar todos los filtros" }]);
     }
     const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more-rows">Ver más (${rows.length - shown.length})</button>` : "";
-    return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : "" })).join("")}</ul>${more}`;
+    return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: [twinNote(d), variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : ""].filter(Boolean).join(" · ") })).join("")}</ul>${more}`;
   }
 
   /** La barra de encima de la lista: "Uno por nombre" y cuántos hay. Se repinta al escribir en la caja. */

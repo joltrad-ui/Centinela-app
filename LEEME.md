@@ -90,7 +90,7 @@ Para ver la app sin datos reales, con cadenas inventadas: `npm run ejemplo` (o `
 
 - **Crédito (cobras):** bid del put corto menos ask del put largo, por 100.
 - **% del ancho:** crédito partido por el ancho.
-- **Ancho:** la regla es un máximo. Vale ese ancho y cualquiera menor que tenga la cadena.
+- **Ancho:** la regla es un máximo ($10 de fábrica). Vale ese ancho y cualquiera menor que tenga la cadena. Se busca hasta $5 en todos los nombres y hasta $10 solo en QQQ, SPY, IWM, DIA, GLD y XSP; en las acciones, nunca $10. Los que arriesgan más de $500 lo dicen en su fila.
 - **Pérdida máx.:** ancho menos crédito, por 100.
 - **Rentabilidad:** crédito partido por la pérdida máxima.
 - **Prob. de asignación:** probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio. Si faltan precios, se usa la fórmula con la volatilidad implícita del strike. No mide la asignación anticipada.
