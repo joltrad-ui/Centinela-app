@@ -17,7 +17,7 @@ Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de re
   - Volatilidad: IV alta o IV baja frente a lo que el valor se ha movido de verdad.
 - **Avisos:** cuándo un nombre de la lista pasa a cumplir tus reglas. Llegan al móvil con la app gratuita ntfy.
 - **Mis deals:** donde apuntas lo que abres (o lo que ya tienes en tu bróker) y cómo acabó, con una tarjeta por deal y orden a elegir. La app no envía órdenes: da un resumen para copiar.
-- **Reglas:** días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, equilibrio mínimo, % abajo opcional, interruptores, comisión y horquilla, y las reglas del nivel de Hoy (punto de seguridad y error). Aquí también está **Tus datos**: una copia de seguridad, como un texto que guardas tú, de lo que vive solo en tu dispositivo (Mis deals, las que tengo, filtros guardados, reglas). Sirve para cambiar de móvil o por si borras los datos del navegador, y no se sube a ningún sitio.
+- **Reglas:** días, probabilidad de asignación máxima (la que elige el corto en cada nombre), ancho máximo, cobro mínimo en dólares, rentab. esperada mínima, % abajo opcional, interruptores, comisión y horquilla, y las reglas del nivel de Hoy (punto de seguridad y error). Aquí también está **Tus datos**: una copia de seguridad, como un texto que guardas tú, de lo que vive solo en tu dispositivo (Mis deals, las que tengo, filtros guardados, reglas). Sirve para cambiar de móvil o por si borras los datos del navegador, y no se sube a ningún sitio.
 
 La lista está en `scanner/universe.json`; para cambiarla se cambia ese archivo.
 
@@ -94,7 +94,8 @@ Para ver la app sin datos reales, con cadenas inventadas: `npm run ejemplo` (o `
 - **Pérdida máx.:** ancho menos crédito, por 100.
 - **Rentabilidad:** crédito partido por la pérdida máxima.
 - **Prob. de asignación:** probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio. Si faltan precios, se usa la fórmula con la volatilidad implícita del strike. No mide la asignación anticipada.
-- **Equilibrio:** lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. En 1 se igualan. Suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.
+- **Rentab. esperada:** (cobras neto − se espera pagar) ÷ pierdes máx. Es lo que ordena y lo que mide la regla "rentab. esperada mínima" (0 % de fábrica).
+- **Equilibrio:** cobras neto ÷ se espera pagar. Solo un dato de la ficha.
 - **Movimiento esperado:** precio × volatilidad implícita al dinero × raíz de (días / 365).
 
 El nivel de 0 a 5, lo que "se espera pagar" y su error están explicados con detalle en `docs/calculo.md`.

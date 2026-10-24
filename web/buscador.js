@@ -3,6 +3,7 @@
 // los filtros en `centinela.buscador.v1` y las acciones marcadas como "las tengo" en `centinela.tengo.v1`.
 // Quitar o poner una acción es el mismo `config.off` de siempre: la oculta en toda la app.
 import { emptyBox } from "./ui.js";
+import { DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
 import { TWINS, qualityDeals, nyToday, volatilities } from "./engine.js";
 
@@ -19,13 +20,9 @@ const W_STEP = W.step;
 const PR_MIN = PR.min;
 const PR_MAX = PR.max;
 const SHOW = 40;
-const ORDERS = [
-  ["lv", "Nivel"],
-  ["ben", "Beneficio"],
-  ["prob", "Prob."],
-  ["floor", "Suelo"],
-  ["day", "Por día"],
-];
+const ORDERS = DEAL_ORDERS;
+// Versión del orden guardado: con la 2 (24 oct) la rentab. esperada pasa a ser el orden de fábrica; un orden guardado antes se cambia una vez.
+const ORD_V = 2;
 const DEFAULT_LV = [3, 4, 5];
 const norm = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
@@ -54,7 +51,7 @@ export function createBuscador(ctx) {
     ...cleanFilters(saved),
     one: saved.one !== false, // uno por nombre
     tengo: saved.tengo === "hide" || saved.tengo === "only" ? saved.tengo : "all",
-    ord: ORDERS.some(([id]) => id === saved.ord) ? saved.ord : "lv",
+    ord: saved.ordV === ORD_V && ORDERS.some(([id]) => id === saved.ord) ? saved.ord : DEAL_ORDER_DEFAULT,
     shown: SHOW,
     namesOpen: false,
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
@@ -62,7 +59,7 @@ export function createBuscador(ctx) {
     help: false, // la explicación de los filtros abierta; solo en memoria
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
-  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, fOpen: bs.fOpen });
+  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, ordV: ORD_V, fOpen: bs.fOpen });
 
   let tengoList = (Array.isArray(readLocal(LS_TENGO)) ? readLocal(LS_TENGO) : []).filter((s) => typeof s === "string").slice(0, 200);
   const keepTengo = () => writeLocal(LS_TENGO, tengoList);
@@ -380,7 +377,7 @@ export function createBuscador(ctx) {
     else if (act === "vol") bs.vol = ["all", "high", "low"].includes(value) ? value : "all";
     else if (act === "margin") bs.margin = ["all", "yes", "no"].includes(value) ? value : "all";
     else if (act === "one") bs.one = !bs.one;
-    else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : "lv";
+    else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : DEAL_ORDER_DEFAULT;
     else if (act === "more-rows") {
       bs.shown += SHOW;
       return true;

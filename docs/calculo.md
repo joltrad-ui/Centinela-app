@@ -13,11 +13,11 @@ Lo que se ve en pantalla está en `docs/interfaz.md`; de dónde salen los datos,
 - **Crédito mínimo:** en dólares por contrato (`minCredit`), no en % del ancho. Esa regla forzaba una probabilidad de pérdida mínima.
 - **Versión de las reglas:** `v: 3` (24 oct). En `normalizeRules`, las de antes de la 2 se migran como siempre y las de antes de la 3 pasan **una vez** a plazo 15–60, prob. máxima 15 % y ancho $10; lo demás se conserva y, desde ahí, se respeta lo que ponga el dueño. El barrido lee `CENTINELA_CONFIG` con la misma migración, sin escribir el secreto.
 - **Rentabilidad:** crédito / pérdida máxima.
-- **Equilibrio:** ganancia esperada / pérdida esperada = rentabilidad × (100 − prob.) / prob. (`balanceOf`). Regla de equilibrio mínimo: `minBalance`, 0,5 por defecto, 0 = sin mínimo.
+- **Rentab. esperada mínima** (`minRetExp`, 24 oct): sustituye al equilibrio antiguo (rentabilidad × (100 − prob.) / prob., que contaba toda asignación como pérdida máxima y no descontaba la comisión; quitado del motor). 0 % de fábrica, de −5 a +5 de 0,1 en 0,1. `buildBullPuts` la calcula con `spreadRow` (comisión `equalFee`) y `withHistory` solo si recibe los cierres del nombre y el spread ya cumple prob., % abajo, ancho y cobro; sin cierres no se mide y la regla no aparta. Lo que no la supera sale "fuera de Reglas: rentab." (motivo `rentab. esperada baja`), no desaparece.
 - **Ancho:** el de las reglas es un máximo ($10 de fábrica). Para cada corto se consideran todos los largos que dejan ese ancho o menos, y nunca más que el tope del nombre (`widthCap`): hasta $5 en todos y hasta $10 solo en QQQ, SPY, IWM, DIA, GLD y XSP (`WIDE_NAMES`). En las acciones, nunca $10. Vale en las Reglas, en Hoy (`equalRisk`) y en el Buscador y la ficha (`qualityDeals`).
 - **SPY y XSP** (`TWINS`): son la misma apuesta. En el Buscador, el que sale antes con el orden elegido es el candidato y las filas del otro llevan "mismo bloque que …".
 - **Riesgo a la vista** (`riskTag`, `RISK_TAG` en `hoy-calc.js`): un deal con pierdes máx. de más de $500 lleva "arriesga más de $500" en su fila y en la ficha. No se oculta. No hay regla de riesgo por operación en Reglas; si se añade, la cifra debe salir de ella.
-- **Orden por defecto:** equilibrio entre baja probabilidad de asignación y buena rentabilidad.
+- **Orden por defecto de los avisos** (`config.order`): `rentexp`, la rentab. esperada; sin cierres, detrás y por rentabilidad neta (`compareSpreads`). Un orden guardado `equilibrio` pasa a `rentexp`.
 - **Avisos del barrido:** avisa cualquier nombre de la lista que pase a cumplir. Un aviso por nombre y día. El primer barrido solo toma nota. Con el mercado cerrado no se avisa. Si el estado anterior no se puede leer (salvo 404), el barrido falla en vez de sobrescribir.
 - `config.order` y `ORDERS` siguen en el motor porque el barrido de avisos los usa (ya no hay pantalla Lista).
 
@@ -43,13 +43,12 @@ La pestaña "Igual riesgo" se quitó el 12 oct (su pantalla y sus controles); qu
 - **Pérdida esperada reciente** = [L(corto) − L(largo)] × 100, sin tipo de interés.
 - **Se espera pagar** = la MEDIA de las dos, no la mayor. Con 3 años de cierres de los 32 nombres de entonces, la mayor daba un 7,6 % a caídas que ocurrieron un 3,5 %; la media, un 5,8 %. Si la mayor es más de 3 veces la menor, nota "estimaciones muy distintas".
 - **Rentab. esperada** = (cobras neto − se espera pagar) / pierdes máx. × 100. Es lo que ordena (de mayor a menor; sin cierres, detrás y por rentab. neta).
-- **Equilibrio con historia** = cobras neto / se espera pagar, con un decimal. Es un dato, no ordena: ordenar por una división dejaba salir primero spreads que cobran muy poco.
+- **Equilibrio con historia** (`balanceHist`) = cobras neto / se espera pagar, con un decimal. Es un dato (la ficha lo enseña bajo la rentab. esperada), no ordena ni filtra: ordenar por una división dejaba salir primero spreads que cobran muy poco.
 - **"Poca historia"** = menos de 2 años de cierres.
 - **"Solo con un cálculo"** (`onlyOne`): (cobras neto − pérdida con historia) y (cobras neto − pérdida reciente) tienen distinto signo. Manda sobre "estimaciones muy distintas". En esos dos casos se añaden la volatilidad reciente y la de todos los cierres guardados (`volatilities`: desviación de los rendimientos diarios × √252); la ficha las enseña siempre.
 - **Tendencia** (`trendNotes`): "en mínimos del año" (precio en el 10 % más bajo del rango de 52 semanas) y "bajo su media de 200" (media de los últimos 200 cierres).
 - **Fed** (`fedInside`): etiqueta roja "Fed el 28 oct" en los bloques "Bonos largos" y "Bolsa EE. UU." si una decisión cae entre hoy y el vencimiento. `FED_DATES` (en `engine.js`) es una lista corta, como la de festivos: del calendario oficial (federalreserve.gov/monetarypolicy/fomccalendars.htm) hay hasta enero de 2028 (provisional). **Ampliarla cuando la Fed publique más y antes de que se acabe.**
 - **Mensajes:** ninguna fila con rentab. esperada > 0; prob. objetivo por debajo del 5 %; precios tomados con el mercado cerrado (`pricesOutsideMarket`, cuenta los 15 min de retraso).
-- El equilibrio de las Reglas no usa nada de esto.
 
 ### Medias, cambio reciente e IV frente a la realizada (informativo)
 

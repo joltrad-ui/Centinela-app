@@ -52,7 +52,7 @@ export function safetyItem(item, checks, row, opts, both, anyOne) {
 }
 
 
-export const FAIL_SHORT = { "probabilidad alta": "prob.", "sin dato de probabilidad": "prob.", "fuera del punto": "% abajo", "crédito corto": "cobras", "equilibrio bajo": "equilibrio" };
+export const FAIL_SHORT = { "probabilidad alta": "prob.", "sin dato de probabilidad": "prob.", "fuera del punto": "% abajo", "crédito corto": "cobras", "rentab. esperada baja": "rentab." };
 export const failShort = (fail) => FAIL_SHORT[fail] ?? (fail.startsWith("ancho de") ? "ancho" : fail);
 export const spanText = (years) => (years >= 4.5 ? "5 años" : years >= 1.5 ? `${num(Math.round(years * 10) / 10, 1)} años` : "lo guardado");
 /** Dólares con céntimos y signo: aquí cada céntimo cuenta. */
@@ -98,7 +98,19 @@ export const benefit = (d) => (d.row.net > 0 ? ((d.row.net - d.row.expected) / d
 /** Rentab. esperada repartida entre los días hasta el vencimiento. */
 export const perDay = (d) => (d.row.retExp != null && d.row.dte > 0 ? d.row.retExp / d.row.dte : -Infinity);
 /** La lista de deals en el orden elegido en la barra: nivel (el de fábrica), beneficio, prob., suelo o por día. */
+/** Órdenes de las listas de deals (Buscador y ficha), en el orden de la barra. "ret" (rentab. esperada) es el de fábrica. */
+export const DEAL_ORDERS = [
+  ["ret", "Rentab."],
+  ["lv", "Nivel"],
+  ["ben", "Beneficio"],
+  ["prob", "Prob."],
+  ["floor", "Suelo"],
+  ["day", "Por día"],
+];
+export const DEAL_ORDER_DEFAULT = "ret";
+
 export function sortDeals(list, ord) {
+  if (ord === "ret") return [...list].sort((a, b) => (b.row.retExp ?? -Infinity) - (a.row.retExp ?? -Infinity) || b.level - a.level);
   if (ord === "ben") return [...list].sort((a, b) => (benefit(b) ?? -Infinity) - (benefit(a) ?? -Infinity));
   if (ord === "prob") return [...list].sort((a, b) => (a.row.prob ?? 100) - (b.row.prob ?? 100));
   if (ord === "floor") return [...list].sort((a, b) => (b.floor ?? -Infinity) - (a.floor ?? -Infinity) || b.level - a.level);

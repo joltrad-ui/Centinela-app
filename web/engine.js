@@ -9,7 +9,8 @@ export const RATE = 0.04; // tipo sin riesgo de la fórmula de reserva de la pro
 
 // Versión de las reglas. La 2 fija el riesgo con la prob. de asignación (la misma
 // vara para todos los nombres) en vez de con "% abajo" y "% del ancho". La 3 (24 oct) amplía la búsqueda:
-// de 15 a 60 días, prob. máxima 15 % y ancho máximo $10; las guardadas antes pasan a esos valores una vez.
+// de 15 a 60 días, prob. máxima 15 % y ancho máximo $10, y cambia el equilibrio mínimo por la rentab. esperada
+// mínima (0 %); las guardadas antes pasan a esos valores una vez.
 export const RULES_V = 3;
 export const LEVEL_SAFETY = ["margin", "both", "off"];
 
@@ -23,7 +24,7 @@ export const DEFAULT_RULES = {
   maxOtm: 12, // % abajo, hasta
   width: 10, // ancho máximo: vale ese y cualquiera menor (y nunca más que `widthCap` del nombre)
   minCredit: 20, // cobras, mínimo, en dólares por contrato; 0 = sin mínimo
-  minBalance: 0.5, // equilibrio mínimo; 0 = sin mínimo
+  minRetExp: 0, // rentab. esperada mínima, en % de lo que se arriesga, de −5 a +5: (cobras neto − se espera pagar) / pierdes máx.
   equalFee: 1.4, // pestaña "Igual riesgo": comisión por spread al abrir, en dólares; la de salir cuenta otra vez en el coste de ida y vuelta
   levelSafety: "margin", // pestaña "Hoy": el punto de seguridad del nivel: "margin" (lo que queda supera el error del cálculo), "both" (los dos cálculos en positivo) u "off" (no cuenta)
   levelMargin: 1, // pestaña "Hoy": cuántas veces el error tiene que caber en lo que queda, de 0,5 a 3
@@ -46,14 +47,14 @@ export const DEFAULT_CONFIG = {
   savedAt: 0,
   strategy: "bullPut",
   rules: DEFAULT_RULES,
-  order: "equilibrio",
+  order: "rentexp",
   favorites: ["AAPL", "NVDA", "MSFT", "SPY"],
   extra: [],
   alerts: { favorites: true, universeTop: 0 },
 };
 
 export const ORDERS = [
-  { id: "equilibrio", label: "Equilibrio", hint: "Lo que esperas ganar por cada dólar que esperas perder. Sube con la rentabilidad y baja con la probabilidad de asignación." },
+  { id: "rentexp", label: "Rentab. esperada", hint: "Lo que queda de lo cobrado tras lo que se espera pagar, sobre lo que se arriesga. Sin cierres, la rentabilidad neta." },
   { id: "rentab", label: "Rentabilidad", hint: "Crédito partido por la pérdida máxima." },
   { id: "prob", label: "Prob. asignación", hint: "La más baja primero. Sale de los precios del mercado." },
   { id: "abajo", label: "% abajo", hint: "El corto más lejos del precio primero." },
@@ -136,7 +137,7 @@ export function normalizeRules(input) {
     maxOtm,
     width: pre3 ? base.width : clamp(row.width, 1, 50, base.width),
     minCredit: Math.round(clamp(row.minCredit, 0, 500, base.minCredit)),
-    minBalance: Math.round(clamp(row.minBalance, 0, 1.5, base.minBalance) * 100) / 100,
+    minRetExp: pre3 ? base.minRetExp : Math.round(clamp(row.minRetExp, -5, 5, base.minRetExp) * 10) / 10,
     equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
     levelSafety: LEVEL_SAFETY.includes(row.levelSafety) ? row.levelSafety : base.levelSafety,
@@ -166,7 +167,7 @@ export function normalizeConfig(input) {
     savedAt: typeof row.savedAt === "number" && Number.isFinite(row.savedAt) ? row.savedAt : 0,
     strategy: "bullPut",
     rules: normalizeRules(row.rules),
-    order: ORDERS.some((o) => o.id === row.order) ? row.order : "equilibrio",
+    order: ORDERS.some((o) => o.id === row.order) ? row.order : "rentexp",
     favorites,
     extra: symbolList(row.extra, 200),
     off: symbolList(row.off, 200), // nombres de la lista que él ha quitado de su selección
@@ -357,7 +358,7 @@ function longLegs(rows, shortStrike, maxWidth) {
 
 /** Orden en que se comprueban las reglas. La etapa de un spread es cuántas
  *  ha superado seguidas; sirve para el embudo y para elegir "lo más cerca". */
-export const STAGES = ["prob", "abajo", "ancho", "credito", "equilibrio", "interruptores"];
+export const STAGES = ["prob", "abajo", "ancho", "credito", "rentab", "interruptores"];
 
 /** Prob. de asignación que descuenta el mercado en cada strike de un vencimiento:
  *  lo que cambia el precio del put al subir un dólar el strike, medido con los dos
@@ -399,7 +400,9 @@ export function marketProbs(rows) {
   return out;
 }
 
-function buildBullPuts(sym, rules, today) {
+/** `series` (opcional) = los cierres del nombre: con ellos se calcula la rentab. esperada (con la comisión `equalFee`)
+ *  y se aplica la rentab. esperada mínima. Sin cierres no se puede medir y la regla no aparta. */
+function buildBullPuts(sym, rules, today, series = null) {
   const gates = rules.gates;
   const out = [];
   for (const [expiry, atmIv, rows] of sym.x ?? []) {
@@ -445,7 +448,6 @@ function buildBullPuts(sym, rules, today) {
         const prob = shortProb;
         const creditPct = (credit / width) * 100;
         const ret = (credit / maxLoss) * 100;
-        const balance = balanceOf(ret, prob);
         const quoteGap = sa != null && lb != null ? r2(sa - sb + (la - lb)) : null;
         const midCredit = sa != null && lb != null ? (sb + sa) / 2 - (lb + la) / 2 : null;
         const moveIv = atmIv > 0 ? atmIv : iv;
@@ -461,8 +463,18 @@ function buildBullPuts(sym, rules, today) {
         if (!fitsOtm) fails.push("fuera del punto");
         if (!fitsWidth) fails.push(`ancho de $${fmtWidth(width)}`);
         if (!fitsCredit) fails.push("crédito corto");
-        const fitsBalance = !(rules.minBalance > 0) || (balance != null && balance >= rules.minBalance - 1e-9);
-        if (!fitsBalance) fails.push("equilibrio bajo");
+        // Rentab. esperada: solo si lo anterior se cumple (es la cuenta cara) y hay cierres.
+        let retExp = null;
+        let retNet = null;
+        if (fitsProb && fitsOtm && fitsWidth && fitsCredit) {
+          const row = spreadRow(sym, expiry, ks, long[K], rules.equalFee, today);
+          if (row.status === "ok") {
+            retNet = row.ret;
+            if (series) retExp = withHistory(row, series, today).retExp ?? null;
+          }
+        }
+        const fitsRet = retExp == null || retExp >= rules.minRetExp - 1e-9;
+        if (!fitsRet) fails.push("rentab. esperada baja");
 
         const gateFails = [];
         const earn = sym.er && sym.er.d ? sym.er : null;
@@ -481,7 +493,7 @@ function buildBullPuts(sym, rules, today) {
         }
         if (gates.room && move && sym.p - ks < move.dollars / 2) gateFails.push("dentro del movimiento");
 
-        const checks = [fitsProb, fitsOtm, fitsWidth, fitsCredit, fitsBalance, gateFails.length === 0];
+        const checks = [fitsProb, fitsOtm, fitsWidth, fitsCredit, fitsRet, gateFails.length === 0];
         let stage = 0;
         while (stage < checks.length && checks[stage]) stage++;
 
@@ -503,7 +515,8 @@ function buildBullPuts(sym, rules, today) {
           prob: prob == null ? null : r1(prob),
           probSrc: prob == null ? null : probMarket != null ? "mercado" : "formula",
           probModel: probModel == null ? null : r1(probModel),
-          balance,
+          retExp,
+          retNet,
           breakeven: r2(ks - credit),
           shortOi: short[OI] ?? 0,
           longOi: long[OI] ?? 0,
@@ -966,15 +979,6 @@ export function withHistory(row, series, today = nyToday(), err = {}) {
   };
 }
 
-/** Equilibrio: ganancia esperada partida por pérdida esperada.
- *  Ganas el crédito con probabilidad (1 − p) y pierdes la pérdida máxima con
- *  probabilidad p, así que queda rentabilidad × (1 − p) / p.
- *  1 = lo esperado a ganar iguala lo esperado a perder. */
-export function balanceOf(ret, prob) {
-  if (prob == null || !(prob > 0) || prob >= 100) return null;
-  return r2(((ret / 100) * (100 - prob)) / prob);
-}
-
 function fmtWidth(n) {
   return Number.isInteger(n) ? String(n) : num(n, 2).replace(/0$/, "");
 }
@@ -990,13 +994,14 @@ function orderValue(sp, order) {
   if (order === "prob") return sp.prob == null ? null : -sp.prob;
   if (order === "abajo") return sp.otm;
   if (order === "credito") return sp.creditUsd;
-  return sp.balance;
+  return sp.retExp;
 }
 
 export function compareSpreads(a, b, order) {
   const va = orderValue(a, order);
   const vb = orderValue(b, order);
-  if (va == null && vb == null) return b.ret - a.ret;
+  // Sin rentab. esperada (sin cierres), detrás y por rentabilidad neta.
+  if (va == null && vb == null) return (b.retNet ?? b.ret) - (a.retNet ?? a.ret);
   if (va == null) return 1;
   if (vb == null) return -1;
   return (
@@ -1015,9 +1020,9 @@ export function compareSpreads(a, b, order) {
 /** Estado de un nombre con las reglas dadas.
  *  status: "entrada" | "no-pasa" | "sin-plazo" | "sin-cadena"
  *  best:   el spread que cumple y va primero en el orden, o lo más cerca. */
-export function assessSymbol(sym, rules, order, today = nyToday()) {
+export function assessSymbol(sym, rules, order, today = nyToday(), series = null) {
   const strategy = STRATEGIES.bullPut;
-  const spreads = strategy.build(sym, rules, today);
+  const spreads = strategy.build(sym, rules, today, series);
   const passing = spreads.filter((sp) => sp.ok).sort((a, b) => compareSpreads(a, b, order));
   const hasChain = (sym.x ?? []).some(([, , rows]) => rows.length > 0);
   const inWindow = (sym.x ?? []).some(([expiry]) => {
@@ -1045,19 +1050,19 @@ export function statusLabel(status) {
 
 /** Barre todos los nombres. Devuelve los que cumplen, ya ordenados,
  *  y el embudo: cuántos nombres superan cada regla. */
-export function rankUniverse(symbols, rules, order, today = nyToday()) {
+export function rankUniverse(symbols, rules, order, today = nyToday(), hist = null) {
   const rows = [];
-  const funnel = { leidos: symbols.length, conPlazo: 0, prob: 0, abajo: 0, ancho: 0, credito: 0, equilibrio: 0, cumplen: 0 };
+  const funnel = { leidos: symbols.length, conPlazo: 0, prob: 0, abajo: 0, ancho: 0, credito: 0, rentab: 0, cumplen: 0 };
   const bySymbol = new Map();
   for (const sym of symbols) {
-    const res = assessSymbol(sym, rules, order, today);
+    const res = assessSymbol(sym, rules, order, today, hist?.[sym.s] ?? null);
     bySymbol.set(sym.s, res);
     if (res.status !== "sin-cadena" && res.status !== "sin-plazo") funnel.conPlazo++;
     if (res.stage >= 1) funnel.prob++;
     if (res.stage >= 2) funnel.abajo++;
     if (res.stage >= 3) funnel.ancho++;
     if (res.stage >= 4) funnel.credito++;
-    if (res.stage >= 5) funnel.equilibrio++;
+    if (res.stage >= 5) funnel.rentab++;
     if (res.status === "entrada") {
       funnel.cumplen++;
       rows.push({ sym, res });
@@ -1146,7 +1151,7 @@ export function rulesLine(rules) {
   if (rules.otmOn) parts.push(`${num(rules.minOtm, 0)}–${num(rules.maxOtm, 0)} % abajo`);
   parts.push(`ancho ≤$${fmtWidth(rules.width)}`);
   if (rules.minCredit > 0) parts.push(`cobras ≥$${rules.minCredit}`);
-  if (rules.minBalance > 0) parts.push(`equilibrio ≥${num(rules.minBalance, 2)}`);
+  parts.push(`rentab. esperada ≥${num(rules.minRetExp, 1)} %`);
   return parts.join(" · ");
 }
 
@@ -1296,7 +1301,7 @@ export function qualityDeals(symbols, opts, today = nyToday()) {
     if (!(sym.p > 0)) continue;
     const capW = Math.min(maxWidth, widthCap(sym.s));
     const byRules = new Map();
-    for (const sp of STRATEGIES.bullPut.build(sym, rules, today)) byRules.set(`${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`, sp);
+    for (const sp of STRATEGIES.bullPut.build(sym, rules, today, hist?.[sym.s] ?? null)) byRules.set(`${sp.expiry}|${sp.shortStrike}|${sp.longStrike}`, sp);
     for (const entry of sym.x ?? []) {
       const [expiry, , rows] = entry;
       const dte = daysBetween(today, expiry);

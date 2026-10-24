@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, balanceOf, widthCap, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
+import { readCboeChain, DEFAULT_RULES, qualityDeals, LEVEL_COST_PCT, atMid, dealChecks, dealStatus, levelCell, levelGrid, levelRecord, monthRange, rangeOf, rangeOrder, returnsOf, mapExpiries, alertText, fedInside, trendNotes, volatilities, gateReason, pricesOutsideMarket, num, rulesLine, spreadLine, liquidityNotes, spreadRow, yearRange, expectedLoss, historyStats, realizedVol, sessionsBetween, withHistory, commonExpiries, defaultExpiry, equalRisk, equalRiskList, assessSymbol, widthCap, favoriteDeals, ivFromPut, marketProbs, normalizeConfig, normalizeRules, probBelow, putPrice, rankUniverse } from "../web/engine.js";
 
 import { checkSeries, repairSplits, toSeries } from "../scanner/cierres.mjs";
 import { keepPrevious, hostAllowed, originAllowed } from "../scanner/scan.mjs";
@@ -10,7 +10,7 @@ import { sma, smaSeries, changeOver } from "../web/engine.js";
 const today = "2026-10-05";
 // Reglas de las pruebas: sin límite de probabilidad ni de equilibrio, con el % abajo
 // acotado a 8–12 y un cobro mínimo de $50, salvo lo que cada prueba cambie.
-const R = (extra = {}) => normalizeRules({ v: 3, maxProb: 50, otmOn: true, minOtm: 8, maxOtm: 12, minCredit: 50, minBalance: 0, ...extra });
+const R = (extra = {}) => normalizeRules({ v: 3, maxProb: 50, otmOn: true, minOtm: 8, maxOtm: 12, minCredit: 50, ...extra });
 // [strike, bid, ask, interés abierto, iv, delta]
 const sym = {
   s: "XYZ",
@@ -21,7 +21,7 @@ const sym = {
 };
 
 test("crédito, pérdida y rentabilidad de un bull put 90/85", () => {
-  const res = assessSymbol(sym, R(), "equilibrio", today);
+  const res = assessSymbol(sym, R(), "rentexp", today);
   assert.equal(res.status, "entrada");
   const sp = res.best;
   assert.equal(`${sp.shortStrike}/${sp.longStrike}`, "90/85");
@@ -39,34 +39,38 @@ test("el ancho es un máximo: vale ese y cualquiera menor", () => {
   const all = assessSymbol(dense, R({ minCredit: 0, width: 5 }), "credito", today).all.filter((sp) => sp.shortStrike === 90);
   assert.deepEqual(all.map((sp) => sp.width).sort((a, b) => a - b), [1, 2.5, 5]);
   assert.ok(all.every((sp) => sp.ok));
-  const narrow = assessSymbol(sym, R({ width: 2 }), "equilibrio", today);
+  const narrow = assessSymbol(sym, R({ width: 2 }), "rentexp", today);
   assert.equal(narrow.status, "no-pasa");
   assert.match(narrow.best.fails.join(), /ancho de \$5/);
 });
 
-test("equilibrio: ganancia esperada entre pérdida esperada", () => {
-  assert.equal(balanceOf(25, 20), 1); // 25% de rentabilidad con 20% de probabilidad: 0.25 × 80 / 20
-  assert.equal(balanceOf(10, 20), 0.4);
-  assert.ok(balanceOf(10, 10) > balanceOf(10, 20)); // menos probabilidad, más equilibrio
-  assert.ok(balanceOf(15, 20) > balanceOf(10, 20)); // más rentabilidad, más equilibrio
-  assert.equal(balanceOf(10, null), null);
-});
-
-test("regla de equilibrio mínimo", () => {
-  const sp = assessSymbol(sym, R(), "equilibrio", today).best;
-  const strict = assessSymbol(sym, R({ minBalance: sp.balance + 0.05 }), "equilibrio", today);
-  assert.equal(strict.status, "no-pasa");
-  assert.ok(strict.best.fails.includes("equilibrio bajo"));
-  assert.equal(assessSymbol(sym, R({ minBalance: sp.balance }), "equilibrio", today).status, "entrada");
-  assert.equal(normalizeRules({}).minBalance, 0.5);
-  assert.equal(normalizeRules({ minBalance: 9 }).minBalance, 1.5);
+test("regla de rentab. esperada mínima: con cierres aparta, sin cierres no se mide", () => {
+  let seed = 7, price = 100;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
+  const series = { d: "2021-10-05", c: Array.from({ length: 1300 }, () => (price *= Math.exp(rand() * 0.087))) };
+  const sp = assessSymbol(sym, R(), "rentexp", today, series).best;
+  assert.equal(typeof sp.retExp, "number");
+  const strict = assessSymbol(sym, R({ minRetExp: Math.min(5, sp.retExp + 0.1) }), "rentexp", today, series);
+  if (sp.retExp + 0.1 <= 5) {
+    assert.equal(strict.status, "no-pasa");
+    assert.ok(strict.best.fails.includes("rentab. esperada baja"));
+  }
+  assert.equal(assessSymbol(sym, R({ minRetExp: Math.max(-5, sp.retExp - 0.1) }), "rentexp", today, series).best.ok, sp.retExp - 0.1 >= -5);
+  // sin cierres no hay rentab. esperada: la regla no aparta y se ordena por la rentabilidad neta
+  const bare = assessSymbol(sym, R({ minRetExp: 5 }), "rentexp", today);
+  assert.equal(bare.status, "entrada");
+  assert.equal(bare.best.retExp, null);
+  assert.equal(normalizeRules({}).minRetExp, 0);
+  assert.equal(normalizeRules({ v: 3, minRetExp: 9 }).minRetExp, 5);
+  assert.equal(normalizeRules({ v: 3, minRetExp: -1.234 }).minRetExp, -1.2);
+  assert.equal("minBalance" in normalizeRules({ v: 2, minBalance: 0.7 }), false);
 });
 
 test("probabilidad de asignación: sale de los precios de los strikes vecinos", () => {
   // precios medios: 80 → 0.125, 85 → 0.35, 90 → 1.05, 95 → 2.45
   const probs = marketProbs(sym.x[0][2]).map((p) => Math.round(p * 100) / 100);
   assert.deepEqual(probs, [4.5, 9.25, 21, 28]); // (0.35−0.125)/5, (1.05−0.125)/10, (2.45−0.35)/10, (2.45−1.05)/5
-  const sp = assessSymbol(sym, R(), "equilibrio", today).best;
+  const sp = assessSymbol(sym, R(), "rentexp", today).best;
   assert.equal(sp.prob, 21);
   assert.equal(sp.probSrc, "mercado");
   assert.equal(sp.probModel, Math.round(probBelow(100, 90, 25, 0.42) * 10) / 10);
@@ -80,7 +84,7 @@ test("probabilidad de asignación: sale de los precios de los strikes vecinos", 
 });
 
 test("la probabilidad máxima es la regla que elige el corto", () => {
-  const wide = assessSymbol(sym, normalizeRules({ v: 3, maxProb: 12, minCredit: 0, minBalance: 0 }), "prob", today);
+  const wide = assessSymbol(sym, normalizeRules({ v: 3, maxProb: 12, minCredit: 0 }), "prob", today);
   assert.equal(wide.status, "entrada");
   const ok = wide.all.filter((sp) => sp.ok);
   assert.ok(ok.length > 0 && ok.every((sp) => sp.prob <= 12 && sp.shortStrike <= 85));
@@ -90,20 +94,20 @@ test("la probabilidad máxima es la regla que elige el corto", () => {
   // sin el % abajo encendido, estar a un 15 % no descarta
   assert.ok(ok.every((sp) => !sp.fails.includes("fuera del punto")));
   // lo que queda muy por encima de la probabilidad máxima ni se lista
-  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, maxProb: 5, minCredit: 0, minBalance: 0 }), "prob", today).all.some((sp) => sp.shortStrike >= 90), false);
+  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, maxProb: 5, minCredit: 0 }), "prob", today).all.some((sp) => sp.shortStrike >= 90), false);
   // un nombre con puts dentro de la probabilidad pero que no dan para el cobro mínimo
   // cuenta como que pasa la probabilidad y se queda en el crédito
-  const { funnel } = rankUniverse([sym], normalizeRules({ v: 3, maxProb: 5, minCredit: 100, minBalance: 0 }), "prob", today);
+  const { funnel } = rankUniverse([sym], normalizeRules({ v: 3, maxProb: 5, minCredit: 100 }), "prob", today);
   assert.equal(funnel.prob, 1);
   assert.equal(funnel.ancho, 1);
   assert.equal(funnel.credito, 0);
 });
 
 test("cobras, mínimo: en dólares por contrato", () => {
-  const cheap = assessSymbol(sym, R({ minCredit: 65 }), "equilibrio", today);
+  const cheap = assessSymbol(sym, R({ minCredit: 65 }), "rentexp", today);
   assert.equal(cheap.status, "no-pasa"); // el 90/85 cobra $60
   assert.ok(cheap.best.fails.includes("crédito corto"));
-  assert.equal(assessSymbol(sym, R({ minCredit: 60 }), "equilibrio", today).status, "entrada");
+  assert.equal(assessSymbol(sym, R({ minCredit: 60 }), "rentexp", today).status, "entrada");
 });
 
 test("reglas guardadas antes del cambio pasan a las nuevas de fábrica", () => {
@@ -112,25 +116,25 @@ test("reglas guardadas antes del cambio pasan a las nuevas de fábrica", () => {
   assert.equal(old.maxProb, 15);
   assert.equal(old.otmOn, false);
   assert.equal(old.minCredit, 20);
-  assert.equal(old.minBalance, 0.7);
+  assert.equal(old.minRetExp, 0); // el equilibrio mínimo ya no existe
   assert.equal("minCreditPct" in old, false);
   assert.equal(normalizeRules({ v: 3, maxProb: 50 }).maxProb, 50);
   assert.equal(normalizeRules({ v: 3, otmOn: true }).otmOn, true);
 });
 
 test("versión 3: plazo, prob. máxima y ancho pasan una vez a los nuevos de fábrica; después se respetan", () => {
-  const v2 = normalizeRules({ v: 2, minDte: 20, maxDte: 30, maxProb: 10, width: 5, minCredit: 30, otmOn: true, equalFee: 2 });
-  assert.deepEqual([v2.v, v2.minDte, v2.maxDte, v2.maxProb, v2.width], [3, 15, 60, 15, 10]);
+  const v2 = normalizeRules({ v: 2, minDte: 20, maxDte: 30, maxProb: 10, width: 5, minBalance: 0.5, minRetExp: 3, minCredit: 30, otmOn: true, equalFee: 2 });
+  assert.deepEqual([v2.v, v2.minDte, v2.maxDte, v2.maxProb, v2.width, v2.minRetExp], [3, 15, 60, 15, 10, 0]);
   assert.deepEqual([v2.minCredit, v2.otmOn, v2.equalFee], [30, true, 2]); // lo demás no se toca
-  const mine = normalizeRules({ ...v2, minDte: 25, maxDte: 40, maxProb: 8, width: 5 });
-  assert.deepEqual([mine.minDte, mine.maxDte, mine.maxProb, mine.width], [25, 40, 8, 5]);
+  const mine = normalizeRules({ ...v2, minDte: 25, maxDte: 40, maxProb: 8, width: 5, minRetExp: -0.5 });
+  assert.deepEqual([mine.minDte, mine.maxDte, mine.maxProb, mine.width, mine.minRetExp], [25, 40, 8, 5, -0.5]);
   assert.deepEqual(normalizeRules(mine), mine); // una sola vez
 });
 
 test("anchos que se buscan: hasta $5 en todos y hasta $10 solo en QQQ, SPY, IWM, DIA, GLD y XSP", () => {
   assert.deepEqual(["QQQ", "SPY", "IWM", "DIA", "GLD", "XSP", "AAPL", "XLF", "NVDA"].map(widthCap), [10, 10, 10, 10, 10, 10, 5, 5, 5]);
   const rows = [[80, 0.1, 0.15, 500, 0.5, -0.03], [85, 0.3, 0.4, 800, 0.46, -0.08], [90, 1.0, 1.1, 1200, 0.42, -0.17], [95, 2.4, 2.5, 900, 0.4, -0.33]];
-  const rules = normalizeRules({ v: 3, maxProb: 50, minCredit: 0, minBalance: 0, minDte: 15, maxDte: 60 });
+  const rules = normalizeRules({ v: 3, maxProb: 50, minCredit: 0, minDte: 15, maxDte: 60 });
   const widths = (s) => assessSymbol({ s, p: 100, c: 0, er: null, x: [["2026-10-30", 0.4, rows]] }, rules, "credito", today).all.map((sp) => sp.width);
   assert.equal(Math.max(...widths("AAPL")), 5);
   assert.equal(Math.max(...widths("SPY")), 10); // el 95/80 ($15) no se busca
@@ -138,20 +142,20 @@ test("anchos que se buscan: hasta $5 en todos y hasta $10 solo en QQQ, SPY, IWM,
 
 test("interruptor de resultados", () => {
   const rules = R({ gates: { event: true } });
-  const res = assessSymbol(sym, rules, "equilibrio", today);
+  const res = assessSymbol(sym, rules, "rentexp", today);
   assert.equal(res.status, "no-pasa");
   assert.match(res.best.fails.join(), /resultados el 28 oct/);
 });
 
 test("interruptor de pérdida por contrato", () => {
   const rules = R({ gates: { loss: true, lossMin: 100, lossMax: 300 } });
-  const res = assessSymbol(sym, rules, "equilibrio", today);
+  const res = assessSymbol(sym, rules, "rentexp", today);
   assert.ok(res.best.fails.includes("pérdida por encima del tope"));
 });
 
 test("fuera del plazo y sin cadena", () => {
-  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, minDte: 40, maxDte: 50 }), "equilibrio", today).status, "sin-plazo");
-  assert.equal(assessSymbol({ s: "Q", p: 10, x: [] }, normalizeRules({}), "equilibrio", today).status, "sin-cadena");
+  assert.equal(assessSymbol(sym, normalizeRules({ v: 3, minDte: 40, maxDte: 50 }), "rentexp", today).status, "sin-plazo");
+  assert.equal(assessSymbol({ s: "Q", p: 10, x: [] }, normalizeRules({}), "rentexp", today).status, "sin-cadena");
 });
 
 test("el universo ordena y cuenta", () => {
@@ -519,10 +523,10 @@ test("números a la española en los textos", () => {
   assert.equal(num(-0.48, 2), "−0,48");
   assert.equal(num(-0.001, 2), "0,00");
   assert.equal(num(5, 1), "5,0");
-  const sp = assessSymbol(sym, R(), "equilibrio", today).best;
+  const sp = assessSymbol(sym, R(), "rentexp", today).best;
   assert.equal(spreadLine(sp), "90/85 · 30 oct · 10,0 % abajo · 12 % del ancho");
   assert.match(alertText(sp), / · rentab\. 14 %$/);
-  assert.equal(rulesLine(normalizeRules({ v: 3, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20, minBalance: 0.5 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · equilibrio ≥0,50");
+  assert.equal(rulesLine(normalizeRules({ v: 3, maxProb: 10, minDte: 20, maxDte: 30, width: 2.5, minCredit: 20 })), "prob. ≤10 % · 20–30 días · ancho ≤$2,5 · cobras ≥$20 · rentab. esperada ≥0,0 %");
 });
 
 test("barrido: con el mercado cerrado se conserva el último barrido de mercado abierto", () => {

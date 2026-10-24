@@ -46,7 +46,7 @@ export function createReglas(ctx) {
         ${stepper("rules.maxProb", "Prob. de asignación máxima", "Elige el corto: en cada nombre, los puts con esta probabilidad o menos de acabar en dinero.", 1, PROB_OFF, 1, (n) => (n >= PROB_OFF ? "sin límite" : p0(n)))}
         ${stepper("rules.width", "Ancho máximo del spread", "Dólares entre el put que vendes y el que compras. Vale ese ancho y cualquiera menor.", 1, 50, 1, d0)}
         ${stepper("rules.minCredit", "Cobras, mínimo", "Crédito por contrato, en dólares. Por debajo, el spread no pasa.", 0, 500, 5, (n) => (n <= 0 ? "sin mínimo" : d0(n)))}
-        ${stepper("rules.minBalance", "Equilibrio mínimo", "Lo que esperas ganar por cada dólar que esperas perder. En 1 se igualan.", 0, 1.5, 0.05, (n) => (n <= 0 ? "sin mínimo" : num(n, 2)))}
+        ${stepper("rules.minRetExp", "Rentab. esperada mínima", "Cobras neto menos lo que se espera pagar, sobre lo que arriesgas. Por debajo, sale como fuera de Reglas.", -5, 5, 0.1, (n) => `${n > 0 ? "+" : ""}${num(n, 1)} %`)}
         <div class="gate">
           <button role="switch" aria-checked="${r.otmOn}" data-rule-switch="otmOn">
             <span style="min-width:0"><b>Limitar además el % abajo</b><span class="small muted">Apagado, el % abajo es solo una columna. Encendido, el corto tiene que caer además en este tramo.</span></span>
@@ -121,7 +121,8 @@ export function createReglas(ctx) {
               <div><dt>Pérdida máx.</dt><dd>Ancho menos crédito, por 100.</dd></div>
               <div><dt>Rentabilidad</dt><dd>Crédito partido por la pérdida máxima.</dd></div>
               <div><dt>Prob. de asignación</dt><dd>Probabilidad de que el precio acabe por debajo del corto el día del vencimiento, tal como la descuentan los precios: lo que cambia el precio del put al subir un dólar el strike, medido con los dos strikes vecinos a precio medio. Es la misma cuenta que el crédito partido por el ancho de un spread estrecho. Si faltan precios para medirla, se usa la fórmula con la volatilidad implícita del strike y la ficha lo dice. No mide la asignación anticipada.</dd></div>
-              <div><dt>Equilibrio</dt><dd>Lo que esperas ganar partido por lo que esperas perder: rentabilidad × (100 − prob. de asignación) ÷ prob. de asignación. Sube con la rentabilidad y baja con la probabilidad. En 1, lo esperado a ganar iguala lo esperado a perder. Cuenta cada asignación como la pérdida máxima, así que es prudente. Como la probabilidad sale de los mismos precios que el crédito, suele quedar algo por debajo de 1: lo que falta es sobre todo lo que se lleva la horquilla.</dd></div>
+              <div><dt>Rentab. esperada</dt><dd>(Cobras neto − se espera pagar) ÷ pierdes máx. Cobras neto = crédito × 100 menos la comisión. Se espera pagar = la media de la pérdida esperada con 5 años de cierres y con la volatilidad reciente. Es lo que ordena. Sin cierres del nombre, se ordena detrás por la rentabilidad neta.</dd></div>
+              <div><dt>Equilibrio</dt><dd>Cobras neto ÷ se espera pagar. Es un dato de la ficha: no ordena ni filtra.</dd></div>
               <div><dt>Movimiento esperado</dt><dd>Precio × volatilidad implícita al dinero × raíz de (días / 365).</dd></div>
             </dl>
           </details>
