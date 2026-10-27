@@ -192,6 +192,16 @@
    ]
   },
   {
+   "nombre": "Consumo discrecional",
+   "nombres": [
+    {
+     "s": "M",
+     "n": "Macy's",
+     "k": "stock"
+    }
+   ]
+  },
+  {
    "nombre": "Bonos largos",
    "nombres": [
     {
