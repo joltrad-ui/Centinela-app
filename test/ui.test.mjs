@@ -307,6 +307,8 @@ test("se abre en la última pestaña usada y avisa de que no hay conexión", { s
   await page.reload();
   await page.waitForSelector("#bs-bar");
   assert.ok(await page.locator("#bs-bar").count(), "debe abrir en el Buscador");
+  // Arrancando en el Buscador, los deals salen solos cuando llegan los cierres diarios, sin pasar por Hoy.
+  await page.waitForSelector(".fi-dr", { timeout: 10000 });
   assert.equal(await page.locator(".notice.info").count(), 0);
   await context.setOffline(true);
   await page.waitForSelector(".notice.info");

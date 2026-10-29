@@ -201,7 +201,7 @@ async function loadHist() {
   const show = (hist) => {
     if (!hist?.symbols) return;
     state.hist = hist;
-    if (state.tab === "igual" || state.tab === "hoy") render();
+    if (state.tab === "igual" || state.tab === "hoy" || state.tab === "buscador") render();
   };
   let hist = state.hist ?? (await keptJson(HIST_FILE));
   show(hist);
