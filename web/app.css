@@ -372,10 +372,9 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 
 /* ---------- Ficha única (Hoy, Deals y Lista): ticket, avisos, cinco bloques plegables y los deals del nombre ----------
    Color solo en los números; las etiquetas, neutras. Paleta más honda que el verde y el rojo de las listas. */
-.fi-sheet { --fi-gn: #34b07f; --fi-rd: var(--down); --fi-bl: #6aa5f2; --fi-am: #e2a43a; padding: 16px 16px 44px; }
+.fi-sheet { --fi-gn: var(--up); --fi-rd: var(--down); --fi-am: var(--brass); padding: 16px 16px 44px; }
 .fi-sheet .up { color: var(--fi-gn); }
 .fi-sheet .down { color: var(--fi-rd); }
-.fi-sheet .bl { color: var(--fi-bl); }
 .fi-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .fi-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
 .fi-id h2 { font-size: 2rem; line-height: 1; margin: 0; }
@@ -389,15 +388,15 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 
 .fi-ticket { margin-top: 14px; padding: 16px 16px 14px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
 .fi-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; }
-.fi-lab-big { font-size: 1.25rem; white-space: nowrap; }
+.fi-lab-big { font-size: 1.0625rem; color: var(--muted); white-space: nowrap; }
+.fi-lab-hero { color: var(--fg); }
 .fi-lab { font-size: 0.9375rem; color: var(--muted); }
-.fi-big { font-size: 1.25rem; font-weight: 600; }
+.fi-big { font-size: 1.375rem; font-weight: 500; }
 .fi-mid { font-size: 1.0625rem; font-weight: 600; }
 .fi-dash { border: 0; border-top: 1px dashed var(--muted); opacity: 0.6; margin: 10px 0 12px; }
-.fi-total { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 12px; }
-.fi-total-n { display: flex; align-items: baseline; gap: 10px; }
-.fi-huge { font-size: 1.625rem; font-weight: 600; line-height: 1.1; }
-.fi-pct { font-size: 0.9375rem; font-weight: 500; }
+.fi-total { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 12px; }
+.fi-huge { justify-self: end; font-family: var(--display); font-size: 2.75rem; font-weight: 500; line-height: 1.05; letter-spacing: -0.01em; }
+.fi-pct { grid-column: 1 / -1; justify-self: end; font-size: 0.8125rem; font-weight: 500; }
 .fi-bar { display: flex; height: 6px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
 .fi-bar .r { background: var(--down-solid); }
 .fi-bar .g { background: var(--fi-gn); }
@@ -413,7 +412,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .fi-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; border-radius: 999px; font-size: 0.8125rem; line-height: 1.25; color: var(--fg); }
 .fi-pill::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
-.fi-pill.am { background: rgba(226, 164, 58, 0.16); }
+.fi-pill.am { background: rgba(224, 177, 90, 0.16); }
 .fi-pill.am::before { background: var(--fi-am); }
 .fi-pill.rd { background: rgba(207, 63, 55, 0.18); }
 .fi-pill.rd::before { background: var(--down-solid); }
@@ -428,7 +427,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-fold-h[aria-expanded="true"] svg { transform: rotate(180deg); }
 .fi-fold-b { padding: 0 0 16px; }
 .fi-fold-b .hoy-checks { margin: 10px 0 0; padding: 0; background: none; box-shadow: none; border-radius: 0; }
-.fi-fold-b .hoy-checks .yes i { background: rgba(52, 176, 127, 0.18); color: var(--fi-gn); }
+.fi-fold-b .hoy-checks .yes i { background: var(--up-dim); color: var(--fi-gn); }
 .fi-calcs { margin: 10px 0 0; }
 .fi-fold-b pre { margin: 0 0 10px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-family: var(--sans); white-space: pre-wrap; user-select: all; -webkit-user-select: all; }
 .fi-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; }

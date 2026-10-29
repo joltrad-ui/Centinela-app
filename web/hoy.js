@@ -300,17 +300,17 @@ export function createHoy(ctx) {
     const bar = scored && cob > 0 ? Math.min(100, Math.max(0, (ap / cob) * 100)) : null;
     const ticket = scored
       ? `<div class="fi-ticket">
-          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num bl">${usdS(cob)}</b></div>
+          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num">${usdS(cob)}</b></div>
           <div class="fi-line"><span class="fi-lab">Apartas para pérdidas</span><b class="fi-mid num down">−$${num(Math.abs(ap), 2)}</b></div>
           <hr class="fi-dash">
-          <div class="fi-total"><span class="fi-lab-big">Tu beneficio</span><span class="fi-total-n"><b class="fi-huge num ${tone(left)}">${usdS(left)}</b>${share == null ? "" : `<b class="fi-pct num ${tone(left)}">${share < 0 ? "−" : ""}${num(Math.abs(share), 0)} %</b>`}</span></div>
+          <div class="fi-total"><span class="fi-lab-big fi-lab-hero">Tu beneficio</span><b class="fi-huge num ${tone(left)}">${usdS(left)}</b>${share == null ? "" : `<span class="fi-pct num ${tone(left)}">${share < 0 ? "−" : ""}${num(Math.abs(share), 0)} % de lo que cobras</span>`}</div>
           ${bar == null ? "" : `<div class="fi-bar" role="img" aria-label="De lo que cobras, ${num(bar, 0)} % se aparta para pérdidas y ${num(100 - bar, 0)} % es tuyo"><i class="r" style="width:${bar.toFixed(1)}%"></i><i class="g" style="width:${(100 - bar).toFixed(1)}%"></i></div>`}
-          <p class="fi-cap small muted">${share == null ? "" : left > 0 ? `De cada ${usd2(cob)} que cobras, el ${num(share, 0)} % es tuyo.` : "Lo que cobras no cubre lo que se espera pagar."}</p>
+          ${left > 0 || share == null ? "" : `<p class="fi-cap small muted">Lo que cobras no cubre lo que se espera pagar.</p>`}
           ${row.retExp == null ? "" : `<p class="fi-short small" id="fi-retexp"><span class="muted">Rentab. esperada</span> <b class="num ${tone(row.retExp)}">${row.retExp > 0 ? "+" : ""}${num(row.retExp, 1)} %</b>${row.balanceHist == null || row.balanceHist >= 999 ? "" : `<br><span class="xs muted">Equilibrio (cobras neto ÷ se espera pagar) <b class="num">${num(row.balanceHist, 1)}</b></span>`}</p>`}
           <p class="fi-short small"><span class="muted">Si el cálculo se queda corto</span> <b class="num ${tone(worst)}">${usdS(worst)}</b>${worstPct == null ? "" : ` <span class="num ${tone(worst)}">${worstPct < 0 ? "−" : ""}${num(Math.abs(worstPct), 0)} %</span>`}</p>
         </div>`
       : `<div class="fi-ticket">
-          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num bl">${usdS(cob)}</b></div>
+          <div class="fi-line"><span class="fi-lab-big">Cobras</span><b class="fi-big num">${usdS(cob)}</b></div>
           <p class="small muted" style="margin-top:10px">Sin cierres diarios de este nombre no se puede calcular lo que apartas ni lo que te queda.</p>
         </div>`;
 
