@@ -525,6 +525,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 /* Las filas de "Más filtros" juntas, sobre un fondo suave, y la explicación de los filtros con el mismo aire */
 .fi-more, .fi-help-panel { display: grid; gap: 8px; padding: 10px 8px; margin: 0 -8px 8px; /* el fondo sale 8 px a cada lado: las filas siguen alineadas con las barras de arriba */ border-radius: var(--r-card); background: var(--surface); box-shadow: var(--border); }
 .fi-help-panel { gap: 6px; }
+.fi-sep { border: 0; border-top: 1px solid var(--line); margin: 2px 0; width: 100%; }
 .fi-help-panel p { margin: 0; }
 .fi-help-panel b { color: var(--fg); font-weight: 500; }
 @media (max-width: 340px) { .stats { gap: 0 4px; } .stat { gap: 3px; } .stat .xs { font-size: 0.6875rem; } .stat b { font-size: 0.75rem; } }
@@ -536,7 +537,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .bs-save { display: flex; gap: 6px; flex: 1 1 100%; min-width: 0; }
 .bs-save input { flex: 1; min-width: 0; height: var(--h-sm); padding: 0 10px; border: 0; border-radius: 10px; background: var(--surface-2); color: var(--fg); font: inherit; font-size: 0.8125rem; }
 
-/* Filas plegables (Guardados, Bloque, Ocultar, Ya tengo): un campo con el mismo fondo y alto que las barras de elegir una */
+/* Filas plegables (Guardados, Bloque, Ocultar, Mis bloques): un campo con el mismo fondo y alto que las barras de elegir una */
 .fi-fc { flex: 1 1 0; min-width: 0; overflow: visible; display: grid; }
 .fi-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--h-sm); padding: 0 12px; border-radius: 12px; background: var(--surface-2); color: var(--fg); font-size: 0.8125rem; text-align: left; min-width: 0; }
 .fi-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
