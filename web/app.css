@@ -387,22 +387,22 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-deal-t b { font-weight: 500; font-size: 1rem; }
 
 .fi-ticket { margin-top: 14px; padding: 16px 16px 14px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
-.fi-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 3px 0; }
-.fi-lab-big { font-size: 1.0625rem; color: var(--muted); white-space: nowrap; }
+.fi-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
+.fi-lab-big { font-size: 1rem; color: var(--muted); white-space: nowrap; } /* el ticket usa tres tamaños: 1rem (etiquetas y las dos cifras de arriba), 2.25rem (el beneficio) y 0.8125rem (notas) */
 .fi-lab-hero { color: var(--fg); }
 .fi-lab { font-size: 0.9375rem; color: var(--muted); }
-.fi-big { font-size: 1.375rem; font-weight: 500; }
-.fi-mid { font-size: 1.0625rem; font-weight: 600; }
+.fi-big { font-size: 1rem; font-weight: 500; }
 .fi-dash { border: 0; border-top: 1px dashed var(--muted); opacity: 0.6; margin: 10px 0 12px; }
 .fi-total { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 12px; }
-.fi-huge { justify-self: end; font-family: var(--display); font-size: 2.75rem; font-weight: 500; line-height: 1.05; letter-spacing: -0.01em; }
+.fi-huge { justify-self: end; font-family: var(--display); font-size: 2.25rem; font-weight: 500; line-height: 1.1; letter-spacing: -0.01em; }
 .fi-pct { grid-column: 1 / -1; justify-self: end; font-size: 0.8125rem; font-weight: 500; }
 .fi-bar { display: flex; height: 6px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
 .fi-bar .r { background: var(--down-solid); }
 .fi-bar .g { background: var(--fi-gn); }
 .fi-cap { margin: 8px 0 0; }
-.fi-short { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.fi-short { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .fi-short b { font-weight: 600; }
+.fi-short-n { flex: 0 0 100%; }
 
 .fi-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .fi-box { display: grid; gap: 2px; padding: 10px 12px; background: var(--surface); box-shadow: var(--border); border-radius: 14px; min-width: 0; }
