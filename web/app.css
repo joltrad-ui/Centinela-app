@@ -404,10 +404,12 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-short b { font-weight: 600; }
 .fi-short-n { flex: 0 0 100%; }
 
-.fi-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.fi-box { display: grid; gap: 2px; padding: 10px 12px; background: var(--surface); box-shadow: var(--border); border-radius: 14px; min-width: 0; }
-.fi-box b { font-size: 1.125rem; font-weight: 600; line-height: 1.2; }
-.fi-box.wide { grid-column: 1 / -1; }
+.fi-risk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; padding: 10px 0; border-block: 1px solid var(--line); }
+.fi-risk > div { display: grid; align-content: space-between; gap: 2px; padding: 0 10px; min-width: 0; }
+.fi-risk > div + div { border-left: 1px solid var(--line); }
+.fi-risk > div:first-child { padding-left: 0; }
+.fi-risk .fi-lab { font-size: 0.8125rem; line-height: 1.25; }
+.fi-risk b { font-size: 1rem; font-weight: 500; line-height: 1.3; }
 
 .fi-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .fi-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; border-radius: 999px; font-size: 0.8125rem; line-height: 1.25; color: var(--fg); }
