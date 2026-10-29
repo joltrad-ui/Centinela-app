@@ -1,4 +1,4 @@
-// Las tres vistas de Hoy (mapa, nube y barras) y los controles de arriba (filtros, Ya tengo).
+// Las tres vistas de Hoy (mapa, nube y barras) y los controles de arriba (filtros, Mis bloques).
 
 import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
@@ -29,7 +29,7 @@ export function createVistas(h) {
             ? ""
             : morePanel(`${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], hoy.price)}
         ${foldRow(
-          "Ya tengo",
+          "Mis bloques",
           'data-hoy="held-open"',
           hoy.heldOpen,
           held.map(esc).join(" · "),

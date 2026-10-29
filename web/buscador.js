@@ -55,7 +55,7 @@ export function createBuscador(ctx) {
     shown: SHOW,
     namesOpen: false,
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
-    open: "", // la fila de filtros desplegada (blk, hide, guardados), como "Ya tengo" de Hoy
+    open: "", // la fila de filtros desplegada (blk, hide, guardados), como "Mis bloques" de Hoy
     help: false, // la explicación de los filtros abierta; solo en memoria
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
@@ -215,7 +215,7 @@ export function createBuscador(ctx) {
     const blocks = blockOrder().filter((b) => present.has(b));
     const days = daysRange();
     const n = activeFilters();
-    // Como "Ya tengo" de Hoy: plegada enseña lo marcado (o "ninguno"); al tocar se abren todas las opciones y "Listo".
+    // Como "Mis bloques" de Hoy: plegada enseña lo marcado (o "ninguno"); al tocar se abren todas las opciones y "Listo".
     // Plegable con el mismo aspecto que las demás filas (`foldRow`): enseña lo marcado, o "ninguno".
     const fold = (id, label, options, note = "") =>
       foldRow(label, `data-bs="open" data-v="${id}"`, bs.open === id, options.filter((o) => o.on).map((o) => o.label).join(" · "), options.map((o) => o.html).join(""), { none: options.none ?? "ninguno", note });
@@ -227,13 +227,16 @@ export function createBuscador(ctx) {
     const presetOpts = presets.map((p, i) => ({ label: esc(p.n), on: sameFilters(p.f), html: `<span class="bs-preset">${chip("preset", i, esc(p.n), sameFilters(p.f))}<button class="chip quiet bs-preset-x" data-bs="preset-del" data-v="${i}" aria-label="Borrar ${esc(p.n)}">×</button></span>` }));
     if (presets.length < MAX_PRESETS) presetOpts.push({ label: "", on: false, html: `<form class="bs-save" data-bs-form="preset"><input name="n" maxlength="20" placeholder="Nombre" aria-label="Nombre de la combinación" autocomplete="off"><button class="chip quiet" type="submit">Guardar estos filtros</button></form>` });
     const presetRow = fold("preset", "Guardados", presetOpts);
+    // Tres grupos con una línea fina entre ellos: tus combinaciones, lo que enseñas y con qué precio se calcula.
     const rest = morePanel(`${presetRow}
+        <hr class="fi-sep">
         ${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
         ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
         ${choiceRow("Volatilidad", 'data-bs="vol"', [["all", "Todas"], ["high", "IV alta"], ["low", "IV baja"]], bs.vol)}
         ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
-        ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}
-        ${fold("hide", "Ocultar", hideOpts)}`);
+        ${fold("hide", "Ocultar", hideOpts)}
+        <hr class="fi-sep">
+        ${choiceRow("Precio", 'data-hoy="price"', [["nat", "Bid/Ask"], ["mid", "Mid"]], d0.price)}`);
     const head = moreHead('data-bs="filters-open"', bs.fOpen, n, { help: { attr: 'data-bs="help"', open: bs.help }, reset: 'data-bs="reset"' });
     return `<div class="fi-filters">
         ${filterBars({ prefix: "bs", lv: { attr: 'data-bs="lv"', selected: bs.lv }, days: { min: days.min, max: days.max, value: activeDays() }, w: bs.w ?? W_MAX, pr: bs.pr ?? PR_MAX })}
