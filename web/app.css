@@ -386,7 +386,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-deal-t { display: grid; gap: 1px; min-width: 0; }
 .fi-deal-t b { font-weight: 500; font-size: 1rem; }
 
-.fi-ticket { margin-top: 14px; padding: 16px 16px 14px; background: var(--surface); box-shadow: var(--border); border-radius: 18px; }
+.fi-ticket { margin-top: 14px; padding: 16px 16px 14px; background: var(--surface); box-shadow: var(--border); border-radius: var(--r-card); }
 .fi-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 4px 0; }
 .fi-lab-big { font-size: 1rem; color: var(--muted); white-space: nowrap; } /* el ticket usa tres tamaños: 1rem (etiquetas y las dos cifras de arriba), 2.25rem (el beneficio) y 0.8125rem (notas) */
 .fi-lab-hero { color: var(--fg); }
@@ -404,10 +404,10 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-short b { font-weight: 600; }
 .fi-short-n { flex: 0 0 100%; }
 
-.fi-risk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; padding: 10px 0; border-block: 1px solid var(--line); }
-.fi-risk > div { display: grid; align-content: space-between; gap: 2px; padding: 0 10px; min-width: 0; }
+.fi-risk { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 10px; padding: 12px 0; background: var(--surface); box-shadow: var(--border); border-radius: var(--r-card); } /* misma tarjeta que el ticket: mismas esquinas y el texto a 16 px del borde */
+.fi-risk > div { display: grid; align-content: space-between; gap: 2px; padding: 0 12px; min-width: 0; }
 .fi-risk > div + div { border-left: 1px solid var(--line); }
-.fi-risk > div:first-child { padding-left: 0; }
+.fi-risk > div:first-child { padding-left: 16px; }
 .fi-risk .fi-lab { font-size: 0.8125rem; line-height: 1.25; }
 .fi-risk b { font-size: 1rem; font-weight: 500; line-height: 1.3; }
 
