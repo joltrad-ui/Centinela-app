@@ -288,11 +288,13 @@ export function createHoy(ctx) {
     const worst = scored ? Math.min(row.marginRecent, row.marginHist) : null;
     const worstPct = worst != null && cob > 0 ? (worst / cob) * 100 : null;
 
+    const bePct = sym.p > 0 ? ((sym.p - row.breakeven) / sym.p) * 100 : null;
+
     // El deal: nivel, strikes, vencimiento, días y ancho por contrato.
     const deal = `<div class="fi-deal">
         ${apart ? `<span class="lv lvh mid" role="img" aria-label="Apartada de la comparación">H</span>` : `<span class="lv lv${checks.level} mid" role="img" aria-label="Nivel ${checks.level} de ${maxLevel}">${checks.level}</span>`}
         <div class="fi-deal-t"><b class="num">${fmtStrike(row.shortStrike)}/${fmtStrike(row.longStrike)} · ${esc(row.expiryLabel)} · ${row.dte} ${row.dte === 1 ? "día" : "días"}</b>
-          <span class="small muted">ancho $${num(row.width * 100, 0)} por contrato${hoy.price === "mid" ? " · precio medio: hipótesis" : ""}</span></div>
+          <span class="small muted">ancho $${num(row.width * 100, 0)} por contrato${bePct == null ? "" : ` · pierdes si baja un ${num(bePct, 1)} %`}${hoy.price === "mid" ? " · precio medio: hipótesis" : ""}</span></div>
       </div>
       ${apart ? `<p class="xs muted" style="margin-top:8px">Apartada de la comparación: ${esc(gate.toLowerCase())}. A precio visible no se puntúa.</p>` : ""}`;
 
@@ -314,12 +316,10 @@ export function createHoy(ctx) {
           <p class="small muted" style="margin-top:10px">Sin cierres diarios de este nombre no se puede calcular lo que apartas ni lo que te queda.</p>
         </div>`;
 
-    const bePct = sym.p > 0 ? ((sym.p - row.breakeven) / sym.p) * 100 : null;
-    const boxes = `<div class="fi-boxes">
-        <div class="fi-box"><span class="fi-lab">Prob. asignación</span><b class="num">${row.prob == null ? "—" : `${num(row.prob, 1)} %`}</b></div>
-        <div class="fi-box"><span class="fi-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></div>
-        <div class="fi-box wide"><span class="fi-lab">Pierdes si ${esc(sym.s)} baja de</span><b class="num">${usd2(row.breakeven)}</b>
-          <span class="small muted">Ahora está en ${usd2(sym.p)}${bePct == null ? "" : ` · ${num(bePct, 1)} % abajo`}</span></div>
+    const boxes = `<div class="fi-risk">
+        <div><span class="fi-lab">Prob. asignación</span><b class="num">${row.prob == null ? "—" : `${num(row.prob, 1)} %`}</b></div>
+        <div><span class="fi-lab">Pierdes máx.</span><b class="num down">${usd2(row.loss)}</b></div>
+        <div><span class="fi-lab">Pierdes si baja de</span><b class="num">${usd2(row.breakeven)}</b></div>
       </div>`;
 
     // Avisos: en ámbar lo que conviene mirar; en rojo lo que baja el nivel.
