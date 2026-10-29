@@ -285,7 +285,7 @@ export function createBuscador(ctx) {
     const total = d0.deals.length;
     const deals = `${list.length} de ${total} ${total === 1 ? "deal" : "deals"}`;
     const count = bs.one ? `${names} ${names === 1 ? "nombre" : "nombres"} · ${deals}` : deals;
-    return `<span class="small muted num">${count}</span>${chip("one", "", "Uno por nombre", bs.one)}`;
+    return `<span class="small muted num">${count}</span>${chip("one", "", `${bs.one ? "✓ " : ""}Uno por nombre`, bs.one)}`;
   }
 
   function view() {

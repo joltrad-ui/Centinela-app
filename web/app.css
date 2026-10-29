@@ -202,6 +202,7 @@ nav.dock svg { width: 20px; height: 20px; }
 
 .frow > .small { flex: none; }
 .range { flex: 1; min-width: 0; height: var(--h-sm); accent-color: var(--brass); }
+.range.off { accent-color: var(--muted); } /* al máximo no filtra: se ve apagada */
 
 
 .vol-row { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr) 3.2em; align-items: center; gap: 8px; margin-top: 7px; font-size: 0.8125rem; }
@@ -457,7 +458,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-f-c > * { flex: none; }
 .fi-f-c.sl { flex: 1 1 auto; align-items: center; }
 .fi-f-c.sl > .range { flex: 1 1 auto; min-width: 0; }
-.fi-range-v { min-width: 3.2em; text-align: right; }
+.fi-range-v { min-width: 4.4em; text-align: right; }
+.fi-range-v.off { color: var(--muted); font-weight: 400; }
 .fi-lvb { min-height: 0; width: 34px; height: 32px; font-size: 0.875rem; border-radius: 8px; }
 .fi-lvb[aria-pressed="false"] { background: transparent; color: var(--muted); box-shadow: var(--border); font-weight: 400; }
 .fi-sort { margin-top: 4px; }
@@ -476,12 +478,12 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .fi-more { margin-top: 8px; }
 
 /* Barra de ordenación (la misma en toda la app): contenedor gris y, en la opción activa, una píldora más oscura con el texto más claro. */
-.sortbar { display: flex; width: 100%; gap: 2px; padding: 3px; border-radius: 14px; background: #262624; overflow-x: auto; scrollbar-width: none; }
+.sortbar { display: flex; width: 100%; gap: 2px; padding: 3px; border-radius: 14px; background: var(--surface-2); overflow-x: auto; scrollbar-width: none; }
 .sortbar::-webkit-scrollbar { display: none; }
-.sortbar button { flex: 1 1 auto; height: var(--h-sm); padding: 0 6px; border-radius: 11px; font-size: 0.75rem; font-weight: 600; color: #b5b3aa; white-space: nowrap; }
-.sortbar button[aria-pressed="true"] { background: #1e1e1c; color: #ecebe5; }
+.sortbar button { flex: 1 1 auto; height: var(--h-sm); padding: 0 6px; border-radius: 11px; font-size: 0.75rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.sortbar button[aria-pressed="true"] { background: var(--bg); color: var(--fg); }
 .sortbar button:focus-visible { outline-offset: -2px; }
-.sortbar.eq button { flex: 1 1 0; }
+.sortbar.eq button { flex: 1 1 0; min-width: max-content; } /* con muchas opciones (vencimientos) la barra se desliza, no se aprieta */
 
 /* Buscador: caja de búsqueda, panel de acciones y filas; los filtros, la barra de orden y la lista son los de la ficha. */
 .bs-search { margin: 4px 0 10px; }
@@ -536,7 +538,7 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 
 /* Filas plegables (Guardados, Bloque, Ocultar, Ya tengo): un campo con el mismo fondo y alto que las barras de elegir una */
 .fi-fc { flex: 1 1 0; min-width: 0; overflow: visible; display: grid; }
-.fi-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--h-sm); padding: 0 12px; border-radius: 12px; background: #262624; color: var(--fg); font-size: 0.8125rem; text-align: left; min-width: 0; }
+.fi-field { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: var(--h-sm); padding: 0 12px; border-radius: 12px; background: var(--surface-2); color: var(--fg); font-size: 0.8125rem; text-align: left; min-width: 0; }
 .fi-field > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fi-field.none > span { color: var(--muted); }
 .fi-field > i { font-style: normal; font-size: 0.7rem; color: var(--muted); flex: none; }

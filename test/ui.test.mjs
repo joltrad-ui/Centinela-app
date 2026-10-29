@@ -291,7 +291,7 @@ test("Hoy: las barras de ancho y prob. cambian el contador", { skip }, async () 
   assert.equal(await page.locator("#hoy-w-range-val").innerText(), "$200");
   assert.notEqual(await sum(), a);
   await set("hoy-pr-range", 30);
-  assert.equal(await page.locator("#hoy-pr-range-val").innerText(), "30 %");
+  assert.equal(await page.locator("#hoy-pr-range-val").innerText(), "sin tope");
   assert.deepEqual(page.errors, []);
   await page.close();
 });

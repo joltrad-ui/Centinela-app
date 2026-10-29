@@ -15,7 +15,7 @@ import { createHoy } from "./hoy.js";
 import { notice, sectionHead } from "./ui.js";
 import { createBuscador } from "./buscador.js";
 import { createReglas } from "./reglas.js";
-import { fmtOf } from "./filtros.js";
+import { textOf } from "./filtros.js";
 import { createAvisos } from "./avisos.js";
 import { createConexion } from "./conexion.js";
 import { createCopia } from "./copia.js";
@@ -841,7 +841,12 @@ root.addEventListener("input", (event) => {
     buscador.setQuery(event.target.value);
   } else if (RANGES[id]) {
     const label = root.querySelector(`#${id}-val`);
-    if (label) label.textContent = fmtOf(id)(event.target.value);
+    const off = Number(event.target.value) >= Number(event.target.max);
+    if (label) {
+      label.textContent = textOf(id, event.target.value, event.target.max);
+      label.classList.toggle("off", off);
+    }
+    event.target.classList.toggle("off", off);
   }
 });
 root.addEventListener("change", (event) => {
