@@ -14,15 +14,16 @@ const BARS = {
   w: { label: "Ancho hasta", fmt: fmtUsd, aria: "Ancho máximo del spread, en dólares por contrato", ...W },
   pr: { label: "Prob. hasta", fmt: fmtPct, aria: "Prob. de asignación máxima", ...PR },
 };
-/** Formato de la etiqueta de un deslizador por su id (`hoy-pr-range`, `fi-days-range`...). */
-export const fmtOf = (id) => BARS[id.split("-")[1]]?.fmt;
+/** Texto de la etiqueta de un deslizador por su id (`hoy-pr-range`, `fi-days-range`...). Al máximo no filtra nada y dice "sin tope". */
+export const textOf = (id, value, max) => (Number(value) >= Number(max) ? "sin tope" : BARS[id.split("-")[1]]?.fmt(value));
 
 /** Una fila de filtro: etiqueta a la izquierda y los controles a la derecha. */
 export const filterRow = (label, inner, cls = "") => `<div class="fi-f"><span class="fi-f-l small muted">${label}</span><div class="fi-f-c${cls}">${inner}</div></div>`;
 
 const bar = (kind, id, value, min = BARS[kind].min, max = BARS[kind].max) => {
   const b = BARS[kind];
-  return filterRow(b.label, `<input type="range" class="range" id="${id}" min="${min}" max="${max}" step="${b.step}" value="${value}" aria-label="${b.aria}"><b class="num fi-range-v" id="${id}-val">${b.fmt(value)}</b>`, " sl");
+  const off = value >= max ? " off" : "";
+  return filterRow(b.label, `<input type="range" class="range${off}" id="${id}" min="${min}" max="${max}" step="${b.step}" value="${value}" aria-label="${b.aria}"><b class="num fi-range-v${off}" id="${id}-val">${textOf(id, value, max)}</b>`, " sl");
 };
 
 /** Los chips de nivel 0–5. `attr` = los atributos del botón (p. ej. `data-bs="lv"`). */

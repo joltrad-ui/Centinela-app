@@ -13,7 +13,7 @@ export function createVistas(h) {
       return `<div class="seg" role="group" aria-label="Vistas de Hoy">${item("mapa", "Mapa")}${item("nube", "Nube")}${item("barras", "Barras")}</div>`;
     }
 
-    function controls(o) {
+    function controls(o, exp = "") {
       const blocks = ctx.blockOrder();
       const held = o.opts.held;
       const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
@@ -21,6 +21,7 @@ export function createVistas(h) {
       const wDollars = Math.min(W.max, Math.max(W.min, Math.round((o.opts.width * 100) / W.step) * W.step));
       const head = moreHead('data-hoy="filters-open"', hoy.fOpen, nAct);
       return `<div class="filters">
+        ${exp}
         ${filterBars({ prefix: "hoy", w: wDollars, pr: o.opts.prob })}
         ${head}
         ${
@@ -98,7 +99,7 @@ export function createVistas(h) {
           (name) => `<div class="hoy-name" role="rowheader"><b>${esc(name.sym.s)}</b>${o.opts.held.includes(name.sym.b ?? "") ? '<i class="hoy-held" title="Bloque que ya tienes"></i>' : ""}</div>${name.cells.map((c, i) => cell(name, c, i)).join("")}${focus ? detail(name, name.cells[0]) : ""}`,
         )
         .join("");
-      const expChips = `<div class="frow" role="group" aria-label="Vencimiento" style="margin:-8px 0 12px"><span class="small muted hoy-lab">Vencimiento</span>${chip("mexp", "", "Todas", !focus)}${o.expiries.map((e) => chip("mexp", e, esc(labelOf(e)), e === focus)).join("")}</div>`;
+      const expRow = choiceRow("Vencimiento", 'data-hoy="mexp"', [["", "Todas"], ...o.expiries.map((e) => [e, esc(labelOf(e))])], focus ?? "");
       const s = grid.summary;
       // El contador: cuántas casillas hay en los niveles altos (4 y 3; solo 3 si el punto de seguridad está apagado).
       const scored = grid.names.flatMap((name) => name.cells).filter((c) => c.state === "level");
@@ -108,8 +109,7 @@ export function createVistas(h) {
       const line = msg
         ? `<p class="hoy-sum none">${msg}</p>`
         : stats([...tops.map((level) => [`Nivel ${level}`, count(level)]), ...(o.opts.safety === "off" ? [] : [["Margen", s.firm]]), ["Total", s.comparable]], "Casillas por nivel");
-      return `${controls(o)}
-        ${expChips}
+      return `${controls(o, expRow)}
         ${line}
         <div class="hoy-grid${focus ? " one" : ""}" role="grid" aria-label="Nivel de cada nombre en cada vencimiento" style="grid-template-columns:${focus ? "54px 56px minmax(0,1fr)" : `54px repeat(${grid.expiries.length},minmax(0,1fr))`}">
           ${focus ? "" : `<span></span>${grid.expiries.map((exp) => `<button class="hoy-exp" data-hoy="mexp" data-v="${exp.expiry}" aria-label="Ver solo el ${esc(exp.label)}">${esc(exp.label)}</button>`).join("")}`}
@@ -134,7 +134,7 @@ export function createVistas(h) {
       const floorOf = (c) => (c.row.err == null ? -Infinity : c.row.net - c.row.expected - c.row.err);
       const pts = cells.filter((c) => c.state === "level" && c.checks.scored && c.checks.costShare != null).sort((a, b) => b.level - a.level || floorOf(b) - floorOf(a) || b.row.retExp - a.row.retExp);
       const gated = cells.filter((c) => c.state === "gated").length;
-      const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
+      const expRow = choiceRow("Vencimiento", 'data-hoy="exp"', o.expiries.map((e) => [e, esc(labelOf(e))]), expiry);
       let chart = "";
       if (pts.length) {
         const W = 340, H = 300, L = 36, R = 12, T = 14, B = 28;
@@ -200,7 +200,7 @@ export function createVistas(h) {
           </button></li>`,
         )
         .join("");
-      return `${controls(o)}${expChips}
+      return `${controls(o, expRow)}
         ${
           pts.length
             ? `${chart}<div class="deal-head small muted" style="margin-top:14px"><span>${pts.length} ${pts.length === 1 ? "deal comparable" : "deals comparables"}</span><span>Rentab. esperada</span></div><ul class="rows">${list}</ul>`
@@ -228,7 +228,7 @@ export function createVistas(h) {
         .filter((item) => item.r)
         .sort((a, b) => rangeOrder(a.r, b.r, hoy.barSort));
       const gated = cells.filter((c) => c.state === "gated").length;
-      const expChips = `<div class="frow" role="group" aria-label="Vencimiento"><span class="small muted hoy-lab">Vencimiento</span>${o.expiries.map((e) => chip("exp", e, esc(labelOf(e)), e === expiry)).join("")}</div>`;
+      const expRow = choiceRow("Vencimiento", 'data-hoy="exp"', o.expiries.map((e) => [e, esc(labelOf(e))]), expiry);
       const floor = hoy.barSort === "floor";
       let head = "", legend = "";
       let body = emptyBox(`Ningún deal comparable el ${esc(labelOf(expiry))}.`);
@@ -294,7 +294,7 @@ export function createVistas(h) {
             o.opts.safety === "margin" ? "Si la barra no toca el cero, lo que queda supera el error: tiene el punto de seguridad. " : ""
           }La flecha marca lo que cae por debajo de −${num(Math.abs(lo), 0)} %. Toca una fila para ver el deal.</p>`;
       }
-      return `${controls(o)}${expChips}${head}
+      return `${controls(o, expRow)}${head}
         ${body}
         ${gated ? `<p class="xs muted" style="margin-top:10px">${gated} ${gated === 1 ? "nombre apartado" : "nombres apartados"} por horquilla ancha o por coste: se ven en el mapa con una H.</p>` : ""}
         ${legend}
