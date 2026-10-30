@@ -559,6 +559,8 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .pc-dot { fill: var(--fg); }
 .pc-t { fill: var(--fg); font-size: 10px; font-family: var(--sans); }
 .pc-ts { fill: var(--down); }
+.pc-tx { fill: var(--muted); font-size: 9px; font-family: var(--sans); }
+.pc-tick { stroke: var(--muted); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .pc-leg { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0 0; }
 .pc-k { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .pc-sw { display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--fg); }

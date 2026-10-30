@@ -382,7 +382,7 @@ export function createHoy(ctx) {
     const m50 = sma(closes, 50);
     const ch5 = changeOver(closes, 5, sym.p);
     const kvr = (label, value, note, cls = "") => `<div class="fi-kv"><div><span>${label}</span><small class="xs muted">${note}</small></div><b class="num ${cls}">${value}</b></div>`;
-    const chart = priceChart(closes, sym.p, row?.shortStrike);
+    const chart = priceChart(closes, sym.p, row?.shortStrike, state.hist?.last);
     const trendRows =
       (m50 ? kvr("Media de 50 días", usd2(m50), `El precio está un ${num(Math.abs((sym.p / m50 - 1) * 100), 1)} % ${sym.p >= m50 ? "por encima" : "por debajo"}.`) : "") +
       (ch5 != null ? kvr("Últimas 5 sesiones", signedPct(ch5), "Cambio del precio frente al cierre de hace 5 sesiones.", tone(ch5)) : "");
