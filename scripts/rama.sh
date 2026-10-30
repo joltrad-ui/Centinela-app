@@ -4,6 +4,7 @@
 #   REMOTO=<url del repositorio> bash scripts/rama.sh app web        la app: todo menos data/
 #   REMOTO=<url del repositorio> bash scripts/rama.sh datos out/data el barrido: solo data/
 #   REMOTO=<url del repositorio> bash scripts/rama.sh historia out/historia los cierres diarios: solo historia/
+#   REMOTO=<url del repositorio> bash scripts/rama.sh registro out/registro el registro de deals: solo registro/
 #
 # La rama lleva siempre un único commit, para que el repositorio no engorde con cada
 # barrido. Publicar y barrer pueden coincidir: si el otro ha enviado entre medias, el
@@ -27,20 +28,24 @@ for intento in 1 2 3 4 5 6; do
     git archive FETCH_HEAD | tar -x
   fi
   if [ "$parte" = app ]; then
-    find . -mindepth 1 -maxdepth 1 ! -name .git ! -name data ! -name historia -exec rm -rf {} +
+    find . -mindepth 1 -maxdepth 1 ! -name .git ! -name data ! -name historia ! -name registro -exec rm -rf {} +
     cp -r "$origen"/. .
     touch .nojekyll
   elif [ "$parte" = historia ]; then
     rm -rf historia
     mkdir historia
     cp -r "$origen"/. historia/
+  elif [ "$parte" = registro ]; then
+    rm -rf registro
+    mkdir registro
+    cp -r "$origen"/. registro/
   else
     rm -rf data
     mkdir data
     cp -r "$origen"/. data/
   fi
   git add -A
-  git -c user.name="centinela" -c user.email="centinela@users.noreply.github.com" commit -q -m "$(case "$parte" in app) echo App ;; historia) echo Cierres ;; *) echo Barrido ;; esac)"
+  git -c user.name="centinela" -c user.email="centinela@users.noreply.github.com" commit -q -m "$(case "$parte" in app) echo App ;; historia) echo Cierres ;; registro) echo Registro ;; *) echo Barrido ;; esac)"
   if git push -q --force-with-lease="$rama:$base" "$remoto" "HEAD:$rama" 2>/dev/null; then
     echo "Publicado ($parte) al intento $intento"
     exit 0

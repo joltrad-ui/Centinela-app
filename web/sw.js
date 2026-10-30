@@ -1,8 +1,8 @@
 // Primero la red; si no hay conexión, la última copia guardada.
 // La red se pregunta siempre ("no-cache"): si no, el navegador reutiliza durante 10 minutos
 // lo que ya tenía y una versión recién publicada no aparece al recargar.
-const CACHE = "centinela-v9";
-const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "hoy.js", "buscador.js", "ui.js", "reglas.js", "avisos.js", "conexion.js", "copia.js", "hoy-calc.js", "hoy-vistas.js", "filtros.js", "manifest.webmanifest", "icons/icon-192.png", "fonts/ibm-plex-sans-latin.woff2", "fonts/newsreader-latin.woff2"];
+const CACHE = "centinela-v10";
+const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "hoy.js", "buscador.js", "ui.js", "reglas.js", "avisos.js", "conexion.js", "copia.js", "hoy-calc.js", "hoy-vistas.js", "filtros.js", "registro.js", "registro-calc.js", "manifest.webmanifest", "icons/icon-192.png", "fonts/ibm-plex-sans-latin.woff2", "fonts/newsreader-latin.woff2"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL.map((path) => new Request(path, { cache: "reload" })))).then(() => self.skipWaiting()));
@@ -20,8 +20,8 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  // El barrido (data/) y los cierres (historia/) los guarda la propia app, que sabe cuándo han cambiado.
-  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/data/") || url.pathname.includes("/historia/")) return;
+  // El barrido (data/), los cierres (historia/) y el registro (registro/) los guarda la propia app, que sabe cuándo han cambiado.
+  if (req.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/") || url.pathname.includes("/data/") || url.pathname.includes("/historia/") || url.pathname.includes("/registro/")) return;
   const key = url.origin + url.pathname; // sin el ?t= que evita la caché del navegador
   event.respondWith(
     fetch(url.href, { cache: "no-cache" })

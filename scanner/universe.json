@@ -232,6 +232,21 @@
    ]
   },
   {
+   "nombre": "Pagos",
+   "nombres": [
+    {
+     "s": "V",
+     "n": "Visa",
+     "k": "stock"
+    },
+    {
+     "s": "MA",
+     "n": "Mastercard",
+     "k": "stock"
+    }
+   ]
+  },
+  {
    "nombre": "Bonos largos",
    "nombres": [
     {

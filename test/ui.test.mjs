@@ -31,6 +31,7 @@ before(async () => {
   const run = (args) => execFileSync("node", args, { cwd: ROOT, stdio: "ignore" });
   run(["test/make-fixtures.mjs"]);
   run(["scanner/cierres.mjs", "--fixtures", "test/fixtures", "--out", out]);
+  run(["test/make-registro-ejemplo.mjs", out]);
   server = spawn("node", ["scanner/scan.mjs", "--serve", "--fixtures", "test/fixtures", "--out", out, "--port", String(PORT)], { cwd: ROOT, stdio: "ignore" });
   for (let i = 0; i < 100; i++) {
     try {
@@ -144,16 +145,16 @@ test("el Buscador: barra de ancho filtra, vacío con botón y Quitar filtros", {
   await page.close();
 });
 
-test("el Buscador: SPY y XSP, uno es \"mismo bloque\"; los de $10 llevan su riesgo a la vista", { skip }, async () => {
+test("el Buscador: SPY y XSP, uno es \"mismo grupo\" (medido) o \"mismo bloque\"; los de $10 llevan su riesgo a la vista", { skip }, async () => {
   const page = await open(390);
   await goTab(page, "Buscador");
   await page.fill("#bs-q", "S&P");
   let text = "";
-  for (let i = 0; i < 40 && !/mismo bloque que/.test(text); i++) {
+  for (let i = 0; i < 40 && !/mismo (bloque|grupo) que/.test(text); i++) {
     await page.waitForTimeout(250);
     text = await page.locator("#bs-list").innerText();
   }
-  assert.match(text, /mismo bloque que (SPY|XSP)/);
+  assert.match(text, /mismo grupo que (SPY|XSP) \(0,\d\d\)/, "los cierres de ejemplo de SPY y XSP se mueven casi igual");
   const rows = await page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => e.innerText));
   for (const row of rows) {
     const width = Number(row.match(/ancho \$(\d+)/)?.[1]);
@@ -211,7 +212,7 @@ test("Mis deals: apuntar a mano uno que ya tengo", { skip }, async () => {
   await page.close();
 });
 
-test("Mis deals: barra de orden y días en ámbar cuando quedan 7 o menos", { skip }, async () => {
+test("Mis deals: barra de orden, tarjeta compacta que se despliega al tocarla y resumen arriba", { skip }, async () => {
   const page = await open(390);
   await page.evaluate(() => {
     const d = (id, s, days, credit) => ({ id, s, b: "", expiry: new Date(Date.now() + days * 864e5).toISOString().slice(0, 10), short: 100, long: 95, credit, qty: 1, fee: 0, openedAt: Date.now(), level: null, retExp: null, price0: null, closedAt: null, result: null, manual: true });
@@ -224,10 +225,24 @@ test("Mis deals: barra de orden y días en ámbar cuando quedan 7 o menos", { sk
   assert.equal(await order(), "ZZB,ZZC,ZZA");
   await page.locator('[data-hoy="msort"][data-v="perdida"]').click();
   assert.equal(await order(), "ZZC,ZZA,ZZB", "más pérdida máx. primero");
-  const color = (n) => page.locator(".dl-days").nth(n).evaluate((e) => getComputedStyle(e).color);
-  await page.locator('[data-hoy="msort"][data-v="dias"]').click();
-  assert.notEqual(await color(0), await color(1), "5 días lleva otro color que 12");
-  assert.equal(await color(1), await color(2));
+  const sum = await page.locator(".dl-sum").innerText();
+  assert.match(sum, /Abiertos\s*3/);
+  assert.match(sum, /Pierdes máx\.\s*\$1\d\d\d/);
+  // La tarjeta cerrada mide unos 115 px y no lleva botones; tocarla los enseña, y vuelve a tocar los esconde.
+  const card = page.locator(".dl-card").first();
+  const h = (await card.boundingBox()).height;
+  assert.ok(h > 95 && h < 135, `tarjeta compacta, mide ${h}`);
+  assert.equal(await page.locator(".dl-act").count(), 0);
+  await card.locator(".dl-main").click();
+  assert.equal(await page.locator(".dl-act").count(), 1);
+  assert.match(await page.locator(".dl-act").innerText(), /Cerrar deal/);
+  await card.locator(".dl-main").click();
+  assert.equal(await page.locator(".dl-act").count(), 0);
+  // Borrar sigue pidiendo confirmación.
+  await card.locator(".dl-main").click();
+  await page.locator('[data-hoy="deal-del"]').click();
+  assert.match(await page.locator('[data-hoy="deal-del-yes"]').innerText(), /¿Seguro\?/);
+  assert.equal(await page.locator(".dl-card").count(), 3);
   assert.deepEqual(page.errors, []);
   await page.close();
 });
@@ -240,11 +255,50 @@ test("La ficha de un deal apuntado enseña «Tu deal»", { skip }, async () => {
   await page.locator('[data-hoy="form-open"]').click();
   await page.locator('[data-hoy-form="abrir"] button[type=submit]').click();
   await page.locator('[data-tab="deals"]').click();
+  await page.locator(".dl-main").first().click();
   await page.locator('[data-hoy="cell"]').first().click();
   const mine = await page.locator(".fi-mine").innerText();
+  const boxes = await page.locator(".fi-mine .fi-box").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+  assert.equal(new Set(boxes).size, 1, "las tres cajas de «Tu deal» van en una fila");
   assert.match(mine, /Tu deal/);
   assert.match(mine, /Cobraste/);
   assert.match(mine, /Prob\. al apuntar/);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("Registro: pestaña entre Mis deals y Reglas, señales, tablas y sin desbordes", { skip }, async () => {
+  for (const width of [360, 390]) {
+    const page = await open(width);
+    const tabs = await page.locator("nav.dock button").allInnerTexts();
+    assert.deepEqual(tabs.map((t) => t.replace(/\s+/g, " ").trim()), ["Hoy", "Buscador", "Avisos", "Mis deals", "Registro", "Reglas"]);
+    await goTab(page, "Registro");
+    await page.waitForSelector(".rg-sig", { timeout: 8000 });
+    const text = await page.locator("#app").innerText();
+    assert.match(text, /vencimientos? · [\d.]+ deals resueltos · desde el/);
+    for (const part of ["Señales", "Por nivel", "Por desacuerdo", "Por grupo"]) assert.match(text, new RegExp(part));
+    assert.equal(await page.locator(".rg-sig li").count(), 4);
+    assert.equal(await page.locator(".rg-tb .rg-row").count(), 6, "tres niveles y tres tramos de desacuerdo");
+    assert.equal(await page.locator(".rg-track .re").count(), 6);
+    assert.ok(await page.locator(".rg-sig .rg-dot.r, .rg-sig .rg-dot.g, .rg-sig .rg-dot.a").count() >= 1, "con 3 vencimientos o más las señales se encienden");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `sin desborde a ${width}`);
+    assert.deepEqual(page.errors, []);
+    await page.close();
+  }
+});
+
+test("Reglas: grupos y registro se pueden cambiar", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Reglas");
+  await page.locator('[data-act="reset"]').first().click();
+  await page.waitForTimeout(300);
+  const field = () => page.locator(".field", { hasText: "Correlación para agrupar" });
+  assert.match(await field().innerText(), /0,85/);
+  await field().locator('[data-dir="-1"]').click();
+  await page.waitForTimeout(300);
+  assert.match(await field().innerText(), /0,84/);
+  assert.match(await page.locator(".field", { hasText: "Pierden a la vez" }).innerText(), /3 nombres/);
+  await page.locator('[data-act="reset"]').first().click();
   assert.deepEqual(page.errors, []);
   await page.close();
 });

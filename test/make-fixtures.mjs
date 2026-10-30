@@ -53,6 +53,22 @@ function closesFor(symbol, S, atm) {
   return rows.reverse();
 }
 
+// SPY y XSP son el mismo índice: sus cierres inventados se mueven casi igual (con su propio generador, para no
+// cambiar los números de los demás nombres), y así la muestra tiene un grupo de correlación.
+let pairSeed = 99;
+const pairRnd = () => ((pairSeed = (pairSeed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const pairGauss = () => Math.sqrt(-2 * Math.log(1 - pairRnd())) * Math.cos(2 * Math.PI * pairRnd());
+const pairMoves = Array.from({ length: 1400 }, () => (0.14 * 0.85 * pairGauss()) / Math.sqrt(252) + 0.0002);
+function pairRows(rows, S) {
+  let price = S;
+  const prices = [];
+  for (let k = rows.length - 1, i = 0; k >= 0; k--, i++) {
+    prices[k] = price;
+    price /= Math.exp(pairMoves[i] + (pairGauss() * 0.0008));
+  }
+  return rows.map((row, k) => ({ ...row, open: prices[k], high: prices[k], low: prices[k], close: Math.round(prices[k] * 100) / 100 }));
+}
+
 const universe = JSON.parse(await readFile(path.join(here, "..", "scanner", "universe.json"), "utf8"));
 const pool = universe.bloques.flatMap((block) => block.nombres.map((row) => row.s));
 const kinds = new Map(universe.bloques.flatMap((block) => block.nombres.map((row) => [row.s, row.k])));
@@ -87,7 +103,7 @@ for (const symbol of symbols) {
     data: { options, symbol, security_type: kinds.get(symbol) === "etf" ? "etf" : "stock", current_price: S, price_change_percent: Math.round((rnd() * 4 - 2) * 100) / 100, close: S, iv30: Math.round(atm * 1000) / 10, last_trade_time: new Date().toISOString().slice(0, 19) },
   };
   await writeFile(path.join(out, `${symbol}.json`), JSON.stringify(body));
-  await writeFile(path.join(out, "_cierres", `${symbol}.json`), JSON.stringify({ timestamp: "00:00:00", data: closesFor(symbol, S, atm) }));
+  await writeFile(path.join(out, "_cierres", `${symbol}.json`), JSON.stringify({ timestamp: "00:00:00", data: ["SPY", "XSP"].includes(symbol) ? pairRows(closesFor(symbol, S, atm), S) : closesFor(symbol, S, atm) }));
   if (kinds.get(symbol) !== "etf" && rnd() < 0.35) earnings[symbol] = addDays(today, 3 + Math.floor(rnd() * 40));
 }
 earnings.AAPL = addDays(today, 25);

@@ -31,6 +31,9 @@ export const DEFAULT_RULES = {
   errVolPct: 10, // pestaña "Hoy": cuánto se supone que puede variar la volatilidad reciente al calcular el error, en %, de 10 a 40
   errHistK: 1, // pestaña "Hoy": por cuánto se multiplica el error de la historia de 5 años, de 1 a 3
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
+  corrMin: 0.85, // Buscador: correlación (rendimientos diarios, 250 días) a partir de la cual dos nombres son el mismo grupo; de 0,5 a 0,99
+  sigReal: 50, // Registro: la señal "lo real se acerca a lo esperado" salta si lo real queda más de este % por debajo de lo esperado; de 10 a 90
+  sigGroup: 3, // Registro: la señal de grupos salta si pierden a la vez tantos nombres de un grupo en un vencimiento; de 2 a 6
   gates: {
     event: false,
     liquid: false,
@@ -74,6 +77,91 @@ export const widthCap = (symbol) => (WIDE_NAMES.has(symbol) ? WIDE_WIDTH : NARRO
 // SPY y XSP son la misma apuesta (el S&P 500): si pasan los dos, queda uno como candidato y el otro es "mismo bloque".
 export const TWINS = { SPY: "XSP", XSP: "SPY" };
 export const MAX_FAVORITES = 40;
+
+export const CORR_DAYS = 250;
+const CORR_MIN_DAYS = 120; // con menos rendimientos en común (nombres con poca historia) no se mide
+
+/** Los rendimientos diarios (logarítmicos) de los últimos `days` cierres, alineados por el final de la serie. */
+function dailyReturns(series, days) {
+  const closes = series?.c;
+  if (!Array.isArray(closes) || closes.length < 3) return null;
+  const tail = closes.slice(-(days + 1));
+  const out = [];
+  for (let i = 1; i < tail.length; i++) out.push(tail[i - 1] > 0 && tail[i] > 0 ? Math.log(tail[i] / tail[i - 1]) : 0);
+  return out;
+}
+
+function pearson(a, b) {
+  const n = Math.min(a.length, b.length);
+  if (n < CORR_MIN_DAYS) return null;
+  const x = a.slice(a.length - n);
+  const y = b.slice(b.length - n);
+  let sx = 0;
+  let sy = 0;
+  for (let i = 0; i < n; i++) {
+    sx += x[i];
+    sy += y[i];
+  }
+  const mx = sx / n;
+  const my = sy / n;
+  let sxy = 0;
+  let sxx = 0;
+  let syy = 0;
+  for (let i = 0; i < n; i++) {
+    sxy += (x[i] - mx) * (y[i] - my);
+    sxx += (x[i] - mx) ** 2;
+    syy += (y[i] - my) ** 2;
+  }
+  return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
+}
+
+/** Grupos de nombres que son casi la misma apuesta: dos nombres con correlación igual o mayor que `minCorr` van juntos
+ *  (y, por transitividad, los que se enlazan a través de otro). `names` fija el orden dentro de cada grupo.
+ *  Devuelve `of` (nombre → clave del grupo, "SPY+XSP"; un nombre solo es su propio grupo), `members` (clave → nombres)
+ *  y `corr(a, b)` (correlación medida, o null si no hay historia suficiente). */
+export function correlationGroups(hist, names, minCorr = DEFAULT_RULES.corrMin, days = CORR_DAYS) {
+  const rets = new Map();
+  for (const name of names) {
+    const r = dailyReturns(hist?.[name], days);
+    if (r) rets.set(name, r);
+  }
+  const memo = new Map();
+  const corr = (a, b) => {
+    if (a === b) return 1;
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (!memo.has(key)) memo.set(key, rets.has(a) && rets.has(b) ? pearson(rets.get(a), rets.get(b)) : null);
+    return memo.get(key);
+  };
+  const parent = new Map(names.map((name) => [name, name]));
+  const find = (x) => {
+    while (parent.get(x) !== x) {
+      parent.set(x, parent.get(parent.get(x)));
+      x = parent.get(x);
+    }
+    return x;
+  };
+  const have = names.filter((name) => rets.has(name));
+  for (let i = 0; i < have.length; i++) {
+    for (let j = i + 1; j < have.length; j++) {
+      const c = corr(have[i], have[j]);
+      if (c != null && c >= minCorr - 1e-9) parent.set(find(have[j]), find(have[i]));
+    }
+  }
+  const byRoot = new Map();
+  for (const name of names) {
+    const root = find(name);
+    if (!byRoot.has(root)) byRoot.set(root, []);
+    byRoot.get(root).push(name);
+  }
+  const of = {};
+  const members = {};
+  for (const list of byRoot.values()) {
+    const key = list.join("+");
+    members[key] = list;
+    for (const name of list) of[name] = key;
+  }
+  return { of, members, corr };
+}
 
 // ---------- utilidades ----------
 
@@ -140,6 +228,9 @@ export function normalizeRules(input) {
     minRetExp: pre3 ? base.minRetExp : Math.round(clamp(row.minRetExp, -5, 5, base.minRetExp) * 10) / 10,
     equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
+    corrMin: Math.round(clamp(row.corrMin, 0.5, 0.99, base.corrMin) * 100) / 100,
+    sigReal: Math.round(clamp(row.sigReal, 10, 90, base.sigReal) / 5) * 5,
+    sigGroup: Math.round(clamp(row.sigGroup, 2, 6, base.sigGroup)),
     levelSafety: LEVEL_SAFETY.includes(row.levelSafety) ? row.levelSafety : base.levelSafety,
     levelMargin: Math.round(clamp(row.levelMargin, 0.5, 3, base.levelMargin) * 2) / 2,
     errVolPct: Math.round(clamp(row.errVolPct, 10, 40, base.errVolPct) / 5) * 5,

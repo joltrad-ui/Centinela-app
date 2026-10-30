@@ -5,7 +5,7 @@ App sin framework: `render()` reconstruye `#app`; los eventos se delegan en `app
 
 ## 1. Pantallas y navegación
 
-- **Cinco pantallas**, en la barra de abajo en este orden: **Hoy, Buscador, Avisos, Mis deals, Reglas**. La app se abre en la última usada (`centinela.pestana.v1`); la primera vez, Hoy.
+- **Seis pantallas**, en la barra de abajo en este orden: **Hoy, Buscador, Avisos, Mis deals, Registro, Reglas**. La app se abre en la última usada (`centinela.pestana.v1`); la primera vez, Hoy.
 - Sin título a la vista (el `h1` queda solo para lectores de pantalla) y sin botón Actualizar, salvo uno al principio de Reglas con su estado debajo: qué pasó en la última comprobación, la fecha del barrido y de los cierres, y si el mercado está abierto o cerrado (`refreshBox`, `state.refresh`). En las demás pantallas se actualiza arrastrando hacia abajo.
 - **Sin conexión:** se enseña el último barrido guardado en el dispositivo (`DATA_CACHE`) con un aviso gris con su fecha y antigüedad; al volver la conexión, se recarga sola (`online` / `offline` en `app.js`).
 - **Instalable** (manifest y `sw.js`): primero la red y, sin conexión, la última copia guardada. Pide siempre a la red con `cache: "no-cache"`.
@@ -20,6 +20,7 @@ Ninguno pasa de ~900 líneas. Los que tienen pantalla se crean con `createX(ctx)
 |---|---|
 | `app.js` | arranque, carga, guardado, cabecera, eventos y la tabla `RANGES` de las barras |
 | `reglas.js`, `avisos.js` | pestañas Reglas y Avisos |
+| `registro.js`, `registro-calc.js` | pestaña Registro (`createRegistro`: `view`, `load`, `click`) y su cálculo, sin pantalla ni red: CSV (`toCsv`, `parseCsv`), resultado al vencimiento (`closeOn`, `resultOf`, `resolveRows`) y análisis (`analyze`); lo usa también `scanner/registro.mjs` |
 | `conexion.js` | secreto, puente y GitHub, con sus botones y formularios |
 | `copia.js` | "Tus datos" en Reglas: copia de seguridad como texto y restaurar (`createCopia`, `parseBackup`) |
 | `hoy.js` | estado de Hoy, ficha, Mis deals y eventos (`createHoy`: `view`, `mis`, `sheet`, `click`, `submit`, `escape`, `setProb`, `setWidth`, `setFl`, `openName`, `dealRow`, `sortDeals`, `stats`) |
@@ -104,6 +105,14 @@ La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × venci
 - **Avisos generales** de Mapa, Nube y Barras ("A precio medio: es una hipótesis", la línea "Plazo · comisión · horquilla máxima") van al final de la pantalla, antes de "Cómo se puntúa" (`notes`), para no empujar lo importante. Precios con el mercado cerrado: aviso ámbar.
 - **Barras:** encima de la lista, tras una línea fina, una sola cabecera: a la izquierda cuántos deals hay y a la derecha el orden ("Por lo que queda" / "Por el suelo"), que cambia al tocarlo. La leyenda de los símbolos va al final, antes de los avisos. Detalle del cálculo en `docs/calculo.md` §6.
 
+## 7a. Mis deals (`viewMis` de `hoy.js`)
+
+Rediseño del 30 oct 2026 (maquetas `mis-deals-propuesta`). De arriba abajo: título; **resumen** (`.dl-sum`: Abiertos con cuántos están "cerca" o "debajo" del corto, Llevas total, Pierdes máx. total; borde rojo si hay alguno cerca o debajo); cabecera "Abiertos" con **+ Apuntar uno** a la derecha (abre el formulario a mano, `form-manual`); barra de orden (Estado de fábrica, Días, Prob., Llevas, Pérdida; solo con 2 o más); **tarjetas compactas** (`.dl-card`, unos 115 px); **Cerrados** de una línea cada uno (nivel pequeño, nombre y strikes, fecha, resultado en verde o rojo; cabecera "n · x ganados · total"); "Lo que pasó, por nivel" plegado al final (`foldBlock`, `hoy.recOpen`).
+- **Tarjeta:** cuadro de nivel de 30 px; línea 1 nombre en negrita y strikes en gris, y a la derecha la distancia del precio al corto en % (Newsreader; verde lejos, latón cerca, rojo por debajo: `dealStatus`); línea 2 vencimiento y días y "sobre el corto" o "bajo el corto"; línea 3 la barra de precio de 4 px (tramo rojo del largo al corto, raya en el corto, punto en el precio); línea 4 cuatro columnas Cobraste · Llevas · Pierdes máx. · Prob. (con ↑ en rojo si la prob. ha subido desde que se apuntó, ↓ en verde si ha bajado).
+- **Tocar la tarjeta** (`data-hoy="dl-open"`, `hoy.mopen`, solo en memoria) enseña Ver ficha, Cerrar deal y Borrar (que sigue pidiendo confirmación) y el nivel y la prob. al apuntar. Un cerrado se despliega igual para borrarlo. El formulario de cerrar abre su tarjeta solo.
+- `.fi-boxes` y `.fi-box` tienen ahora su propio `display: grid` y caja; antes no (la franja «Tu deal» de la ficha salía sin formato).
+- No cambian: el formato de `centinela.misdeals.v1`, Llevas, Prob., el estado ni la ficha.
+
 ## 7b. Reglas: "Tus datos" (`copia.js`)
 
 - "Copiar mis datos" saca un texto JSON (`{centinela: 1, guardado, datos}`) con las claves de `KEYS`: reglas, Hoy, Mis deals, Buscador, combinaciones guardadas, las que tengo y la pestaña. Se queda a la vista en un campo para copiarlo a mano si el portapapeles falla.
@@ -115,6 +124,14 @@ La pestaña de entrada. Va de lo ancho a lo estrecho: **Mapa** (nombres × venci
 - Mismo vocabulario visual que el resto: `sectionHead` para los títulos, recuadros `.panel` con divisores (esquinas `--r-card`, igual que `.fi-more`, `.empty` y `.notice`), `notice` para los avisos, `emptyBox` para los vacíos y alturas solo de la escala.
 - **Regla con número** (`stepper`, clase `.field`): el título y el −/+ en la misma línea y la explicación debajo, a todo el ancho; el −/+ mide 44 px (`--h-lg`). Una regla con elección propia (el punto de seguridad) usa `.field.stack`.
 - Los interruptores (`.gate`, `.switch`) y los botones (`.btn`) usan las alturas de la escala. Los números de las reglas se cambian con −/+, no con barras (decisión del dueño).
+
+## 7d. Registro (`registro.js`)
+
+Entre Mis deals y Reglas. Lee `registro/indice.json` y los CSV de cada mes (misma dirección que la app; no se guarda nada en el dispositivo) y lo analiza con `analyze` de `registro-calc.js`. Se descarga al abrir la pestaña y como mucho cada 10 minutos. Sin registro (404, o la versión de prueba incrustada) enseña un estado vacío.
+- **Arriba:** "n vencimientos · n deals resueltos · desde el d mmm" (vencimientos = meses distintos con deals resueltos). Con menos de 3, un aviso "pocos datos, no sacar conclusiones" y las cuatro señales en gris.
+- **Señales** (`.rg-sig`, punto verde, ámbar, rojo o gris con una frase; solo avisan): (1) nivel 5 rinde más que el 3 en resultado real medio (ámbar con menos de 20 deals por lado); (2) desacuerdo alto frente a bajo: verde si el alto no rinde peor, rojo si rinde peor por más de 2 errores estándar ("plantea meterlo en el error"), ámbar si la diferencia cabe en el azar; (3) lo real no queda más de `sigReal` % (50 de fábrica) por debajo de lo esperado, en dólares por contrato; (4) en ningún vencimiento pierden a la vez `sigGroup` nombres distintos (3 de fábrica) de un mismo grupo.
+- **Tablas:** Por nivel (5, 4, 3), Por desacuerdo (bajo, medio y alto: tres tramos con el mismo número de deals) y Por grupo (seis primeros, "Ver todos"; con "n veces juntos" o "nunca"). Cada fila de nivel y desacuerdo lleva una regla (`.rg-track`): raya = esperado, punto = real, marca en $0, tramo rojo si lo real queda por debajo y verde si por encima; a la derecha, la media real y el % de ganados. Todas las filas de una tabla comparten escala. Esperado en dólares = rentab. esperada × lo que se arriesga.
+- Solo cuentan los deals vencidos y en su **primera aparición**. El desacuerdo solo se guarda y se enseña: no cambia error, nivel, orden ni filtros.
 
 ## 8. La ficha (`sheet` de `hoy.js`)
 

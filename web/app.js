@@ -15,6 +15,7 @@ import { createHoy } from "./hoy.js";
 import { notice, sectionHead } from "./ui.js";
 import { createBuscador } from "./buscador.js";
 import { createReglas } from "./reglas.js";
+import { createRegistro } from "./registro.js";
 import { textOf } from "./filtros.js";
 import { createAvisos } from "./avisos.js";
 import { createConexion } from "./conexion.js";
@@ -24,7 +25,7 @@ const LS_CONFIG = "centinela.config.v1";
 const LS_GH = "centinela.github.v1";
 const LS_SEEN = "centinela.avisos.vistos";
 const LS_TAB = "centinela.pestana.v1";
-const TABS = ["hoy", "buscador", "avisos", "deals", "reglas"];
+const TABS = ["hoy", "buscador", "avisos", "deals", "registro", "reglas"];
 const LS_COPIED = "centinela.secreto.copiado";
 const LS_EQUAL = "centinela.igual.v1";
 const root = document.getElementById("app");
@@ -679,12 +680,13 @@ const ICONS = {
   buscador: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>',
   avisos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V11a6 6 0 1112 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 004 0"/></svg>',
   deals: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M9 9h6M9 13h6M9 17h3"/></svg>',
+  registro: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><rect x="5" y="12" width="3.5" height="8" rx="0.8"/><rect x="10.25" y="7" width="3.5" height="13" rx="0.8"/><rect x="15.5" y="10" width="3.5" height="10" rx="0.8"/></svg>',
   reglas: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>',
 };
 
 /** Sin título a la vista, para dejar sitio: el nombre de la pantalla queda para lectores de pantalla.
  *  Sin botón de actualizar: se actualiza arrastrando hacia abajo (recarga la página, que mira si hay barrido nuevo). */
-function header(title, showRules = true) {
+function header(title, showRules = true, visible = false) {
   const scan = state.scan;
   const times = scan ? `Barrido ${when(scan.at)}` : "";
   const status = state.loading
@@ -694,7 +696,7 @@ function header(title, showRules = true) {
       : "Sin barrido todavía";
   return `
     <header class="top">
-      <h1 class="sr-only">${title}</h1>
+      <h1${visible ? "" : ' class="sr-only"'}>${title}</h1>
       ${
         EMBED
           ? `<div class="top-row"><button class="btn primary" data-act="real" ${real.busy ? "disabled" : ""}>${real.busy ? (real.total ? `Leyendo ${real.done}/${real.total}` : "Leyendo…") : "Datos reales"}</button></div>`
@@ -784,6 +786,7 @@ const reload = () => void load().then(loadHist, loadHist);
 const conexion = createConexion({ state, root, esc, readLocal, writeLocal, render, ghReady, reload, sectionHead, LS_COPIED, LS_BRIDGE, LS_GH });
 const copia = createCopia({ state, root, esc, readLocal, writeLocal, render, sectionHead, notice });
 const reglas = createReglas({ state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG });
+const registro = createRegistro({ state, render, esc, num, sectionHead, header, foot, embed: Boolean(EMBED) });
 const avisos = createAvisos({ state, esc, when, sectionHead, changeConfig, foot, syncLine, isPublic });
 
 function dock() {
@@ -792,13 +795,13 @@ function dock() {
   const item = (id, label) =>
     `<button data-tab="${id}" ${state.tab === id ? 'aria-current="page"' : ""}>${ICONS[id]}<span>${label}</span>${id === "avisos" && unseen ? `<span class="badge">${unseen > 9 ? "9+" : unseen}</span>` : ""}</button>`;
   return `<nav class="dock" aria-label="Secciones"><div>
-    ${item("hoy", "Hoy")}${item("buscador", "Buscador")}${item("avisos", "Avisos")}${item("deals", "Mis deals")}${item("reglas", "Reglas")}
+    ${item("hoy", "Hoy")}${item("buscador", "Buscador")}${item("avisos", "Avisos")}${item("deals", "Mis deals")}${item("registro", "Registro")}${item("reglas", "Reglas")}
   </div></nav>`;
 }
 
 function render() {
   const view =
-    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? hoy.mis() : state.tab === "reglas" ? reglas.view() : state.tab === "avisos" ? avisos.view() : buscador.view();
+    state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? hoy.mis() : state.tab === "registro" ? registro.view() : state.tab === "reglas" ? reglas.view() : state.tab === "avisos" ? avisos.view() : buscador.view();
   const before = root.querySelector(".sheet");
   const keep = before ? { name: before.getAttribute("aria-label"), top: before.scrollTop } : null;
   root.innerHTML = `<main class="wrap">${view}</main>${dock()}${hoy.sheet()}`;
@@ -806,6 +809,7 @@ function render() {
   const after = root.querySelector(".sheet");
   if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
   if (state.tab === "hoy") scheduleWarm();
+  if (state.tab === "registro") void registro.load();
 }
 
 // Con Hoy en pantalla, en un rato libre se calculan los deals del Buscador: al abrirlo ya están (la caché es por barrido, reglas, precio y acciones).
@@ -855,7 +859,7 @@ root.addEventListener("change", (event) => {
 });
 
 root.addEventListener("click", (event) => {
-  const el = event.target.closest("[data-bs],[data-hoy],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-tab],[data-act],[data-open]");
+  const el = event.target.closest("[data-bs],[data-hoy],[data-reg],[data-step],[data-gate],[data-rule-switch],[data-rule-set],[data-alert],[data-tab],[data-act],[data-open]");
   if (!el) return;
   if (el.classList.contains("sheet-back") && event.target !== el) return; // clic dentro de la ficha
   if (el.dataset.bs) {
@@ -866,7 +870,7 @@ root.addEventListener("click", (event) => {
     hoy.click(el);
     return;
   }
-  if (reglas.click(el) || avisos.click(el) || copia.click(el) || conexion.click(el)) return;
+  if (registro.click(el) || reglas.click(el) || avisos.click(el) || copia.click(el) || conexion.click(el)) return;
   if (el.dataset.tab) {
     state.tab = el.dataset.tab;
     writeLocal(LS_TAB, state.tab);

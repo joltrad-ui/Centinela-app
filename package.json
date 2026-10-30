@@ -10,7 +10,7 @@
     "ordenador": "node scanner/scan.mjs --serve",
     "ordenador:movil": "node scanner/scan.mjs --serve --lan",
     "cierres": "node scanner/cierres.mjs",
-    "ejemplo": "node test/make-fixtures.mjs && node scanner/cierres.mjs --fixtures test/fixtures --out out-ejemplo && node scanner/scan.mjs --serve --fixtures test/fixtures --out out-ejemplo",
+    "ejemplo": "node test/make-fixtures.mjs && node scanner/cierres.mjs --fixtures test/fixtures --out out-ejemplo && node test/make-registro-ejemplo.mjs out-ejemplo && node scanner/scan.mjs --serve --fixtures test/fixtures --out out-ejemplo",
     "test": "node --test test/engine.test.mjs test/ui.test.mjs",
     "test:motor": "node --test test/engine.test.mjs"
   }

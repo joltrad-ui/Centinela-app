@@ -1047,3 +1047,135 @@ test("media simple, serie de medias y cambio en n sesiones", () => {
   assert.equal(changeOver(closes, 5, 0), null);
   assert.equal(changeOver([0, 0, 0, 0, 0], 5, 3), null);
 });
+
+// ---------- registro de deals y grupos de correlación ----------
+
+import { correlationGroups } from "../web/engine.js";
+import { analyze, closeOn, parseCsv, resolveRows, resultOf, toCsv } from "../web/registro-calc.js";
+import { dayRows, updateRows } from "../scanner/registro.mjs";
+
+const walk = (seed, n = 300) => {
+  let s = seed;
+  const rnd = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const out = [100];
+  for (let i = 1; i < n; i++) out.push(out[i - 1] * Math.exp((rnd() - 0.5) * 0.04));
+  return out;
+};
+
+test("grupos de correlación: dos series casi iguales van juntas, una independiente no; XSP sin historia queda sola", () => {
+  const a = walk(1);
+  const hist = {
+    AAA: { d: "2025-01-02", c: a },
+    BBB: { d: "2025-01-02", c: a.map((v, i) => v * 2 * (1 + (i % 2 ? 0.0004 : -0.0004))) },
+    CCC: { d: "2025-01-02", c: walk(2) },
+    SHORT: { d: "2026-01-02", c: a.slice(-50) },
+  };
+  const g = correlationGroups(hist, ["AAA", "BBB", "CCC", "SHORT", "NONE"], 0.85);
+  assert.equal(g.of.AAA, "AAA+BBB");
+  assert.equal(g.of.BBB, "AAA+BBB");
+  assert.equal(g.of.CCC, "CCC");
+  assert.equal(g.of.SHORT, "SHORT", "con menos de 120 rendimientos en común no se mide");
+  assert.equal(g.of.NONE, "NONE");
+  assert.ok(g.corr("AAA", "BBB") > 0.95);
+  assert.ok(Math.abs(g.corr("AAA", "CCC")) < 0.3);
+  assert.equal(g.corr("AAA", "SHORT"), null);
+  // Con el umbral al máximo, ni siquiera las casi iguales se juntan.
+  assert.equal(correlationGroups(hist, ["AAA", "BBB"], 0.99999).of.AAA, "AAA");
+});
+
+test("reglas: los valores nuevos del registro y los grupos tienen de fábrica y límites", () => {
+  const r = normalizeRules({});
+  assert.deepEqual([r.corrMin, r.sigReal, r.sigGroup], [0.85, 50, 3]);
+  const x = normalizeRules({ corrMin: 5, sigReal: 1, sigGroup: 99 });
+  assert.deepEqual([x.corrMin, x.sigReal, x.sigGroup], [0.99, 10, 6]);
+});
+
+const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", ...extra });
+
+test("registro: el CSV se escribe y se lee igual, con comas y comillas dentro del texto", () => {
+  const rows = [sample(), sample({ nombre: 'A"B', resultados: true, cierre: 101.5, resultado: 60, estado: "ganado", primera: false })];
+  const text = toCsv(rows);
+  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado$/);
+  assert.deepEqual(parseCsv(text), rows);
+  assert.deepEqual(parseCsv("fecha,nombre\nbasura"), [], "filas con otra forma se saltan");
+});
+
+test("registro: resultado al vencimiento = cobro neto menos la pérdida, como mucho el ancho", () => {
+  assert.equal(resultOf(sample(), 103), 60); // por encima del corto: se queda lo cobrado
+  assert.equal(resultOf(sample(), 98), 60 - 200); // dentro del tramo
+  assert.equal(resultOf(sample(), 80), 60 - 500); // por debajo del largo: pierde el ancho entero
+  // Cierre de un día: cuenta sesiones desde el primer cierre; un festivo usa el cierre anterior.
+  const series = { d: "2026-10-01", c: [10, 11, 12, 13, 14, 15, 16] };
+  assert.equal(closeOn(series, "2026-10-01"), 10);
+  assert.equal(closeOn(series, "2026-10-02"), 11);
+  assert.equal(closeOn(series, "2026-10-09"), 16); // 1, 2, 5, 6, 7, 8, 9
+  assert.equal(closeOn(series, "2026-10-12"), null, "la serie aún no llega");
+  const rows = [sample({ vencimiento: "2026-10-05" }), sample({ nombre: "OTRO", vencimiento: "2026-10-05" }), sample({ vencimiento: "2026-10-30" })];
+  const done = resolveRows(rows, { SPY: series }, "2026-10-09");
+  assert.equal(done, 1, "solo lo vencido y con cierre");
+  assert.deepEqual([rows[0].cierre, rows[0].resultado, rows[0].estado], [12, 60 - 500, "perdido"]);
+  assert.equal(rows[1].estado, "");
+  assert.equal(rows[2].estado, "");
+});
+
+test("registro: el mismo spread cada día, primera aparición solo la primera; lo de hoy sustituye al barrido anterior", () => {
+  const hist = null;
+  const d1 = updateRows([], [sample({ fecha: "2026-10-01" }), sample({ fecha: "2026-10-01", nombre: "QQQ" })], { today: "2026-10-01", hist, last: "2026-09-30" });
+  assert.deepEqual(d1.rows.map((r) => r.primera), [true, true]);
+  assert.equal(d1.first, 2);
+  const d2 = updateRows(d1.rows, [sample({ fecha: "2026-10-02" }), sample({ fecha: "2026-10-02", nombre: "IWM" })], { today: "2026-10-02", hist, last: "2026-10-01" });
+  const spy2 = d2.rows.filter((r) => r.nombre === "SPY");
+  assert.deepEqual(spy2.map((r) => [r.fecha, r.primera]), [["2026-10-01", true], ["2026-10-02", false]]);
+  assert.equal(d2.rows.find((r) => r.nombre === "IWM").primera, true);
+  // Otro barrido el mismo día: sustituye a las filas de ese día y sigue sin duplicar la primera aparición.
+  const d3 = updateRows(d2.rows, [sample({ fecha: "2026-10-02" })], { today: "2026-10-02", hist, last: "2026-10-01" });
+  assert.equal(d3.rows.filter((r) => r.fecha === "2026-10-02").length, 1);
+  assert.equal(d3.rows.filter((r) => r.nombre === "SPY" && r.primera).length, 1);
+});
+
+test("registro: análisis solo con vencidos y primera aparición; señales apagadas con menos de 3 meses", () => {
+  const mk = (month, n, nivel, resultado, extra = {}) =>
+    Array.from({ length: n }, (_, i) => sample({ vencimiento: `2026-${month}-16`, nivel, nombre: `N${i}`, grupo: `N${i}`, cierre: 100, resultado: resultado + (i % 3), estado: resultado + (i % 3) > 0 ? "ganado" : "perdido", desacuerdo: i, ...extra }));
+  const two = [...mk("08", 30, 5, 50), ...mk("09", 30, 3, 20)];
+  const a2 = analyze(two);
+  assert.equal(a2.few, true);
+  assert.ok(a2.signals.every((s) => s.color === "x"), "todas en gris");
+  const three = [...two, ...mk("10", 30, 4, 30), sample({ nivel: 5, primera: false, estado: "perdido", resultado: -999 }), sample({ nivel: 5, estado: "", resultado: null })];
+  const a3 = analyze(three);
+  assert.equal(a3.few, false);
+  assert.equal(a3.n, 90, "no cuenta lo que no es primera aparición ni lo no vencido");
+  assert.deepEqual(a3.byLevel.map((l) => l.n), [30, 30, 30]);
+  assert.equal(a3.signals[0].color, "g", "el nivel 5 rinde más que el 3");
+  assert.deepEqual(a3.byDis.map((d) => d.n), [30, 30, 30]);
+  // El nivel 5 por debajo del 3: rojo.
+  const bad = analyze([...mk("08", 30, 5, 5), ...mk("09", 30, 3, 40), ...mk("10", 30, 4, 30)]);
+  assert.equal(bad.signals[0].color, "r");
+  assert.match(bad.signals[0].text, /no está ordenando bien/);
+});
+
+test("registro: tres nombres de un mismo grupo en pérdida en el mismo vencimiento encienden la señal de grupo", () => {
+  const lost = (name, expiry) => sample({ nombre: name, grupo: "A+B+C", vencimiento: expiry, cierre: 80, resultado: -400, estado: "perdido" });
+  const fill = (month) => Array.from({ length: 25 }, (_, i) => sample({ vencimiento: `2026-${month}-16`, nombre: `Z${i}`, grupo: `Z${i}`, cierre: 100, resultado: 40, estado: "ganado" }));
+  const rows = [...fill("08"), ...fill("09"), ...fill("10"), lost("A", "2026-10-16"), lost("B", "2026-10-16"), lost("C", "2026-10-16")];
+  const a = analyze(rows);
+  assert.equal(a.signals[3].color, "r");
+  assert.match(a.signals[3].text, /3 nombres/);
+  assert.equal(a.byGroup.find((g) => g.key === "A+B+C").together, 1);
+  assert.equal(analyze(rows, normalizeRules({ sigGroup: 4 })).signals[3].color, "g", "con 4 de umbral no salta");
+});
+
+test("registro: dayRows guarda solo nivel 3 o más, dentro de Reglas de fábrica, con todos los campos", () => {
+  const closes = walk(5, 1300);
+  const hist = { XYZ: { d: "2021-01-04", c: closes.map((v) => (v * 100) / closes[closes.length - 1]) } };
+  const groups = correlationGroups(hist, ["XYZ"], 0.85);
+  const rows = dayRows({ symbols: [{ ...sym, b: "Prueba", er: { d: "2026-10-12" }, x: [["2026-10-30", 0.4, sym.x[0][2]]] }], hist, today, groups });
+  for (const r of rows) {
+    assert.ok(r.nivel >= 3);
+    assert.equal(r.grupo, "XYZ");
+    assert.equal(r.bloque, "Prueba");
+    assert.equal(r.resultados, true, "resultados el 12 oct, antes de vencer");
+    assert.equal(r.desacuerdo, Math.round(Math.abs(r.perdHist - r.perdVol) * 100) / 100);
+    assert.equal(r.estado, "");
+    assert.equal(r.fecha, today);
+  }
+});

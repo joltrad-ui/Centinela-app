@@ -3,6 +3,7 @@ name: Barrido
 # Solo por horario o a mano: un push no barre nunca.
 # Barre la lista base (scanner/universe.json) cada media hora en horario de mercado.
 # Repositorio público: todo lo que se escribe aquí o en el registro lo puede leer cualquiera.
+# Tras cada barrido con el mercado abierto se actualiza el registro de deals (registro/, con las reglas de fábrica, nada personal).
 # Las reglas y los favoritos entran por secretos y no se publican.
 
 on:
@@ -42,6 +43,7 @@ jobs:
           if git fetch --depth=1 origin gh-pages 2>/dev/null; then
             git archive FETCH_HEAD data 2>/dev/null | tar -x -C out || true
             git archive FETCH_HEAD historia 2>/dev/null | tar -x -C out || true
+            git archive FETCH_HEAD registro 2>/dev/null | tar -x -C out || true
           fi
 
       - name: Barrer
@@ -58,3 +60,14 @@ jobs:
         env:
           REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
         run: bash scripts/rama.sh datos out/data
+
+      # Los deals de nivel 3 o más de hoy (el último barrido del día deja el resultado) y el resultado de lo que ya venció.
+      # Un fallo aquí no tumba el barrido: ya está guardado.
+      - name: Registro de deals
+        if: steps.barrer.outputs.saltado != '1'
+        continue-on-error: true
+        env:
+          REMOTO: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}
+        run: |
+          node scanner/registro.mjs --out out
+          if [ -d out/registro ]; then bash scripts/rama.sh registro out/registro; fi
