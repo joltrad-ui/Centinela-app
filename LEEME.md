@@ -10,7 +10,7 @@ Los datos de opciones vienen de CBOE con 15 minutos de retraso. Las fechas de re
   - **Mapa:** nombres por vencimientos, con un nivel de 0 a 5 por casilla (cuánto tiene a favor ese bull put).
   - **Nube y Barras:** los deals de un vencimiento, para compararlos. Las barras enseñan lo que cobra, lo que se espera pagar y lo que queda con su error.
   - **Ficha:** la de cada deal. Lo que cobras, lo que apartas para pérdidas, lo que te queda, los puntos que dan el nivel, un gráfico del precio con sus medias de 50 y 200 días y el strike, y, al final, todos los deals puntuados del mismo nombre con filtros.
-- **Buscador:** todos los bull puts de los 39 nombres de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), cada nombre con su motivo si no pasa.
+- **Buscador:** todos los bull puts de los 40 nombres de la lista base (incluido XSP, el índice S&P 500 mini, sin asignación), cada nombre con su motivo si no pasa.
   - Caja de búsqueda; quitar y poner acciones una a una y marcar las que ya tienes.
   - Filtros: Nivel, Vence hasta, Ancho hasta y Prob. hasta (barras). En "Más filtros": Margen, Las que tengo y Precio (barras), y Bloque, Ocultar (resultados, tendencia, fuera de Reglas) y Guardados (combinaciones con nombre) como filas plegables. El "?" explica Nivel, Margen y Las que tengo.
   - Cuando no sale nada, te dice qué filtro quitar y cuántos deals saldrían.
@@ -38,7 +38,7 @@ En repositorios públicos todo esto es gratis y sin límite de minutos.
 | | Dónde está | ¿Lo ve alguien más? |
 |---|---|---|
 | El código y la pantalla de la app | Repositorio y página | Sí |
-| La lista y su barrido (precios y cadenas de los 39 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
+| La lista y su barrido (precios y cadenas de los 40 nombres) | Repositorio y página, carpeta `data/` | Sí. Quien mire el repositorio ve qué nombres sigue la app |
 | Reglas y orden | En tu dispositivo | No |
 | Mis deals, las que tengo, filtros guardados y los bloques que marcas como ya abiertos | En tu dispositivo | No. No se suben a ningún sitio; si borras los datos del navegador, se pierden (por eso existe la copia de **Tus datos**) |
 | Reglas para los avisos | Secreto `CENTINELA_CONFIG` de GitHub | No. Los secretos no se pueden leer, ni siquiera por el dueño; solo sobrescribir |

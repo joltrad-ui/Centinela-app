@@ -478,6 +478,10 @@ test("cierres: un split sin ajustar en un tramo se recompone a la escala de hoy"
   assert.deepEqual(repairSplits([100, 160]).fixes, []);
   // Los movimientos normales no se tocan.
   assert.deepEqual(repairSplits([100, 130, 80]).closes, [100, 130, 80]);
+  // Como NFLX (10 por 1, nov 2025): la parte sin ajustar se lleva a la escala de hoy, con un día algo movido.
+  const nflx = repairSplits([1100, 1120, 108, 110], ["d1", "d2", "d3", "d4"]);
+  assert.deepEqual(nflx.closes, [110, 112, 108, 110]);
+  assert.deepEqual(nflx.fixes, ["÷10 el d3"]);
 });
 
 test("cierres: la serie recompuesta pasa el control y la rota no", () => {

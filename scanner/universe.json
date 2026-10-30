@@ -98,6 +98,11 @@
      "s": "META",
      "n": "Meta",
      "k": "stock"
+    },
+    {
+     "s": "NFLX",
+     "n": "Netflix",
+     "k": "stock"
     }
    ]
   },
