@@ -45,6 +45,11 @@
      "k": "etf"
     },
     {
+     "s": "RTX",
+     "n": "RTX (defensa)",
+     "k": "stock"
+    },
+    {
      "s": "HYG",
      "n": "Bonos high yield",
      "k": "etf"
@@ -113,6 +118,16 @@
      "s": "USO",
      "n": "Petróleo",
      "k": "etf"
+    },
+    {
+     "s": "EQT",
+     "n": "EQT (gas natural)",
+     "k": "stock"
+    },
+    {
+     "s": "SLB",
+     "n": "SLB (servicios petroleros)",
+     "k": "stock"
     }
    ]
   },
@@ -182,6 +197,16 @@
     {
      "s": "LLY",
      "n": "Eli Lilly",
+     "k": "stock"
+    },
+    {
+     "s": "BMY",
+     "n": "Bristol-Myers Squibb",
+     "k": "stock"
+    },
+    {
+     "s": "NVS",
+     "n": "Novartis",
      "k": "stock"
     },
     {
