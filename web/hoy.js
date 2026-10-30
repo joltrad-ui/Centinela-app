@@ -71,6 +71,8 @@ export function createHoy(ctx) {
     error: "",
     copied: "",
     confirm: null, // id del deal que se va a borrar
+    mopen: null, // id del deal de Mis deals que está desplegado (botones y detalle)
+    recOpen: false, // «Lo que pasó, por nivel», plegado al final de Mis deals
     draft: null, // lo escrito en «Apuntar uno que ya tengo», para no perderlo si hay un error
   };
   const keep = () => ctx.writeLocal(LS_HOY, { view: hoy.view, prob: hoy.prob, width: hoy.width, price: hoy.price, held: hoy.held, expiry: hoy.expiry, folds: hoy.folds, barSort: hoy.barSort, misSort: hoy.misSort, fOpen: hoy.fOpen });
@@ -462,12 +464,11 @@ export function createHoy(ctx) {
             <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" type="submit">Apuntar</button><button class="btn" type="button" data-hoy="form-cancel">Cancelar</button></div>
             <p class="xs muted" style="margin-top:8px">Va a Mis deals sin nivel (M) y no entra en el recuento por nivel. Solo en este dispositivo.</p>
           </form>`
-        : `<div class="hoy-actions" style="margin-top:14px"><button class="btn" data-hoy="form-manual">Apuntar uno que ya tengo</button></div>`;
+        : "";
+    const addHead = `<div class="dl-hd"><h2 class="group"><span>Abiertos</span></h2><button class="btn quiet dl-add" data-hoy="form-manual">+ Apuntar uno</button></div>`;
     if (!deals.length) {
-      return emptyBox("Todavía no has apuntado ningún deal.", ["Se apuntan desde la ficha de un deal, con «La he abierto», o a mano si ya lo tienes abierto en tu bróker. Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.", "Se guardan solo en este dispositivo."]) + manual;
+      return `${addHead}${manual}` + emptyBox("Todavía no has apuntado ningún deal.", ["Se apuntan desde la ficha de un deal, con «La he abierto», o a mano si ya lo tienes abierto en tu bróker. Aquí verás cuánto le queda y lo lejos que está el precio del corto y, al cerrarlo, lo que pasó con cada nivel.", "Se guardan solo en este dispositivo."]);
     }
-    const LABEL = { lejos: "lejos del corto", cerca: "cerca del corto", debajo: "por debajo del corto", vencido: "vencido", "sin-precio": "sin precio" };
-    const title = (deal) => `<b>${esc(deal.s)}</b> <span class="muted">${fmtStrike(deal.short)}/${fmtStrike(deal.long)} · ${esc(labelOf(deal.expiry))}${deal.qty > 1 ? ` · ${deal.qty} contratos` : ""}</span>`;
     const levelOf = (deal) => (deal.manual ? '<span class="lv lvh sm" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh sm">H</span>' : levelTag(deal.level, " sm"));
     const o = options();
     const RANK = { vencido: 0, debajo: 1, cerca: 2, lejos: 3, "sin-precio": 4 };
@@ -497,50 +498,63 @@ export function createHoy(ctx) {
         return RANK[x.st.state] - RANK[y.st.state] || bySoon;
       });
     const sortBar = `<div class="sortbar eq dl-sort" role="group" aria-label="Orden de los deals">${[["estado", "Estado"], ["dias", "Días"], ["prob", "Prob."], ["llevas", "Llevas"], ["perdida", "Pérdida"]].map(([id, label]) => `<button data-hoy="msort" data-v="${id}" aria-pressed="${hoy.misSort === id}">${label}</button>`).join("")}</div>`;
+    const pct = (n) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${num(Math.abs(n), 1)} %`;
+    const near = cards.filter((c) => c.st.state === "cerca").length;
+    const below = cards.filter((c) => c.st.state === "debajo").length;
+    const nows = cards.map((c) => c.now).filter((v) => v != null);
+    const nowTotal = nows.length ? nows.reduce((a, b) => a + b, 0) : null;
+    const lossTotal = cards.reduce((sum, c) => sum + c.loss, 0);
+    const flags = [near ? `${near} cerca` : "", below ? `${below} debajo` : ""].filter(Boolean).join(" · ");
+    const summary = `<div class="dl-sum${near || below ? " alert" : ""}" role="group" aria-label="Resumen de los deals abiertos">
+        <div><small>Abiertos</small><b class="num">${cards.length}${flags ? ` <span class="down">· ${flags}</span>` : ""}</b></div>
+        <div><small>Llevas</small><b class="num ${nowTotal == null ? "" : tone(nowTotal)}">${nowTotal == null ? "—" : signedUsd(nowTotal)}</b></div>
+        <div><small>Pierdes máx.</small><b class="num">${dollars(lossTotal)}</b></div>
+      </div>`;
     const openList = cards
       .map(({ deal, st, lv, loss, now }) => {
         const closing = hoy.form && hoy.form.close === deal.id;
+        const isOpen = hoy.mopen === deal.id || closing || hoy.confirm === deal.id;
         const cur = lv?.level ?? null;
-        const badge = cur != null ? levelTag(cur, " mid") : deal.manual ? '<span class="lv lvh mid" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh mid">H</span>' : levelTag(deal.level, " mid");
-        const before = cur != null && deal.level != null && deal.level !== cur ? ` · antes ${deal.level}` : "";
-        let scale = "";
+        const badge = cur != null ? levelTag(cur, " dl") : deal.manual ? '<span class="lv lvh dl" role="img" aria-label="Sin nivel: apuntado a mano">M</span>' : deal.level == null ? '<span class="lv lvh dl">H</span>' : levelTag(deal.level, " dl");
+        let bar = "";
         if (st.price != null) {
           const lo = deal.long * 0.97;
           const hi = Math.max(st.price, deal.short) * 1.02;
           const at = (v) => (((v - lo) / (hi - lo)) * 100).toFixed(1);
-          scale = `<div class="dl-scale" role="img" aria-label="Largo ${fmtStrike(deal.long)}, corto ${fmtStrike(deal.short)}, precio ${usd2(st.price)}"><i class="z" style="left:${at(deal.long)}%;width:${(at(deal.short) - at(deal.long)).toFixed(1)}%"></i><i class="k" style="left:${at(deal.short)}%"></i><i class="p" style="left:${at(st.price)}%"></i></div>
-            <div class="dl-ends small muted num"><span>largo ${fmtStrike(deal.long)}</span><span>precio ${usd2(st.price)}</span></div>`;
+          bar = `<span class="dl-bar" role="img" aria-label="Largo ${fmtStrike(deal.long)}, corto ${fmtStrike(deal.short)}, precio ${usd2(st.price)}"><i style="left:${at(deal.long)}%;width:${(at(deal.short) - at(deal.long)).toFixed(1)}%"></i><em style="left:${at(deal.short)}%"></em><u style="left:${at(st.price)}%"></u></span>`;
         }
-        const boxes = `<div class="fi-boxes dl-boxes">
-          ${box("Prob.", lv?.prob == null ? "—" : `${num(lv.prob, 1)} %`, "", deal.prob0 != null && lv?.prob != null && deal.prob0 !== lv.prob ? `<span class="xs muted">antes ${num(deal.prob0, 1)} %</span>` : "")}
-          ${box("Llevas", now == null ? "—" : signedUsd(now), now == null ? "" : tone(now))}
-          ${box("Pierdes máx.", dollars(loss), "down")}
-        </div>`;
-        return `<li class="dl-card">
-          <div class="dl-top">${badge}<div class="dl-t">
-            <span class="dl-n"><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="small muted">×${deal.qty}</span>` : ""}</span>
-            <b class="num dl-days${st.dte >= 0 && st.dte <= 7 ? " soon" : ""}">${st.dte < 0 ? "venció" : `${st.dte} <small>d</small>`}</b>
-            <span class="pill st-${st.state}">${LABEL[st.state]}</span>
-            <span class="small muted dl-date">${esc(labelOf(deal.expiry))}${before}</span>
-          </div></div>
-          ${scale}${boxes}
-          ${
-            closing
-              ? `<form class="hoy-form" data-hoy-form="cerrar" data-id="${esc(deal.id)}" novalidate>
-                  <label class="small muted" for="hoy-result">Resultado final, en dólares. Con menos delante si perdiste.</label>
-                  <input class="textfield" id="hoy-result" name="result" inputmode="decimal" autocomplete="off" value="${esc(num(cobrado(deal), 2))}">
-                  ${hoy.error ? `<p class="small down" role="alert" style="margin-top:8px">${esc(hoy.error)}</p>` : ""}
-                  <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" type="submit">Cerrar deal</button><button class="btn" type="button" data-hoy="form-cancel">Cancelar</button></div>
-                  <p class="xs muted" style="margin-top:8px">Si venció sin valor, el resultado es lo que cobraste. Si lo recompraste, lo cobrado menos lo pagado y las comisiones.</p>
-                </form>`
-              : `<div class="hoy-actions"><button class="btn quiet" data-hoy="deal-close" data-id="${esc(deal.id)}">Cerrar deal</button>${
-                  bySymbol.has(deal.s) ? `<button class="btn quiet" data-hoy="cell" data-s="${esc(deal.s)}" data-e="${deal.expiry}" data-k="${deal.short}|${deal.long}">Ver ficha</button>` : ""
-                }${
-                  hoy.confirm === deal.id
-                    ? `<button class="btn quiet down" data-hoy="deal-del-yes" data-id="${esc(deal.id)}">¿Seguro? Borrar</button>`
-                    : `<button class="btn quiet" data-hoy="deal-del" data-id="${esc(deal.id)}">Borrar</button>`
-                }</div>`
-          }
+        const dist = st.above == null ? "—" : pct(st.above);
+        const distTone = st.state === "debajo" || st.state === "vencido" ? "dn" : st.state === "cerca" ? "ce" : "up";
+        const probMoved = deal.prob0 != null && lv?.prob != null && Math.abs(lv.prob - deal.prob0) >= 0.1 ? (lv.prob > deal.prob0 ? "up" : "down") : "";
+        const probCell = lv?.prob == null ? "—" : `<span class="${probMoved === "up" ? "down" : probMoved === "down" ? "up" : ""}">${num(lv.prob, 0)} %${probMoved === "up" ? " ↑" : probMoved === "down" ? " ↓" : ""}</span>`;
+        const cell = (label, value, cls = "") => `<span><small>${label}</small><b class="num ${cls}">${value}</b></span>`;
+        const since = [deal.level != null && cur != null && deal.level !== cur ? `Nivel al apuntar: ${deal.level}.` : "", deal.prob0 != null ? `Prob. al apuntar: ${num(deal.prob0, 1)} %.` : ""].filter(Boolean).join(" ");
+        const more = !isOpen
+          ? ""
+          : closing
+            ? `<form class="hoy-form" data-hoy-form="cerrar" data-id="${esc(deal.id)}" novalidate>
+                <label class="small muted" for="hoy-result">Resultado final, en dólares. Con menos delante si perdiste.</label>
+                <input class="textfield" id="hoy-result" name="result" inputmode="decimal" autocomplete="off" value="${esc(num(cobrado(deal), 2))}">
+                ${hoy.error ? `<p class="small down" role="alert" style="margin-top:8px">${esc(hoy.error)}</p>` : ""}
+                <div style="display:flex;gap:8px;margin-top:12px"><button class="btn primary" type="submit">Cerrar deal</button><button class="btn" type="button" data-hoy="form-cancel">Cancelar</button></div>
+                <p class="xs muted" style="margin-top:8px">Si venció sin valor, el resultado es lo que cobraste. Si lo recompraste, lo cobrado menos lo pagado y las comisiones.</p>
+              </form>`
+            : `<div class="dl-act">${bySymbol.has(deal.s) ? `<button class="btn quiet" data-hoy="cell" data-s="${esc(deal.s)}" data-e="${deal.expiry}" data-k="${deal.short}|${deal.long}">Ver ficha</button>` : ""}<button class="btn quiet" data-hoy="deal-close" data-id="${esc(deal.id)}">Cerrar deal</button>${
+                hoy.confirm === deal.id
+                  ? `<button class="btn quiet down" data-hoy="deal-del-yes" data-id="${esc(deal.id)}">¿Seguro? Borrar</button>`
+                  : `<button class="btn quiet down" data-hoy="deal-del" data-id="${esc(deal.id)}">Borrar</button>`
+              }</div>${since ? `<p class="xs muted" style="margin-top:8px">${since}</p>` : ""}`;
+        return `<li class="dl-card${isOpen ? " open" : ""}">
+          <button class="dl-main" data-hoy="dl-open" data-id="${esc(deal.id)}" aria-expanded="${isOpen}" aria-label="${esc(deal.s)} ${fmtStrike(deal.short)}/${fmtStrike(deal.long)}">
+            ${badge}
+            <span class="dl-n"><b class="dl-sym">${esc(deal.s)}</b> <span class="num dl-k">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span>${deal.qty > 1 ? ` <span class="xs muted">×${deal.qty}</span>` : ""}</span>
+            <span class="dl-d ${distTone}">${dist}</span>
+            <span class="dl-sub">${esc(labelOf(deal.expiry))} · ${st.dte < 0 ? "venció" : `${st.dte} ${st.dte === 1 ? "día" : "días"}`}</span>
+            <span class="dl-sub2">${st.above == null ? "sin precio" : st.above < 0 ? "bajo el corto" : "sobre el corto"}</span>
+            ${bar}
+            <span class="dl-f">${cell("Cobraste", dollars(cobrado(deal)))}${cell("Llevas", now == null ? "—" : signedUsd(now), now == null ? "" : tone(now))}${cell("Pierdes máx.", dollars(loss))}<span><small>Prob.</small><b class="num">${probCell}</b></span></span>
+          </button>
+          ${more ? `<div class="dl-more">${more}</div>` : ""}
         </li>`;
       })
       .join("");
@@ -553,24 +567,27 @@ export function createHoy(ctx) {
       .join("");
     const closedList = closed
       .slice(0, 40)
-      .map(
-        (deal) => `<li class="hoy-deal"><p>${levelOf(deal)} ${title(deal)} <b class="num ${deal.result > 0 ? "up" : deal.result < 0 ? "down" : ""}" style="float:right">${deal.result == null ? "—" : signedUsd(deal.result)}</b></p>
-          <p class="small muted" style="margin-top:2px">Cerrado el ${esc(labelOf(new Date(deal.closedAt).toISOString().slice(0, 10)))}${
-            hoy.confirm === deal.id
-              ? ` · <button class="hoy-link down" data-hoy="deal-del-yes" data-id="${esc(deal.id)}">¿Seguro? Borrar</button>`
-              : ` · <button class="hoy-link" data-hoy="deal-del" data-id="${esc(deal.id)}">Borrar</button>`
-          }</p></li>`,
-      )
+      .map((deal) => {
+        const isOpen = hoy.mopen === deal.id || hoy.confirm === deal.id;
+        const day = labelOf(new Date(deal.closedAt).toISOString().slice(0, 10));
+        return `<li class="dl-cl${isOpen ? " open" : ""}">
+          <button class="dl-cl-b" data-hoy="dl-open" data-id="${esc(deal.id)}" aria-expanded="${isOpen}">${levelOf(deal)}<span class="dl-cl-t"><b>${esc(deal.s)}</b> <span class="num">${fmtStrike(deal.short)}/${fmtStrike(deal.long)}</span> <span class="muted">· ${esc(day)}</span></span><b class="num ${deal.result > 0 ? "up" : deal.result < 0 ? "down" : ""}">${deal.result == null ? "—" : signedUsd(deal.result)}</b></button>
+          ${isOpen ? `<p class="small muted dl-cl-m">${deal.qty > 1 ? `${deal.qty} contratos · ` : ""}Abierto con ${esc(labelOf(deal.expiry))} de vencimiento. ${hoy.confirm === deal.id ? `<button class="hoy-link down" data-hoy="deal-del-yes" data-id="${esc(deal.id)}">¿Seguro? Borrar</button>` : `<button class="hoy-link" data-hoy="deal-del" data-id="${esc(deal.id)}">Borrar</button>`}</p>` : ""}
+        </li>`;
+      })
       .join("");
+    const won = closed.filter((deal) => deal.result > 0).length;
+    const resultTotal = closed.reduce((sum, deal) => sum + (typeof deal.result === "number" ? deal.result : 0), 0);
     return `
+      ${open.length ? summary : ""}
+      ${addHead}
       ${manual}
-      ${open.length ? `${sectionHead("Abiertos", open.length)}${open.length > 1 ? sortBar : ""}<ul class="dl-list">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
+      ${open.length ? `${open.length > 1 ? sortBar : ""}<ul class="dl-list">${openList}</ul>` : '<p class="small muted" style="margin-top:14px">No tienes ningún deal abierto apuntado.</p>'}
       ${
         closed.length
-          ? `${sectionHead("Lo que pasó, por nivel", `${closed.length} ${closed.length === 1 ? "cerrado" : "cerrados"}`)}
-             <ul class="rows">${recordRows}</ul>
-             <p class="xs muted" style="margin-top:8px">El nivel es el que tenía cada deal al apuntarlo. Con pocos deals no dice nada; con unos meses dirá si un nivel alto de verdad sale mejor.</p>
-             ${sectionHead("Cerrados")}<ul class="rows">${closedList}</ul>`
+          ? `${sectionHead("Cerrados", `${closed.length} · ${won} ${won === 1 ? "ganado" : "ganados"} · <b class="${tone(resultTotal)}">${signedUsd(resultTotal)}</b>`)}
+             <ul class="dl-cls">${closedList}</ul>
+             ${foldBlock("rec-fold", "", "Lo que pasó, por nivel", "", hoy.recOpen, `<ul class="rows">${recordRows}</ul><p class="xs muted" style="margin-top:8px">El nivel es el que tenía cada deal al apuntarlo. Con pocos deals no dice nada; con unos meses dirá si un nivel alto de verdad sale mejor.</p>`)}`
           : ""
       }
       <p class="xs muted" style="margin-top:12px">Guardado solo en este dispositivo. Lo que apuntas aquí no sale del móvil.</p>`;
@@ -624,6 +641,11 @@ export function createHoy(ctx) {
       hoy.legendOpen = !hoy.legendOpen;
     } else if (act === "help") {
       hoy.help = !hoy.help;
+    } else if (act === "dl-open") {
+      hoy.mopen = hoy.mopen === el.dataset.id ? null : el.dataset.id;
+      hoy.confirm = null;
+    } else if (act === "rec-fold") {
+      hoy.recOpen = !hoy.recOpen;
     } else if (act === "msort") {
       hoy.misSort = ["estado", "dias", "prob", "llevas", "perdida"].includes(value) ? value : "estado";
       keep();

@@ -5,7 +5,7 @@
 import { emptyBox } from "./ui.js";
 import { DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
-import { TWINS, qualityDeals, nyToday, volatilities } from "./engine.js";
+import { TWINS, correlationGroups, num, qualityDeals, nyToday, volatilities } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
@@ -253,6 +253,17 @@ export function createBuscador(ctx) {
     return hoy.stats([["Nivel 5", by(5)], ["Nivel 4", by(4)], ["Nivel 3", by(3)], ["Margen", pool.filter((d) => d.checks.safe).length]], "Deals por nivel");
   }
 
+  /** Los grupos de correlación de la lista con los cierres que hay; se calculan una vez por cierres y umbral. */
+  let corrCache = { key: "", groups: null };
+  function correlation() {
+    const hist = state.hist?.symbols;
+    if (!hist) return null;
+    const corrMin = state.config.rules.corrMin;
+    const key = `${state.hist.at}|${corrMin}`;
+    if (corrCache.key !== key) corrCache = { key, groups: correlationGroups(hist, Object.keys(hist), corrMin) };
+    return corrCache.groups;
+  }
+
   function listHtml(d0) {
     const list = hoy.sortDeals(filtered(d0), bs.ord);
     let rows = list;
@@ -269,7 +280,18 @@ export function createBuscador(ctx) {
         rows.push(d);
       }
     }
-    // SPY y XSP son la misma apuesta: el que sale antes con el orden de ahora es el candidato; el otro, "mismo bloque".
+    // Nombres que se mueven casi igual (correlación de 250 días, `corrMin` de Reglas) son una sola apuesta: el que sale antes
+    // con el orden de ahora es el candidato y los demás del grupo llevan "mismo grupo que X (0,91)".
+    // SPY y XSP, además, siguen siendo "mismo bloque" aunque no haya cierres para medirlo.
+    const groups = correlation();
+    const leads = new Map();
+    if (groups) for (const d of list) if (groups.members[groups.of[d.sym.s]]?.length > 1 && !leads.has(groups.of[d.sym.s])) leads.set(groups.of[d.sym.s], d.sym.s);
+    const groupNote = (d) => {
+      const lead = groups ? leads.get(groups.of[d.sym.s]) : null;
+      if (!lead || lead === d.sym.s) return "";
+      const c = groups.corr(d.sym.s, lead);
+      return `mismo grupo que ${lead}${c == null ? "" : ` (${num(c, 2)})`}`;
+    };
     const lead = list.find((d) => TWINS[d.sym.s])?.sym.s;
     const twinNote = (d) => (lead && TWINS[lead] === d.sym.s ? `mismo bloque que ${lead}` : "");
     const shown = rows.slice(0, bs.shown);
@@ -278,7 +300,7 @@ export function createBuscador(ctx) {
       return emptyBox("Ningún deal con estos filtros.", ideas.length ? "Esto es lo que saldría quitando cada filtro por separado:" : "", [...ideas, { attrs: 'data-bs="reset"', label: "Quitar todos los filtros" }]);
     }
     const more = rows.length > shown.length ? `<button class="btn quiet fi-more" data-bs="more-rows">Ver más (${rows.length - shown.length})</button>` : "";
-    return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: [twinNote(d), variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : ""].filter(Boolean).join(" · ") })).join("")}</ul>${more}`;
+    return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: [groupNote(d) || twinNote(d), variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : ""].filter(Boolean).join(" · ") })).join("")}</ul>${more}`;
   }
 
   /** La barra de encima de la lista: "Uno por nombre" y cuántos hay. Se repinta al escribir en la caja. */

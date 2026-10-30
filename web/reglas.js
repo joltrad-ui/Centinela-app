@@ -103,6 +103,16 @@ export function createReglas(ctx) {
       </section>
 
       <section class="block">
+        ${sectionHead("Grupos y Registro")}
+        <p class="small muted">La correlación agrupa en el Buscador. Los otros dos solo cambian cuándo las señales del Registro se encienden: avisan, no cambian ninguna regla.</p>
+        <div class="panel">
+          ${stepper("rules.corrMin", "Correlación para agrupar", "Dos nombres con esta correlación o más (rendimientos diarios, 250 días) son el mismo grupo.", 0.5, 0.99, 0.01, (n) => num(n, 2))}
+          ${stepper("rules.sigReal", "Real por debajo de lo esperado", "La señal salta si el resultado real medio queda más de este % por debajo de lo esperado.", 10, 90, 5, p0)}
+          ${stepper("rules.sigGroup", "Pierden a la vez", "La señal salta si en un vencimiento pierden tantos nombres de un mismo grupo.", 2, 6, 1, (n) => `${n} nombres`)}
+        </div>
+      </section>
+
+      <section class="block">
         ${sectionHead("Comisión y horquilla")}
         <div class="panel">
           ${stepper("rules.equalFee", "Comisión por spread al abrir", "Lo que cobra tu broker por abrir un spread, en dólares. Se descuenta del cobro, y para salir cuenta otra vez en el coste total (entrar y salir).", 0, 20, 0.1, (n) => `$${num(n, 2)}`)}
