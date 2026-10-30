@@ -120,7 +120,29 @@ export function sortDeals(list, ord) {
 
 /** Gráfico del precio en SVG, sin dependencias: el último año de cierres (hasta 252) más el precio de hoy, con la media de 50 y de 200 días
  *  y, si se da, el strike corto del deal como línea de puntos. Devuelve "" si faltan cierres (menos de 60) o precio. */
-export function priceChart(closes, price, strike = null) {
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+/** Las marcas del eje del tiempo: el primer día de cada tercer mes, con su año ("nov 2025"). Cada sesión son unos 1,45 días de calendario;
+ *  con 252 sesiones al año el error es de pocos días, de sobra para una referencia. `lastDate` = fecha del último cierre ("2026-10-29"). */
+function timeTicks(lastDate, n) {
+  const last = Date.parse(`${lastDate}T00:00:00Z`);
+  if (!Number.isFinite(last)) return [];
+  const perSession = 365 / 252;
+  const first = last - (n - 1) * perSession * 86_400_000;
+  const ticks = [];
+  const cursor = new Date(last);
+  let year = cursor.getUTCFullYear(), month = cursor.getUTCMonth();
+  for (let k = 0; k < 40; k++) {
+    const at = Date.UTC(year, month, 1);
+    if (at < first) break;
+    if (at <= last) ticks.push({ i: (n - 1) - (last - at) / (perSession * 86_400_000), text: `${MONTHS[month]} ${year}` });
+    month -= 3;
+    while (month < 0) { month += 12; year -= 1; }
+  }
+  return ticks.reverse();
+}
+
+export function priceChart(closes, price, strike = null, lastDate = null) {
   if (!Array.isArray(closes) || closes.length < 60 || !(price > 0)) return "";
   const N = Math.min(252, closes.length);
   const start = closes.length - N;
@@ -136,7 +158,8 @@ export function priceChart(closes, price, strike = null) {
   const pad = (hi - lo) * 0.06 || 1;
   lo -= pad;
   hi += pad;
-  const W = 320, H = 132, L = 4, R = 46, T = 6, B = 6;
+  const ticks = lastDate ? timeTicks(lastDate, N) : [];
+  const W = 320, H = 132 + (ticks.length ? 16 : 0), L = 4, R = 46, T = 6, B = 6 + (ticks.length ? 16 : 0);
   const x = (i) => (L + (i / N) * (W - L - R)).toFixed(1);
   const y = (v) => (T + (1 - (v - lo) / (hi - lo)) * (H - T - B)).toFixed(1);
   const path = (series, withToday) => {
@@ -157,6 +180,7 @@ export function priceChart(closes, price, strike = null) {
       ${hasStrike ? `<line class="pc-strike" x1="${L}" x2="${W - R}" y1="${y(strike)}" y2="${y(strike)}"/>` : ""}
       <path class="pc-line" d="${path(view, true)}"/>
       <circle class="pc-dot" cx="${x(N)}" cy="${y(price)}" r="3"/>
+      ${ticks.map((t) => `<line class="pc-tick" x1="${x(t.i)}" x2="${x(t.i)}" y1="${H - B + 2}" y2="${H - B + 5}"/><text class="pc-tx" x="${x(t.i)}" y="${H - 3}" text-anchor="middle">${t.text}</text>`).join("")}
       <text class="pc-t" x="${W - R + 4}" y="${(yp + 3.5).toFixed(1)}">${usd2(price)}</text>
       ${hasStrike ? `<text class="pc-t pc-ts" x="${W - R + 4}" y="${(ys + 3.5).toFixed(1)}">${usd2(strike)}</text>` : ""}
     </svg><p class="pc-leg xs muted">${key("pc-line", "Precio")}${has50 ? key("pc-s50", "Media 50") : ""}${has200 ? key("pc-s200", "Media 200") : ""}${hasStrike ? key("pc-strike", "Strike corto") : ""}</p></div>`;
