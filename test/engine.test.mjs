@@ -1052,7 +1052,7 @@ test("media simple, serie de medias y cambio en n sesiones", () => {
 
 import { correlationGroups } from "../web/engine.js";
 import { analyze, closeOn, parseCsv, resolveRows, resultOf, toCsv } from "../web/registro-calc.js";
-import { dayRows, updateRows } from "../scanner/registro.mjs";
+import { dayRows, photoTime, takesPhoto, updateRows } from "../scanner/registro.mjs";
 
 const walk = (seed, n = 300) => {
   let s = seed;
@@ -1090,12 +1090,12 @@ test("reglas: los valores nuevos del registro y los grupos tienen de fábrica y 
   assert.deepEqual([x.corrMin, x.sigReal, x.sigGroup], [0.99, 10, 6]);
 });
 
-const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", ...extra });
+const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", horaNy: "15:10", enVentana: true, dentroReglas: true, ...extra });
 
 test("registro: el CSV se escribe y se lee igual, con comas y comillas dentro del texto", () => {
   const rows = [sample(), sample({ nombre: 'A"B', resultados: true, cierre: 101.5, resultado: 60, estado: "ganado", primera: false })];
   const text = toCsv(rows);
-  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado$/);
+  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado,hora_ny,en_ventana,dentro_reglas$/);
   assert.deepEqual(parseCsv(text), rows);
   assert.deepEqual(parseCsv("fecha,nombre\nbasura"), [], "filas con otra forma se saltan");
 });
@@ -1164,19 +1164,29 @@ test("registro: tres nombres de un mismo grupo en pérdida en el mismo vencimien
   assert.equal(analyze(rows, normalizeRules({ sigGroup: 4 })).signals[3].color, "g", "con 4 de umbral no salta");
 });
 
-test("registro: dayRows guarda solo nivel 3 o más, dentro de Reglas de fábrica, con todos los campos", () => {
+test("registro: dayRows guarda todos los niveles, dentro y fuera de Reglas, con hora y franja", () => {
   const closes = walk(5, 1300);
   const hist = { XYZ: { d: "2021-01-04", c: closes.map((v) => (v * 100) / closes[closes.length - 1]) } };
   const groups = correlationGroups(hist, ["XYZ"], 0.85);
-  const rows = dayRows({ symbols: [{ ...sym, b: "Prueba", er: { d: "2026-10-12" }, x: [["2026-10-30", 0.4, sym.x[0][2]]] }], hist, today, groups });
+  const at = Date.parse("2026-10-05T19:10:00Z"); // 15:10 en Nueva York (horario de verano)
+  // Una cadena con horquillas estrechas (la de arriba las tiene anchas y las Reglas la apartan).
+  const sy = { ...sym, b: "Prueba", er: { d: "2026-10-12" }, x: [["2026-10-30", 0.4, [[70, 0.02, 0.03, 500, 0.5, -0.01], [75, 0.04, 0.05, 800, 0.46, -0.02], [80, 0.1, 0.12, 900, 0.44, -0.04], [85, 0.3, 0.32, 800, 0.42, -0.09], [90, 1.0, 1.02, 1200, 0.4, -0.2]]]] };
+  const rows = dayRows({ symbols: [sy], hist, today, groups, at });
+  const r0 = DEFAULT_RULES;
+  const all = qualityDeals([sy], { rules: r0, fee: r0.equalFee, gapPct: r0.equalGapPct, safety: r0.levelSafety, marginK: r0.levelMargin, errVolPct: r0.errVolPct, errHistK: r0.errHistK, hist, held: [], price: "nat", maxProb: r0.maxProb, maxWidth: r0.width }, today).deals;
+  assert.ok(rows.length > 0);
+  assert.equal(rows.length, all.length, "ningún nivel se descarta");
+  assert.deepEqual(rows.map((r) => r.dentroReglas).sort(), all.map((d) => d.ok).sort(), "marca cuáles cumplen las Reglas de fábrica");
+  assert.deepEqual([...new Set(rows.map((r) => r.nivel))].sort(), [...new Set(all.map((d) => d.level))].sort());
   for (const r of rows) {
-    assert.ok(r.nivel >= 3);
     assert.equal(r.grupo, "XYZ");
     assert.equal(r.bloque, "Prueba");
     assert.equal(r.resultados, true, "resultados el 12 oct, antes de vencer");
     assert.equal(r.desacuerdo, Math.round(Math.abs(r.perdHist - r.perdVol) * 100) / 100);
     assert.equal(r.estado, "");
     assert.equal(r.fecha, today);
+    assert.equal(r.horaNy, "15:10");
+    assert.equal(r.enVentana, true);
   }
 });
 
@@ -1219,4 +1229,71 @@ test("Resultados: aviso cuando casi todas salen vacías", () => {
   assert.equal(suspicious(21, 0), true);
   assert.equal(suspicious(21, 3), false);
   assert.equal(suspicious(2, 0), false, "con pocas consultas no es sospechoso");
+});
+
+test("registro: hora de Nueva York y franja de la foto, en horario de verano y de invierno", () => {
+  const t = (iso) => photoTime(Date.parse(iso));
+  // Verano (EDT, UTC−4): la franja 14:45–15:45 son las 18:45–19:45 UTC.
+  assert.deepEqual(t("2026-10-30T18:44:00Z"), { hora: "14:44", enVentana: false });
+  assert.deepEqual(t("2026-10-30T18:45:00Z"), { hora: "14:45", enVentana: true });
+  assert.deepEqual(t("2026-10-30T19:44:00Z"), { hora: "15:44", enVentana: true });
+  assert.deepEqual(t("2026-10-30T19:45:30Z"), { hora: "15:45", enVentana: true }, "los dos extremos cuentan");
+  assert.deepEqual(t("2026-10-30T19:46:00Z"), { hora: "15:46", enVentana: false });
+  // Invierno (EST, UTC−5, desde el domingo 1 nov): las 19:45–20:45 UTC.
+  assert.deepEqual(t("2026-11-02T19:44:00Z"), { hora: "14:44", enVentana: false });
+  assert.deepEqual(t("2026-11-02T19:45:00Z"), { hora: "14:45", enVentana: true });
+  assert.deepEqual(t("2026-11-02T20:44:00Z"), { hora: "15:44", enVentana: true });
+  assert.deepEqual(t("2026-11-02T20:46:00Z"), { hora: "15:46", enVentana: false });
+  // El día del cambio de hora (1 nov, 06:00 UTC) no confunde: a media tarde ya es invierno.
+  assert.equal(t("2026-11-01T20:00:00Z").hora, "15:00");
+});
+
+test("registro: una sola foto al día, la primera de la franja; sin barrido en la franja queda el último", () => {
+  const day = "2026-11-02";
+  const mk = (iso, nombre = "SPY") => {
+    const time = photoTime(Date.parse(iso));
+    return sample({ fecha: day, nombre, horaNy: time.hora, enVentana: time.enVentana });
+  };
+  // Simula los barridos del día, uno tras otro, como lo haría el flujo: toma la foto si `takesPhoto`, y la sustituye.
+  const run = (times) => {
+    let rows = [];
+    for (const iso of times) {
+      const mine = [mk(iso)];
+      rows = updateRows(rows, mine, { today: day, hist: null, last: "2026-10-30", keepToday: !takesPhoto(rows, day) }).rows;
+    }
+    return rows.filter((r) => r.fecha === day).map((r) => r.horaNy);
+  };
+  // Día normal en invierno, un barrido por hora: gana el de las 15:xx dentro de la franja, y los de después no la tocan.
+  assert.deepEqual(run(["2026-11-02T14:50:00Z", "2026-11-02T15:50:00Z", "2026-11-02T16:50:00Z", "2026-11-02T17:50:00Z", "2026-11-02T18:50:00Z", "2026-11-02T19:50:00Z", "2026-11-02T20:50:00Z", "2026-11-02T21:20:00Z"]), ["14:50"]);
+  // Media sesión: si hay dos barridos en la franja, vale el primero.
+  assert.deepEqual(run(["2026-11-02T18:50:00Z", "2026-11-02T20:10:00Z", "2026-11-02T20:40:00Z", "2026-11-02T21:10:00Z"]), ["15:10"]);
+  // Sin barrido en la franja (14:45–15:45 NY = 19:45–20:45 UTC): queda el último con el mercado abierto.
+  assert.deepEqual(run(["2026-11-02T15:20:00Z", "2026-11-02T17:20:00Z", "2026-11-02T19:20:00Z", "2026-11-02T20:55:00Z", "2026-11-02T21:25:00Z"]), ["16:25"]);
+  // Día que cierra antes (13:00 NY, el viernes después de Acción de Gracias): ningún barrido cae en la franja y queda el último.
+  const half = (list) => {
+    let rows = [];
+    for (const iso of list) {
+      const time = photoTime(Date.parse(iso));
+      rows = updateRows(rows, [sample({ fecha: "2026-11-27", horaNy: time.hora, enVentana: time.enVentana })], { today: "2026-11-27", hist: null, last: "2026-11-25", keepToday: !takesPhoto(rows, "2026-11-27") }).rows;
+    }
+    return rows.map((r) => [r.horaNy, r.enVentana]);
+  };
+  assert.deepEqual(half(["2026-11-27T14:30:00Z", "2026-11-27T16:30:00Z", "2026-11-27T17:55:00Z"]), [["12:55", false]]);
+  // La foto de la franja manda sobre cualquier barrido de después; una de reserva se sustituye.
+  assert.equal(takesPhoto([mk("2026-11-02T20:00:00Z")], day), false);
+  assert.equal(takesPhoto([mk("2026-11-02T16:00:00Z")], day), true);
+  assert.equal(takesPhoto([sample({ fecha: day, horaNy: "", enVentana: null })], day), true, "filas antiguas, sin franja, no cuentan como foto");
+});
+
+test("registro: las filas guardadas antes de las columnas nuevas se leen y se escriben con las celdas vacías", () => {
+  const old = "fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado\n2026-10-30,1,SPY,2026-11-20,500,495,5,60,4,3.5,4,12,20,8,9.5,Bolsa,SPY,0,,,\n";
+  const rows = parseCsv(old);
+  assert.equal(rows.length, 1);
+  assert.deepEqual([rows[0].horaNy, rows[0].enVentana, rows[0].dentroReglas], ["", null, null]);
+  const again = toCsv(rows).split("\n")[1];
+  assert.ok(again.endsWith(",,,,"), "hora_ny, en_ventana y dentro_reglas siguen vacías");
+  // Sin dentro_reglas cuenta como dentro: el análisis no cambia para lo antiguo.
+  assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10 }]).n, 1);
+  assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10, dentroReglas: false }]).n, 0, "lo de fuera de Reglas no entra en el análisis");
+  assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10, nivel: 2 }]).n, 0, "los niveles 0 a 2 solo se guardan");
 });

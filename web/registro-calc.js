@@ -26,12 +26,15 @@ export const COLUMNS = [
   ["cierre", "cierre_vencimiento", "n"],
   ["resultado", "resultado", "n"],
   ["estado", "estado", "s"],
+  ["horaNy", "hora_ny", "s"],
+  ["enVentana", "en_ventana", "y"],
+  ["dentroReglas", "dentro_reglas", "y"],
 ];
 
 /** Lo que significa cada columna, para quien lea el CSV sin la app (se publica como registro/columnas.txt). */
 export const COLUMN_HELP = `Registro de deals de Centinela: una fila por deal y día, un archivo por mes (AAAA-MM.csv).
-Son los bull puts de nivel 3 o más que proponía Centinela con las reglas de fábrica sobre la lista base, tras el último barrido del día.
-Solo lo que Centinela propone: nada de lo que apunta nadie ni de sus reglas.
+Foto del día: los bull puts de todos los niveles (0 a 5) con rentab. esperada calculable, dentro y fuera de las reglas de fábrica, sobre la lista base. La foto es el primer barrido con el mercado abierto entre las 14:45 y las 15:45 de Nueva York; si no hay ninguno, el último barrido del día. Hasta el 30 oct 2026 solo se guardaban los de nivel 3 o más del último barrido.
+Solo datos de la lista pública: nada de lo que apunta nadie ni de sus reglas.
 
 fecha                 Día del barrido (hora de Nueva York).
 primera_aparicion     1 si es la primera vez que sale ese deal (mismo nombre, vencimiento y strikes); 0 si ya había salido otro día. El análisis usa solo las 1.
@@ -53,6 +56,9 @@ resultados_en_plazo   1 si el nombre presenta resultados antes del vencimiento.
 cierre_vencimiento    Cierre del subyacente el día del vencimiento (vacío hasta que vence).
 resultado             Dólares por contrato: cobro neto menos la pérdida al vencimiento (como mucho el ancho x 100). Vacío hasta que vence.
 estado                ganado si el resultado es positivo, perdido si no; vacío hasta que vence.
+hora_ny               Hora de Nueva York (HH:MM) del barrido que dio la foto de ese día. Vacío en las filas guardadas antes del 31 oct 2026.
+en_ventana            si si el barrido cayó entre las 14:45 y las 15:45 de Nueva York (la franja de la foto); no si fue un barrido de reserva (ninguno cayó en la franja, así que vale el último con el mercado abierto). Vacío en las filas antiguas.
+dentro_reglas         si si el deal cumple las reglas de fábrica; no si Centinela no lo habría propuesto (se guarda para poder comparar niveles bajos). Vacío en las filas antiguas, que son todas si.
 `;
 
 const csvCell = (value) => {
@@ -66,7 +72,7 @@ export function toCsv(rows) {
     lines.push(
       COLUMNS.map(([key, , type]) => {
         const v = row[key];
-        return csvCell(type === "b" ? (v ? 1 : 0) : v);
+        return csvCell(type === "b" ? (v ? 1 : 0) : type === "y" ? (v == null ? "" : v ? "sí" : "no") : v);
       }).join(","),
     );
   }
@@ -120,6 +126,7 @@ export function parseCsv(text) {
         row[key] = raw === "" ? null : Number(raw);
         if (row[key] != null && !Number.isFinite(row[key])) ok = false;
       } else if (type === "b") row[key] = raw === "1";
+      else if (type === "y") row[key] = raw === "" ? null : ["sí", "si", "1"].includes(raw);
       else row[key] = raw;
     }
     if (ok && row.fecha && row.nombre && row.vencimiento && row.corto != null && row.largo != null) out.push(row);
@@ -208,7 +215,8 @@ function thirds(list) {
 /** Todo lo que enseña la pestaña, con los deals ya vencidos y contados una vez (su primera aparición). */
 export function analyze(rows, rules = DEFAULT_RULES) {
   const all = rows ?? [];
-  const done = all.filter((row) => row.primera && row.estado && row.resultado != null);
+  // El análisis sigue con lo que Centinela habría propuesto: nivel 3 o más y dentro de Reglas (los niveles 0 a 2 y lo de fuera solo se guardan).
+  const done = all.filter((row) => row.primera && row.estado && row.resultado != null && row.nivel >= 3 && row.dentroReglas !== false);
   const months = new Set(done.map((row) => row.vencimiento.slice(0, 7)));
   const since = all.reduce((min, row) => (!min || row.fecha < min ? row.fecha : min), "");
   const level = (l) => done.filter((row) => row.nivel === l);

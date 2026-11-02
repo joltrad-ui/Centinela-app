@@ -1,6 +1,8 @@
 // Registro de deals. Lo ejecuta el barrido de GitHub Actions tras guardar cada barrido con el mercado abierto
-// (el último del día deja el resultado) y nunca un push. Escribe registro/AAAA-MM.csv (una fila por deal y día,
-// un archivo por mes), registro/indice.json y registro/columnas.txt, y apunta el resultado de lo que ya venció.
+// y nunca un push. Escribe registro/AAAA-MM.csv (una fila por deal y día, un archivo por mes), registro/indice.json y
+// registro/columnas.txt, y apunta el resultado de lo que ya venció.
+// La foto del día es el primer barrido con el mercado abierto entre las 14:45 y las 15:45 de Nueva York; mientras no
+// haya ninguno en la franja, cada barrido deja una foto de reserva (la última con el mercado abierto es la que queda).
 //
 //   node scanner/registro.mjs --out out                               con el barrido y los cierres de esa carpeta
 //   node scanner/registro.mjs --fixtures test/fixtures --out out-ejemplo   con los datos de ejemplo
@@ -14,12 +16,28 @@ import { DEFAULT_RULES, correlationGroups, daysBetween, nyToday, qualityDeals } 
 import { COLUMN_HELP, keyOf, parseCsv, resolveRows, toCsv } from "../web/registro-calc.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MIN_LEVEL = 3;
+const MIN_LEVEL = 0; // todos los niveles: sin los bajos no se puede comparar si los altos rinden más
+const WINDOW = [14 * 60 + 45, 15 * 60 + 45]; // franja de la foto, en minutos de Nueva York, con los dos extremos dentro
 const r2 = (n) => Math.round(n * 100) / 100;
 const r1 = (n) => Math.round(n * 10) / 10;
 
-/** Los deals de nivel 3 o más de este barrido, con las reglas de fábrica. `groups` viene de correlationGroups. */
-export function dayRows({ symbols, hist, today, groups, rules = DEFAULT_RULES }) {
+/** Hora de Nueva York (HH:MM, sigue el cambio de hora) de un instante y si cae en la franja de la foto. */
+export function photoTime(at) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(at));
+  const h = Number(parts.find((p) => p.type === "hour").value);
+  const m = Number(parts.find((p) => p.type === "minute").value);
+  const minutes = h * 60 + m;
+  return { hora: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`, enVentana: minutes >= WINDOW[0] && minutes <= WINDOW[1] };
+}
+
+/** ¿Este barrido deja la foto del día? No si el día ya tiene la foto de la franja (una sola foto al día); sí en cualquier otro caso:
+ *  dentro de la franja es la foto, y fuera es una de reserva que el siguiente barrido sustituirá. */
+export const takesPhoto = (existing, today) => !existing.some((row) => row.fecha === today && row.enVentana === true);
+
+/** Los deals de este barrido, de todos los niveles, con las reglas de fábrica. `groups` viene de correlationGroups.
+ *  `at` es la hora del barrido (para `hora_ny` y `en_ventana`). */
+export function dayRows({ symbols, hist, today, groups, at, rules = DEFAULT_RULES }) {
+  const time = photoTime(at ?? Date.now());
   const out = qualityDeals(
     symbols,
     { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist, held: [], price: "nat", maxProb: rules.maxProb, maxWidth: rules.width },
@@ -27,7 +45,7 @@ export function dayRows({ symbols, hist, today, groups, rules = DEFAULT_RULES })
   );
   const rows = [];
   for (const d of out.deals) {
-    if (!d.ok || d.level < MIN_LEVEL) continue;
+    if (d.level < MIN_LEVEL) continue;
     const r = d.row;
     const earnDte = d.sym.er?.d ? daysBetween(today, d.sym.er.d) : null;
     rows.push({
@@ -52,6 +70,9 @@ export function dayRows({ symbols, hist, today, groups, rules = DEFAULT_RULES })
       cierre: null,
       resultado: null,
       estado: "",
+      horaNy: time.hora,
+      enVentana: time.enVentana,
+      dentroReglas: d.ok,
     });
   }
   return rows;
@@ -59,7 +80,12 @@ export function dayRows({ symbols, hist, today, groups, rules = DEFAULT_RULES })
 
 /** Junta lo que ya había con las filas de hoy: las de hoy sustituyen a las de un barrido anterior del mismo día,
  *  se marca la primera aparición de cada deal y se apunta el resultado de lo que ya venció. */
-export function updateRows(existing, todayRows, { today, hist, last }) {
+export function updateRows(existing, todayRows, { today, hist, last, keepToday = false }) {
+  if (keepToday) {
+    // El día ya tiene su foto: solo se apunta lo que haya vencido.
+    const resolved = resolveRows(existing, hist, last);
+    return { rows: existing, resolved, added: 0, first: 0 };
+  }
   const before = existing.filter((row) => row.fecha !== today);
   const seen = new Set(before.map(keyOf));
   const fresh = todayRows.map((row) => {
@@ -119,10 +145,12 @@ async function main() {
   const today = scan.today ?? nyToday(new Date(scan.at));
   const dir = path.join(out, "registro");
   const existing = await readRegistry(dir);
-  const todayRows = dayRows({ symbols: scan.symbols, hist, today, groups });
-  const { rows, resolved, added, first } = updateRows(existing, todayRows, { today, hist, last: file.last ?? today });
+  const todayRows = dayRows({ symbols: scan.symbols, hist, today, groups, at: scan.at });
+  const keepToday = !takesPhoto(existing, today);
+  const { rows, resolved, added, first } = updateRows(existing, todayRows, { today, hist, last: file.last ?? today, keepToday });
   await writeRegistry(dir, rows, { example: Boolean(scan.example) });
-  const msg = `Registro: ${added} deals de hoy (${first} por primera vez), ${resolved} vencidos resueltos, ${rows.length} filas en total`;
+  const time = photoTime(scan.at);
+  const msg = `Registro: ${keepToday ? `el día ya tiene su foto (${time.hora} NY: no se toca)` : `${added} deals de hoy (${first} por primera vez), foto de las ${time.hora} NY ${time.enVentana ? "en la franja" : "de reserva"}`}, ${resolved} vencidos resueltos, ${rows.length} filas en total`;
   console.log(msg);
   if (process.env.GITHUB_ACTIONS) console.log(`::notice title=Registro::${msg}`);
 }
