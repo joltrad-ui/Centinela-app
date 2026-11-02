@@ -35,7 +35,7 @@ expiries.forEach((expiry, e) => {
   for (let i = 0; i < 80; i++) {
     const name = pick(names);
     const width = pick([2.5, 5, 5, 10]);
-    const level = pick([3, 3, 4, 4, 5]);
+    const level = pick([1, 2, 3, 3, 3, 4, 4, 5, 5]); // los de nivel 1 y 2 solo se guardan: la pestaña no los cuenta
     const price = 60 + Math.floor(rnd() * 400);
     const short = Math.round((price * (0.9 + rnd() * 0.04)) / 2.5) * 2.5;
     const net = Math.round(width * 100 * (0.1 + rnd() * 0.12) - 1.4);
@@ -48,13 +48,13 @@ expiries.forEach((expiry, e) => {
     // Pierde con probabilidad algo mayor si los dos cálculos discrepan mucho.
     const lose = (together && GROUPS[name] === "SPY+XSP+QQQ+IWM") || rnd() < 0.06 + Math.min(0.1, dis / loss);
     const close = lose ? short - width * (0.1 + rnd() * (together ? 1.2 : 0.6)) : short * (1 + rnd() * 0.08);
-    const base = { nombre: name, vencimiento: expiry, corto: short, largo: short - width, ancho: width, neto: net, nivel: level, retExp, err: Math.round(expected * 0.4 * 100) / 100, perdHist: hist, perdVol: vol, desacuerdo: dis, prob: Math.round((6 + rnd() * 9) * 10) / 10, bloque: blockOf.get(name) ?? "", grupo: GROUPS[name] ?? name, resultados: rnd() < 0.08, cierre: Math.round(close * 100) / 100 };
+    const base = { nombre: name, vencimiento: expiry, corto: short, largo: short - width, ancho: width, neto: net, nivel: level, retExp, err: Math.round(expected * 0.4 * 100) / 100, perdHist: hist, perdVol: vol, desacuerdo: dis, prob: Math.round((6 + rnd() * 9) * 10) / 10, bloque: blockOf.get(name) ?? "", grupo: GROUPS[name] ?? name, resultados: rnd() < 0.08, cierre: Math.round(close * 100) / 100, horaNy: "15:12", enVentana: true, dentroReglas: level >= 3 };
     base.resultado = resultOf(base, base.cierre);
     base.estado = base.resultado > 0 ? "ganado" : "perdido";
     // Sale entre uno y tres días, desde cuatro a seis semanas antes de vencer.
     const days = 1 + Math.floor(rnd() * 3);
     const start = 28 + Math.floor(rnd() * 14);
-    for (let d = 0; d < days; d++) rows.push({ ...base, fecha: addDays(expiry, -(start - d * 2)), primera: d === 0 });
+    for (let d = 0; d < days; d++) rows.push({ ...base, fecha: addDays(expiry, -(start - d * 2)), primera: d === 0, horaNy: d === 1 ? "16:20" : base.horaNy, enVentana: d === 1 ? false : base.enVentana });
   }
 });
 rows.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.nombre.localeCompare(b.nombre)));
