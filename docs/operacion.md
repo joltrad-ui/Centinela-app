@@ -17,7 +17,7 @@ bash scripts/ejemplo-fondo.sh    # deja la app de ejemplo corriendo (solo si no 
 node scripts/ver.mjs …           # mirar la app como un móvil: errores, desbordes, medidas y textos
 ```
 
-El barrido real necesita salida a internet hacia `cdn.cboe.com`, `cdn-api.cboe.com`, `stockanalysis.com`, `raw.githubusercontent.com` y, para los avisos, `ntfy.sh`.
+El barrido real necesita salida a internet hacia `cdn.cboe.com`, `cdn-api.cboe.com`, `api.nasdaq.com` (fechas de resultados), `stockanalysis.com` (respaldo de esas fechas), `raw.githubusercontent.com` y, para los avisos, `ntfy.sh`.
 
 **Cómo probar sin esperar:** con la muestra y las pruebas, no con barridos reales: `npm test`, `npm run ejemplo` y `node scanner/scan.mjs --public --fixtures test/fixtures --out /tmp/x`. Agrupar los cambios en un solo envío.
 

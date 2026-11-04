@@ -20,6 +20,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { calendarDays, earliest, mergeEarnings, parseNasdaq, suspicious } from "./resultados.mjs";
 import {
   alertText,
   cleanSymbol,
@@ -194,6 +195,22 @@ async function fetchEarnings(symbol, today) {
   return { d: next.date, x: `${sessionLabel(next.time)}, ${confirmed}` };
 }
 
+async function fetchNasdaq(wanted, today) {
+  const days = calendarDays(today);
+  const found = [];
+  let failed = 0;
+  await mapPool(days, 4, async (date) => {
+    try {
+      const res = await getJson(`https://api.nasdaq.com/api/calendar/earnings?date=${date}`, { Origin: "https://www.nasdaq.com", Referer: "https://www.nasdaq.com/" }, 12_000, 2);
+      if (!res.body) throw new Error(`respondió ${res.status}`);
+      found.push(...parseNasdaq(res.body, date, wanted));
+    } catch {
+      failed++;
+    }
+  });
+  return { hits: earliest(found), asked: days.length, failed };
+}
+
 async function refreshEarnings(symbols, kinds, state, today) {
   if (FIXTURES) {
     const file = path.join(FIXTURES, "_earnings.json");
@@ -201,7 +218,7 @@ async function refreshEarnings(symbols, kinds, state, today) {
       const rows = JSON.parse(await readFile(file, "utf8"));
       for (const [symbol, d] of Object.entries(rows)) state.earn[symbol] = { at: today, d, x: "fecha estimada" };
     }
-    return { asked: 0, failed: 0 };
+    return { asked: 0, failed: 0, withDate: 0, suspicious: false };
   }
   const due = symbols.filter((symbol) => {
     if (kinds.get(symbol) === "etf") return false;
@@ -211,16 +228,28 @@ async function refreshEarnings(symbols, kinds, state, today) {
     return daysBetween(hit.at, today) >= EARN_TTL_DAYS;
   });
   const batch = due.slice(0, EARN_BUDGET);
-  let failed = 0;
-  await mapPool(batch, 4, async (symbol) => {
+  if (!batch.length) return { asked: 0, failed: 0, withDate: 0, suspicious: false };
+  // 1) Calendario de Nasdaq: un día por consulta, todos los nombres a la vez.
+  const nasdaq = await fetchNasdaq(new Set(batch), today);
+  // 2) Respaldo para los que Nasdaq no trae: la fuente anterior, nombre a nombre.
+  const rest = batch.filter((symbol) => !nasdaq.hits.has(symbol));
+  const backup = new Map();
+  let failed = nasdaq.failed;
+  await mapPool(rest, 4, async (symbol) => {
     try {
       const hit = await fetchEarnings(symbol, today);
-      state.earn[symbol] = { at: today, ...hit };
+      if (hit.d) backup.set(symbol, hit);
     } catch {
       failed++;
     }
   });
-  return { asked: batch.length, failed };
+  let withDate = 0;
+  for (const symbol of batch) {
+    const hit = nasdaq.hits.get(symbol) ?? backup.get(symbol) ?? null;
+    if (hit) withDate++;
+    state.earn[symbol] = { at: today, ...mergeEarnings(state.earn[symbol], hit, today) };
+  }
+  return { asked: batch.length, failed, withDate, suspicious: suspicious(batch.length, withDate), nasdaq: nasdaq.hits.size, nasdaqDays: nasdaq.asked, nasdaqFailed: nasdaq.failed };
 }
 
 // ---------- estado entre barridos ----------
@@ -536,6 +565,11 @@ export async function scanOnce({ force = false, replace = false } = {}) {
     for (const sym of symbols) {
       const hit = state.earn[sym.s];
       sym.er = hit && hit.d && hit.d >= today ? { d: hit.d, x: hit.x } : null;
+    }
+    if (earn.asked) {
+      const msg = `Resultados: ${earn.withDate} de ${earn.asked} con fecha (Nasdaq ${earn.nasdaq ?? 0}, ${earn.failed} consultas fallidas)`;
+      log(msg);
+      if (earn.suspicious && process.env.GITHUB_ACTIONS) console.log(`::warning title=Resultados::Ninguna de ${earn.asked} acciones ha devuelto fecha de resultados: la fuente ha cambiado o falla. ${msg}`);
     }
 
     // IV diaria por nombre, para tener historia propia.

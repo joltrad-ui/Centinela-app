@@ -6,7 +6,7 @@ import { signedPct, usd2 } from "./hoy-calc.js";
 import { W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
 
 export function createVistas(h) {
-  const { hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock } = h;
+  const { hoy, ctx, esc, chip, stats, levelTag, liveDeals, foldBlock } = h;
 
     function segmented() {
       const item = (id, label) => `<button data-hoy="view" data-v="${id}" aria-pressed="${hoy.view === id}">${label}</button>`;
@@ -16,7 +16,7 @@ export function createVistas(h) {
     function controls(o, exp = "") {
       const blocks = ctx.blockOrder();
       const held = o.opts.held;
-      const fromDeals = openDeals().map((deal) => deal.b).filter(Boolean);
+      const fromDeals = liveDeals().map((deal) => deal.b).filter(Boolean);
       const nAct = (hoy.price === "mid" ? 1 : 0) + (held.length ? 1 : 0);
       const wDollars = Math.min(W.max, Math.max(W.min, Math.round((o.opts.width * 100) / W.step) * W.step));
       const head = moreHead('data-hoy="filters-open"', hoy.fOpen, nAct);
