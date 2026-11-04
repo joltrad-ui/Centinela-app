@@ -308,15 +308,17 @@ test("Reglas y Avisos: pasos, interruptores, avisos y restaurar funcionan", { sk
   await goTab(page, "Reglas");
   await page.locator('[data-act="reset"]').first().click(); // reglas de fábrica, sea cual sea la configuración guardada
   await page.waitForTimeout(300);
-  const before = await page.locator("#app").innerText();
+  // "hace un momento" pasa a "hace 1 min" si la ejecución cruza un minuto: no es un cambio de reglas.
+  const appText = async () => (await page.locator("#app").innerText()).replace(/hace (un momento|\d+ min)/g, "hace _");
+  const before = await appText();
   await page.locator("[data-step]").first().click();
   await page.waitForTimeout(300);
   await page.locator("[data-rule-switch]").first().click();
   await page.waitForTimeout(300);
-  assert.notEqual(await page.locator("#app").innerText(), before, "los controles de Reglas no cambian nada");
+  assert.notEqual(await appText(), before, "los controles de Reglas no cambian nada");
   await page.locator('[data-act="reset"]').first().click();
   await page.waitForTimeout(300);
-  assert.equal(await page.locator("#app").innerText(), before, "Restaurar debe volver a las reglas de fábrica");
+  assert.equal(await appText(), before, "Restaurar debe volver a las reglas de fábrica");
   await goTab(page, "Avisos");
   const alerts = page.locator("[data-alert]");
   if (await alerts.count()) {
