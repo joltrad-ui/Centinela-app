@@ -105,6 +105,11 @@ export function createHoy(ctx) {
   let deals = (Array.isArray(rawDeals) ? rawDeals : []).map(cleanDeal).filter(Boolean).slice(0, MAX_DEALS);
   const keepDeals = () => ctx.writeLocal(LS_DEALS, deals);
   const openDeals = () => deals.filter((deal) => !deal.closedAt);
+  /** Los abiertos que de verdad cuentan como "tengo": uno que ya pasó su vencimiento sigue en Mis deals hasta que lo cierres, pero ya no ocupa bloque. */
+  const liveDeals = () => {
+    const today = nyToday();
+    return openDeals().filter((deal) => deal.expiry >= today);
+  };
   const cobrado = (deal) => deal.credit * 100 * deal.qty - deal.fee * deal.qty;
   const box = (label, value, cls = "", note = "") => `<div class="fi-box"><span class="fi-lab">${label}</span><b class="num ${cls}">${value}</b>${note}</div>`;
   /** Lo que llevas de un deal apuntado a precio medio de hoy (sin la comisión de cierre); null sin precio. */
@@ -124,7 +129,7 @@ export function createHoy(ctx) {
   // ---------- opciones y cuentas ----------
 
   /** Bloques que ya están abiertos: los que él marca a mano y los de sus deals apuntados sin cerrar. */
-  const heldBlocks = (except = null) => [...new Set([...hoy.held, ...openDeals().filter((deal) => deal !== except).map((deal) => deal.b).filter(Boolean)])];
+  const heldBlocks = (except = null) => [...new Set([...hoy.held, ...liveDeals().filter((deal) => deal !== except).map((deal) => deal.b).filter(Boolean)])];
 
   function options() {
     const rules = state.config.rules;
@@ -193,7 +198,7 @@ export function createHoy(ctx) {
   const foldBlock = (action, value, title, sub, open, body) =>
     `<section class="fi-fold${action === "fold" ? "" : " solo"}"><button class="fi-fold-h" data-hoy="${action}"${value ? ` data-v="${value}"` : ""} aria-expanded="${open}"><span class="fi-fold-t">${title}</span>${sub ? `<span class="fi-fold-s">${sub}</span>` : ""}<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>${open ? `<div class="fi-fold-b">${body}</div>` : ""}</section>`;
   const fold = (id, title, sub, body) => foldBlock("fold", id, title, sub, hoy.folds.includes(id), body);
-  const { segmented, viewMapa, viewNube, viewBarras } = createVistas({ hoy, ctx, esc, chip, stats, levelTag, openDeals, foldBlock });
+  const { segmented, viewMapa, viewNube, viewBarras } = createVistas({ hoy, ctx, esc, chip, stats, levelTag, liveDeals, foldBlock });
 
   const fiHead = (sym) => {
     const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");

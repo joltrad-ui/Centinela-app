@@ -1179,3 +1179,44 @@ test("registro: dayRows guarda solo nivel 3 o más, dentro de Reglas de fábrica
     assert.equal(r.fecha, today);
   }
 });
+
+// ---------- fechas de resultados ----------
+import { calendarDays, earliest, mergeEarnings, nasdaqSession, parseNasdaq, suspicious } from "../scanner/resultados.mjs";
+
+test("Resultados: días laborables del calendario", () => {
+  const days = calendarDays("2026-11-04", 10); // miércoles
+  assert.equal(days[0], "2026-11-04");
+  assert.ok(!days.includes("2026-11-07") && !days.includes("2026-11-08"), "sin fines de semana");
+  assert.ok(days.includes("2026-11-09") && days.at(-1) === "2026-11-13", days.join());
+});
+
+test("Resultados: lectura de Nasdaq y hora de la sesión", () => {
+  assert.equal(nasdaqSession("time-after-hours"), "después del cierre");
+  assert.equal(nasdaqSession("time-pre-market"), "antes de la apertura");
+  assert.equal(nasdaqSession("time-not-supplied"), "hora sin confirmar");
+  const body = { data: { rows: [{ symbol: "NVDA", time: "time-after-hours" }, { symbol: "ZZZZ", time: "time-pre-market" }, { symbol: "nvda " }] } };
+  const hits = parseNasdaq(body, "2026-11-17", new Set(["NVDA", "AAPL"]));
+  assert.deepEqual(hits.map((h) => h.s), ["NVDA", "NVDA"]);
+  assert.equal(hits[0].x, "después del cierre, según Nasdaq");
+  assert.deepEqual(parseNasdaq({ data: null }, "2026-11-17", new Set(["NVDA"])), []);
+  assert.deepEqual(parseNasdaq(null, "2026-11-17", new Set(["NVDA"])), []);
+});
+
+test("Resultados: la fecha más próxima y una consulta vacía no borra la guardada", () => {
+  const best = earliest([
+    { s: "NVDA", d: "2026-11-18", x: "a" },
+    { s: "NVDA", d: "2026-11-17", x: "b" },
+    { s: "AAPL", d: "2027-01-29", x: "c" },
+  ]);
+  assert.equal(best.get("NVDA").d, "2026-11-17");
+  assert.deepEqual(mergeEarnings({ d: "2026-11-17", x: "b" }, null, "2026-11-04"), { d: "2026-11-17", x: "b" });
+  assert.deepEqual(mergeEarnings({ d: "2026-10-30", x: "b" }, null, "2026-11-04"), { d: null, x: "" }, "una fecha pasada se descarta");
+  assert.deepEqual(mergeEarnings(undefined, null, "2026-11-04"), { d: null, x: "" });
+  assert.equal(mergeEarnings({ d: "2026-11-17", x: "b" }, { d: "2026-11-19", x: "n" }, "2026-11-04").d, "2026-11-19", "la nueva manda");
+});
+
+test("Resultados: aviso cuando casi todas salen vacías", () => {
+  assert.equal(suspicious(21, 0), true);
+  assert.equal(suspicious(21, 3), false);
+  assert.equal(suspicious(2, 0), false, "con pocas consultas no es sospechoso");
+});

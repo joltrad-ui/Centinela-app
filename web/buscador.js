@@ -80,9 +80,10 @@ export function createBuscador(ctx) {
     const rules = state.config.rules;
     const hoyLs = readLocal(LS_HOY) ?? {};
     const price = hoyLs.price === "mid" ? "mid" : "nat";
-    const mine = (readLocal(LS_MISDEALS) ?? []).filter((d) => d && typeof d.s === "string" && !d.closedAt);
-    const held = [...new Set([...(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : []), ...mine.map((d) => d.b).filter(Boolean)])];
     const today = nyToday();
+    // Un deal que ya pasó su vencimiento sigue en Mis deals hasta que se cierra, pero ya no cuenta como "tengo".
+    const mine = (readLocal(LS_MISDEALS) ?? []).filter((d) => d && typeof d.s === "string" && !d.closedAt && !(typeof d.expiry === "string" && d.expiry.slice(0, 10) < today));
+    const held = [...new Set([...(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : []), ...mine.map((d) => d.b).filter(Boolean)])];
     const symbols = listSymbols();
     const key = JSON.stringify([state.scan?.at, state.hist?.at, rules, price, held, today, symbols.map((sym) => sym.s)]);
     if (cache.key !== key) {
@@ -198,6 +199,7 @@ export function createBuscador(ctx) {
       <div class="bs-panel">
         ${bar("mode", [["off", "Quitar o poner"], ["tengo", "Marcar las que tengo"]], bs.mark ? "tengo" : "off", "Qué hace tocar una acción")}
         <p class="xs muted">${bs.mark ? "Toca para marcar o desmarcar las que tienes. El punto ● marca las que ya tienes (también las que tienen un deal abierto en Mis deals). Se queda solo en este dispositivo." : "Toca para quitar o poner una acción. Una acción quitada desaparece de toda la app."}</p>
+        ${bs.mark ? "" : '<p class="xs muted">● = ya la tienes: la marcaste tú o tiene un deal abierto sin vencer en Mis deals.</p>'}
         <div class="bs-actions">${actions}</div>
         ${groups}
       </div>

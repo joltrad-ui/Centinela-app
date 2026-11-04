@@ -515,6 +515,26 @@ test("Buscador: ayuda en las etiquetas y combinaciones de filtros guardadas", { 
   await page.close();
 });
 
+test("Buscador: un deal vencido sin cerrar ya no marca la acción como que la tengo", { skip }, async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
+  await context.addInitScript(() => {
+    const deal = (id, s, expiry) => ({ id, s, b: "", expiry, short: 80, long: 75, credit: 1, qty: 1, fee: 0, openedAt: 1, closedAt: null, result: null });
+    localStorage.setItem("centinela.misdeals.v1", JSON.stringify([deal("t1", "TLT", "2020-01-17"), deal("t2", "SPY", "2099-01-15")]));
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE);
+  await page.waitForSelector(".hoy-grid, .stats");
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="names"]').click();
+  assert.equal(await page.locator('[data-bs="name"][data-v="SPY"].mine').count(), 1, "SPY (deal sin vencer) lleva el punto");
+  assert.equal(await page.locator('[data-bs="name"][data-v="TLT"].mine').count(), 0, "TLT (deal vencido) no lleva el punto");
+  assert.match(await page.locator(".bs-panel").innerText(), /ya la tienes/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 test("Reglas: copiar mis datos y restaurarlos desde la copia", { skip }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
   await context.addInitScript(() => {
