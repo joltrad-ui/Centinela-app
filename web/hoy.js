@@ -17,9 +17,11 @@ import { createVistas } from "./hoy-vistas.js";
 import { PR, W, filterBars, filterRow } from "./filtros.js";
 import { PROBS, probOk, priceChart, WIDTHS, FL_W_MIN, FL_W_MAX, FL_PR_MIN, FL_PR_MAX, FOLDS, VIEWS, MAX_DEALS, usd2, signedUsd, signedPct, nearest, dealKey, parseNumber, safetyItem, failShort, spanText, usdS, tone, yieldTable, orderText, benefit, sortDeals, dollars, riskTag, DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import {
+  GROUP_PREFIX,
   LEVEL_COST_PCT,
   PROB_OFF,
   atMid,
+  blockOf,
   dealChecks,
   dealStatus,
   fmtStrike,
@@ -27,6 +29,7 @@ import {
   labelOf,
   levelRecord,
   mapExpiries,
+  migrateBlockNames,
   monthRange,
   num,
   nyToday,
@@ -128,8 +131,17 @@ export function createHoy(ctx) {
 
   // ---------- opciones y cuentas ----------
 
-  /** Bloques que ya están abiertos: los que él marca a mano y los de sus deals apuntados sin cerrar. */
-  const heldBlocks = (except = null) => [...new Set([...hoy.held, ...liveDeals().filter((deal) => deal !== except).map((deal) => deal.b).filter(Boolean)])];
+  /** Bloques que ya están abiertos: los que él marca a mano y los de sus deals apuntados sin cerrar, con el bloque efectivo
+   *  de este mes de su símbolo (`deal.b`, el de la lista al apuntarlo, ya no cuenta). */
+  const heldBlocks = (except = null) => ctx.bloques.held(hoy.held, liveDeals().filter((deal) => deal !== except));
+  // Cuando los bloques cambian (mes, umbral de Reglas), lo marcado en Mis bloques pasa a los bloques nuevos de sus nombres.
+  ctx.bloques.onChange((before, now) => {
+    const next = migrateBlockNames(hoy.held, before, now);
+    if (JSON.stringify(next) === JSON.stringify(hoy.held)) return false;
+    hoy.held = next;
+    keep();
+    return true;
+  });
 
   function options() {
     const rules = state.config.rules;
@@ -201,14 +213,31 @@ export function createHoy(ctx) {
   const { segmented, viewMapa, viewNube, viewBarras } = createVistas({ hoy, ctx, esc, chip, stats, levelTag, liveDeals, foldBlock });
 
   const fiHead = (sym) => {
-    const name = [sym.n, sym.b].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
+    const name = [sym.n].filter((text, i, all) => text && text !== sym.s && all.indexOf(text) === i).join(" · ");
     const chg = typeof sym.c === "number" && Number.isFinite(sym.c) ? `<span class="fi-chg num ${tone(sym.c)}">${sym.c > 0 ? "+" : sym.c < 0 ? "−" : ""}${num(Math.abs(sym.c), 2)} %</span>` : "";
     return `<div class="fi-head">
         <div class="fi-id"><h2>${esc(sym.s)}</h2><b class="fi-price num">${sym.p > 0 ? usd2(sym.p) : "sin precio"}</b>${chg}</div>
         <button class="fi-x" data-hoy="close" aria-label="Cerrar">✕</button>
       </div>
-      <p class="small muted fi-sub">${esc(name)}</p>`;
+      <p class="small muted fi-sub">${esc(name)}</p>
+      <p class="xs muted fi-blk">${blockLine(sym)}</p>`;
   };
+
+  /** La línea del bloque en la ficha: en qué bloque cuenta el nombre para el punto "bloque nuevo" y por qué. */
+  function blockLine(sym) {
+    const info = ctx.bloques.info();
+    const block = blockOf(sym);
+    if (!block) return "Bloque: sin bloque";
+    if (block.startsWith(GROUP_PREFIX)) {
+      const share = info.share[sym.s];
+      return `Bloque: ${esc(block)} (en la lista: ${esc(sym.b ?? "")}).${share != null ? ` Cae junto al resto del grupo el ${Math.round(share * 100)} % de las veces.` : ""}`;
+    }
+    const lead = sym.s === "XSP" ? "SPY" : sym.s;
+    if (info.mode !== "list" && info.measured.has(lead)) return `Bloque: ${esc(block)} (no cae junto a ningún grupo)`;
+    if (info.waiting.has(sym.s)) return `Bloque: ${esc(block)} (nuevo en la lista: se mide desde el mes que viene)`;
+    if (info.mode !== "list" && state.hist?.symbols) return `Bloque: ${esc(block)} (poca historia para medirlo)`;
+    return `Bloque: ${esc(block)}`;
+  }
 
   /** Una fila de la lista de deals. En la ficha (`withName` falso) elige ese deal; en el Buscador lleva el nombre y abre la ficha. */
   function dealRow(d, { selectedKey = null, withName = false, note = "" } = {}) {
@@ -363,7 +392,7 @@ export function createHoy(ctx) {
         ${item(checks.positive, `Rentab. esperada <b class="num">${signedPct(row.retExp)}</b>`, checks.positive ? "Lo cobrado supera lo que se espera pagar." : "Lo cobrado no cubre lo que se espera pagar. Sin esto, nivel 0.")}
         ${safetyItem(item, checks, row, o.opts, both, anyOne)}
         ${item(checks.cheap, checks.costShare == null ? "Coste sin precio medio" : `Coste de ida y vuelta: <b class="num">${checks.costShare} %</b> de lo cobrado`, `Tope para el punto: ${LEVEL_COST_PCT} %. Entrar y salir cuesta ${row.roundTrip == null ? "—" : usd2(row.roundTrip)}.`)}
-        ${item(checks.fresh, checks.fresh ? `Bloque nuevo: ${esc(sym.b ?? "sin bloque")}` : `Repite un bloque que ya tienes: ${esc(sym.b ?? "")}`)}
+        ${item(checks.fresh, checks.fresh ? `Bloque nuevo: ${esc(blockOf(sym) || "sin bloque")}` : `Repite un bloque que ya tienes: ${esc(blockOf(sym))}`)}
       </ul>`
       : "";
     const why = `<p class="small">${whyText}</p>${list}${scored ? `<p class="xs muted fi-calcs">${calcs}</p>` : ""}`;
@@ -607,6 +636,7 @@ export function createHoy(ctx) {
     return `
       ${ctx.header("Hoy", false)}
       ${closed ? notice("watch", "Precios tomados con el mercado cerrado: las horquillas son más anchas y salen menos casillas.") : ""}
+      ${ctx.bloques.notice() ? notice("watch", "Los bloques han cambiado este mes: revisa Mis bloques.") : ""}
       ${segmented()}
       ${body}
       ${ctx.foot()}`;
@@ -639,6 +669,7 @@ export function createHoy(ctx) {
       keep();
     } else if (act === "held-open") {
       hoy.heldOpen = !hoy.heldOpen;
+      if (hoy.heldOpen) ctx.bloques.seen();
     } else if (act === "held") {
       hoy.held = hoy.held.includes(value) ? hoy.held.filter((name) => name !== value) : [...hoy.held, value];
       keep();

@@ -130,6 +130,7 @@ async function loadUniverse(config) {
   const blocks = new Map();
   const feeds = new Map(); // nombres cuyo código en CBOE no es su símbolo (índices): { c: código, r: raíces }
   const symbols = [];
+  const list = []; // la lista base en su orden, para los bloques de "caer juntos" (`effectiveBlocks`); es pública como universe.json
   for (const block of base.bloques ?? []) {
     for (const row of block.nombres ?? []) {
       const symbol = cleanSymbol(row.s);
@@ -138,6 +139,7 @@ async function loadUniverse(config) {
       names.set(symbol, row.n ?? symbol);
       kinds.set(symbol, row.k === "etf" ? "etf" : "stock");
       blocks.set(symbol, block.nombre);
+      list.push(typeof row.alta === "string" ? { s: symbol, b: block.nombre, alta: row.alta } : { s: symbol, b: block.nombre });
       if (typeof row.c === "string") feeds.set(symbol, { c: row.c, r: Array.isArray(row.r) ? row.r : null });
     }
   }
@@ -145,7 +147,7 @@ async function loadUniverse(config) {
     const symbol = cleanSymbol(raw);
     if (symbol && !symbols.includes(symbol)) symbols.push(symbol);
   }
-  return { symbols, names, kinds, blocks, feeds, blockOrder: (base.bloques ?? []).map((block) => block.nombre) };
+  return { symbols, names, kinds, blocks, feeds, list, blockOrder: (base.bloques ?? []).map((block) => block.nombre) };
 }
 
 // ---------- cadena de CBOE ----------
@@ -614,6 +616,7 @@ export async function scanOnce({ force = false, replace = false } = {}) {
       earnings: earn,
       push: PUBLIC ? canAlert : pushed.configured,
       blocks: universe.blockOrder,
+      lista: universe.list,
       symbols,
     };
     await writeJson(path.join(DATA, "scan.json"), scan);

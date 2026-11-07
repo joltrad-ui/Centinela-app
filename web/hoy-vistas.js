@@ -1,6 +1,6 @@
 // Las tres vistas de Hoy (mapa, nube y barras) y los controles de arriba (filtros, Mis bloques).
 
-import { LEVEL_COST_PCT, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
+import { LEVEL_COST_PCT, blockOf, fmtStrike, labelOf, levelGrid, num, rangeOf, rangeOrder } from "./engine.js";
 import { emptyBox, notice } from "./ui.js";
 import { signedPct, usd2 } from "./hoy-calc.js";
 import { W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
@@ -16,7 +16,7 @@ export function createVistas(h) {
     function controls(o, exp = "") {
       const blocks = ctx.blockOrder();
       const held = o.opts.held;
-      const fromDeals = liveDeals().map((deal) => deal.b).filter(Boolean);
+      const fromDeals = ctx.bloques.held([], liveDeals());
       const nAct = (hoy.price === "mid" ? 1 : 0) + (held.length ? 1 : 0);
       const wDollars = Math.min(W.max, Math.max(W.min, Math.round((o.opts.width * 100) / W.step) * W.step));
       const head = moreHead('data-hoy="filters-open"', hoy.fOpen, nAct);
@@ -96,7 +96,7 @@ export function createVistas(h) {
         `<button class="hoy-detail" data-hoy="cell" data-s="${esc(name.sym.s)}" data-e="${grid.expiries[0].expiry}" data-k="${c.row.shortStrike}|${c.row.longStrike}" tabindex="-1" aria-hidden="true"><b class="num">${fmtStrike(c.row.shortStrike)}/${fmtStrike(c.row.longStrike)}</b><small class="num">cobras ${usd2(c.row.net)} · ${num(c.row.otm, 1)} % abajo</small></button>`;
       const rows = shown
         .map(
-          (name) => `<div class="hoy-name" role="rowheader"><b>${esc(name.sym.s)}</b>${o.opts.held.includes(name.sym.b ?? "") ? '<i class="hoy-held" title="Bloque que ya tienes"></i>' : ""}</div>${name.cells.map((c, i) => cell(name, c, i)).join("")}${focus ? detail(name, name.cells[0]) : ""}`,
+          (name) => `<div class="hoy-name" role="rowheader"><b>${esc(name.sym.s)}</b>${o.opts.held.includes(blockOf(name.sym)) ? '<i class="hoy-held" title="Bloque que ya tienes"></i>' : ""}</div>${name.cells.map((c, i) => cell(name, c, i)).join("")}${focus ? detail(name, name.cells[0]) : ""}`,
         )
         .join("");
       const expRow = choiceRow("Vencimiento", 'data-hoy="mexp"', [["", "Todas"], ...o.expiries.map((e) => [e, esc(labelOf(e))])], focus ?? "");
@@ -196,7 +196,7 @@ export function createVistas(h) {
           (c) => `<li><button class="deal" data-hoy="cell" data-s="${esc(c.sym.s)}" data-e="${expiry}" data-k="${c.row.shortStrike}|${c.row.longStrike}">
             <span class="deal-top" style="padding-right:96px">${levelTag(c.level, " sm")} <b>${esc(c.sym.s)}</b> <span class="muted">${fmtStrike(c.row.shortStrike)}/${fmtStrike(c.row.longStrike)}</span>
               <span class="deal-kpi num ${c.row.retExp > 0 ? "plus" : "minus"}">${signedPct(c.row.retExp)}</span></span>
-            <span class="deal-sub small muted">${esc(c.sym.b ?? "")} · cobras neto ${usd2(c.row.net)} · coste ${c.checks.costShare} % de lo cobrado</span>
+            <span class="deal-sub small muted">${esc(blockOf(c.sym))} · cobras neto ${usd2(c.row.net)} · coste ${c.checks.costShare} % de lo cobrado</span>
           </button></li>`,
         )
         .join("");

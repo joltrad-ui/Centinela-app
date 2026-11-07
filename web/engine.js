@@ -31,6 +31,7 @@ export const DEFAULT_RULES = {
   errVolPct: 10, // pestaña "Hoy": cuánto se supone que puede variar la volatilidad reciente al calcular el error, en %, de 10 a 40
   errHistK: 1, // pestaña "Hoy": por cuánto se multiplica el error de la historia de 5 años, de 1 a 3
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
+  blockCoFall: 0.4, // Bloques: dos grupos se unen si caen juntos (tramos de 20 sesiones en su 13 % peor) al menos esta parte de las veces; de 0,25 a 0,70
   corrMin: 0.85, // Buscador: correlación (rendimientos diarios, 250 días) a partir de la cual dos nombres son el mismo grupo; de 0,5 a 0,99
   sigReal: 50, // Registro: la señal "lo real se acerca a lo esperado" salta si lo real queda más de este % por debajo de lo esperado; de 10 a 90
   sigGroup: 3, // Registro: la señal de grupos salta si pierden a la vez tantos nombres de un grupo en un vencimiento; de 2 a 6
@@ -66,9 +67,9 @@ export const ORDERS = [
 
 export const PROB_OFF = 50;
 
-// Anchos que se buscan: hasta $5 en todos los nombres y hasta $10 solo en estos ETF e índices caros.
-// En las acciones, nunca $10.
-export const WIDE_NAMES = new Set(["QQQ", "SPY", "IWM", "DIA", "GLD", "XSP"]);
+// Anchos que se buscan: hasta $5 en todos los nombres y hasta $10 solo en estos ETF e índices caros y en UNH.
+// En las acciones, nunca $10, salvo UNH (7 nov 2026): cerca del precio sus strikes van de 10 en 10 y con $5 no hay spread.
+export const WIDE_NAMES = new Set(["QQQ", "SPY", "IWM", "DIA", "GLD", "XSP", "UNH"]);
 export const NARROW_WIDTH = 5;
 export const WIDE_WIDTH = 10;
 /** El ancho máximo que se busca en un nombre, en dólares por acción. */
@@ -163,6 +164,184 @@ export function correlationGroups(hist, names, minCorr = DEFAULT_RULES.corrMin, 
   return { of, members, corr };
 }
 
+// ---------- Bloques por "caer juntos" (7 nov 2026) ----------
+// Dos nombres son el mismo bloque si, cuando uno cae fuerte en 20 sesiones, el otro también suele caer fuerte.
+// Mide lo que les hace perder a la vez a los spreads, no cómo se mueven en un día normal (la correlación de 250 días).
+
+export const COFALL_SESSIONS = 20; // tramo: 20 sesiones
+export const COFALL_TAIL = 0.13; // "perfora" = el tramo queda en el 13 % peor de su propia historia
+export const COFALL_MIN_CLOSES = 750; // con menos cierres hasta el corte, el nombre no se mide
+export const GROUP_PREFIX = "Grupo de ";
+/** Nombres que no se miden y van siempre en el bloque de otro: XSP es el mismo índice que SPY. */
+export const COFALL_FOLLOWS = { XSP: "SPY" };
+
+/** Los tramos de `n` sesiones (uno por sesión) y cuáles "perforan": su rendimiento es menor o igual que el de la posición
+ *  floor(0,13 × tramos) de los tramos ordenados de menor a mayor. Devuelve un array de 0 y 1, o null si no hay tramos. */
+export function coFallBreaches(closes, n = COFALL_SESSIONS, tail = COFALL_TAIL) {
+  if (!Array.isArray(closes) || closes.length <= n) return null;
+  const rets = [];
+  for (let i = 0; i + n < closes.length; i++) rets.push(closes[i] > 0 ? closes[i + n] / closes[i] - 1 : 0);
+  const sorted = [...rets].sort((a, b) => a - b);
+  const q = sorted[Math.floor(tail * sorted.length)];
+  return Uint8Array.from(rets, (r) => (r <= q ? 1 : 0));
+}
+
+/** Probabilidad de caer juntos de dos nombres (0 a 1): la media de P(B perfora | A perfora) y P(A perfora | B perfora).
+ *  Las series se alinean por el final y solo cuentan los tramos que tienen los dos. null si alguno no perfora nunca. */
+export function coFallPair(a, b) {
+  if (!a || !b) return null;
+  const m = Math.min(a.length, b.length);
+  const oa = a.length - m;
+  const ob = b.length - m;
+  let na = 0;
+  let nb = 0;
+  let both = 0;
+  for (let i = 0; i < m; i++) {
+    const x = a[oa + i];
+    const y = b[ob + i];
+    na += x;
+    nb += y;
+    both += x & y;
+  }
+  if (!na || !nb) return null;
+  return (both / na + both / nb) / 2;
+}
+
+/** Enlace medio: cada nombre empieza solo y en cada paso se unen los dos grupos con la media más alta de `pair` entre
+ *  todos sus pares, mientras esa media sea igual o mayor que `threshold`. A igualdad, el par cuyo primer miembro va antes
+ *  en `names` (y después, el segundo). Un par sin medida cuenta como 0. Devuelve los grupos (en el orden de `names`). */
+export function averageLinkage(names, pair, threshold) {
+  const n = names.length;
+  const p = names.map((a, i) => names.map((b, j) => (i === j ? 1 : pair(a, b) ?? 0)));
+  let clusters = names.map((_, i) => [i]);
+  const avg = (x, y) => {
+    let sum = 0;
+    for (const i of x) for (const j of y) sum += p[i][j];
+    return sum / (x.length * y.length);
+  };
+  for (;;) {
+    let best = null;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const v = avg(clusters[i], clusters[j]);
+        if (best == null || v > best.v + 1e-12) best = { i, j, v };
+      }
+    }
+    if (!best || best.v < threshold - 1e-9) break;
+    const merged = [...clusters[best.i], ...clusters[best.j]].sort((a, b) => a - b);
+    clusters = clusters.filter((_, k) => k !== best.i && k !== best.j);
+    clusters.push(merged);
+    clusters.sort((a, b) => a[0] - b[0]);
+  }
+  return n ? clusters.map((c) => c.map((i) => names[i])) : [];
+}
+
+const isSession = (iso) => {
+  const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
+  return day !== 0 && day !== 6 && !US_HOLIDAYS.has(iso);
+};
+const dayBefore = (iso) => new Date(Date.parse(`${iso}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+
+/** El corte de los bloques del mes de `today`: el último día de mercado anterior al día 1 de ese mes. */
+export function blockCutoff(today = nyToday()) {
+  let day = dayBefore(`${today.slice(0, 7)}-01`);
+  while (!isSession(day)) day = dayBefore(day);
+  return day;
+}
+
+/** Los cierres hasta el corte: quita las sesiones posteriores, contadas hacia atrás desde `last` (el último cierre del
+ *  archivo) con el calendario de la app, porque cierres.json no guarda la fecha de cada cierre. null si `last` es anterior al corte. */
+export function closesUntil(closes, last, cutoff) {
+  if (!Array.isArray(closes) || !last || last < cutoff) return null;
+  const drop = sessionsBetween(cutoff, last);
+  return drop > 0 ? closes.slice(0, Math.max(0, closes.length - drop)) : closes;
+}
+
+/** Los bloques efectivos: los grupos de "caer juntos" (enlace medio, `threshold` de 0 a 1) de 2 o más nombres son un bloque
+ *  propio, "Grupo de X" (X = su primer miembro en el orden de la lista); los demás nombres siguen en su bloque de la lista.
+ *  - `list`: los nombres de la lista base en su orden, [{ s, b }], con `alta` (fecha) si se añadieron hace poco: un nombre
+ *    dado de alta después del corte no se mide hasta el mes siguiente (los bloques no cambian a mitad de mes).
+ *  - `hist`: { símbolo: { c: cierres } } y `last`, el último cierre del archivo.
+ *  Se calculan con los cierres hasta el corte del mes de `today`. Si los cierres no llegan al corte, con el del mes anterior
+ *  (`mode: "previous"`); si tampoco, los de la lista (`mode: "list"`).
+ *  Devuelve `of` (nombre → bloque), `order` (bloques que tienen algún nombre: primero los grupos y luego los de la lista),
+ *  `members` (bloque → nombres), `groups` (los nombres de los grupos), `share` (nombre → media de caer junto al resto de su
+ *  grupo, de 0 a 1), `measured` (nombres medidos), `waiting` (dados de alta después del corte), `cutoff`, `mode` y `pair(a, b)`. */
+export function effectiveBlocks({ list, hist, last, today = nyToday(), threshold = DEFAULT_RULES.blockCoFall }) {
+  const names = (list ?? []).filter((row) => row && typeof row.s === "string");
+  const index = new Map(names.map((row, i) => [row.s, i]));
+  const listOf = new Map(names.map((row) => [row.s, row.b ?? ""]));
+  let cutoff = blockCutoff(today);
+  let mode = "month";
+  if (!hist || !last) mode = "list";
+  else if (last < cutoff) {
+    cutoff = blockCutoff(dayBefore(`${today.slice(0, 7)}-01`));
+    mode = last < cutoff ? "list" : "previous";
+  }
+  const breaches = new Map();
+  const waiting = new Set(); // dados de alta después del corte: se miden desde el mes siguiente
+  if (mode !== "list") {
+    for (const row of names) {
+      if (COFALL_FOLLOWS[row.s]) continue;
+      if (typeof row.alta === "string" && row.alta > cutoff) {
+        waiting.add(row.s);
+        continue;
+      }
+      const closes = closesUntil(hist[row.s]?.c, last, cutoff);
+      if (!closes || closes.length < COFALL_MIN_CLOSES) continue;
+      const b = coFallBreaches(closes);
+      if (b) breaches.set(row.s, b);
+    }
+  }
+  const measured = [...breaches.keys()];
+  const memo = new Map();
+  const pair = (a, b) => {
+    const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+    if (!memo.has(key)) memo.set(key, coFallPair(breaches.get(a), breaches.get(b)));
+    return memo.get(key);
+  };
+  const clusters = averageLinkage(measured, pair, threshold).filter((c) => c.length > 1);
+  const of = {};
+  const share = {};
+  const groups = [];
+  for (const cluster of clusters) {
+    const name = `${GROUP_PREFIX}${cluster[0]}`;
+    groups.push(name);
+    for (const s of cluster) {
+      of[s] = name;
+      const others = cluster.filter((t) => t !== s);
+      share[s] = others.reduce((sum, t) => sum + (pair(s, t) ?? 0), 0) / others.length;
+    }
+  }
+  for (const row of names) {
+    const lead = COFALL_FOLLOWS[row.s];
+    if (lead && of[lead] && index.has(lead)) {
+      of[row.s] = of[lead];
+      if (share[lead] != null) share[row.s] = share[lead];
+    } else if (!of[row.s]) of[row.s] = listOf.get(row.s);
+  }
+  const members = {};
+  for (const row of names) (members[of[row.s]] ??= []).push(row.s);
+  const listBlocks = [...new Set(names.map((row) => row.b ?? ""))];
+  const order = [...groups, ...listBlocks.filter((b) => !groups.includes(b) && members[b]?.length)];
+  return { of, order, members, groups, share, measured: new Set(measured), waiting, cutoff, mode, threshold, pair };
+}
+
+/** Lo guardado con nombres de bloque (Mis bloques, el filtro de Bloque) cuando los bloques cambian (mes, umbral, nombres):
+ *  cada bloque de antes pasa a los bloques de ahora de los nombres que tenía (`before`: bloque → nombres). Un nombre que
+ *  no estaba en `before` se deja si sigue existiendo y se quita si no. Devuelve la lista nueva, en el orden de `now.order`. */
+export function migrateBlockNames(saved, before, now) {
+  const out = new Set();
+  for (const name of Array.isArray(saved) ? saved : []) {
+    if (typeof name !== "string") continue;
+    const had = before?.[name];
+    if (Array.isArray(had)) {
+      for (const s of had) if (now.of[s]) out.add(now.of[s]);
+    } else if (now.order.includes(name)) out.add(name);
+  }
+  return now.order.filter((name) => out.has(name));
+}
+
 // ---------- utilidades ----------
 
 /** Número a la española: coma decimal; punto de millares solo a partir de cinco cifras. */
@@ -228,6 +407,7 @@ export function normalizeRules(input) {
     minRetExp: pre3 ? base.minRetExp : Math.round(clamp(row.minRetExp, -5, 5, base.minRetExp) * 10) / 10,
     equalFee: Math.round(clamp(row.equalFee, 0, 20, base.equalFee) * 100) / 100,
     equalGapPct: Math.round(clamp(row.equalGapPct, 10, 100, base.equalGapPct)),
+    blockCoFall: Math.round(clamp(row.blockCoFall, 0.25, 0.7, base.blockCoFall) * 20) / 20,
     corrMin: Math.round(clamp(row.corrMin, 0.5, 0.99, base.corrMin) * 100) / 100,
     sigReal: Math.round(clamp(row.sigReal, 10, 90, base.sigReal) / 5) * 5,
     sigGroup: Math.round(clamp(row.sigGroup, 2, 6, base.sigGroup)),
@@ -1284,6 +1464,9 @@ export function atMid(row, fee = 0) {
   };
 }
 
+/** El bloque que cuenta para el punto "bloque nuevo": el efectivo (`sym.be`, grupos de caer juntos) o, sin él, el de la lista. */
+export const blockOf = (sym) => sym?.be ?? sym?.b ?? "";
+
 /** Las comprobaciones de un deal y su nivel (0 a 5 con la regla "margin"; 0 a 4 con "both"; 0 a 3 si el punto de seguridad no cuenta). `held` = bloques que ya están abiertos.
  *  Punto de seguridad (`opts.safety`, regla `levelSafety`): "margin" = lo que queda (cobras neto menos lo que se espera pagar)
  *  supera `opts.marginK` veces el error del cálculo; "both" = los dos cálculos salen en positivo; "off" = no cuenta.
@@ -1302,7 +1485,7 @@ export function dealChecks(row, opts = {}) {
   const safe = safety === "off" ? false : safety === "both" ? both : roomOk;
   const costShare = row.roundTrip != null && row.net > 0 ? (row.roundTrip / row.net) * 100 : null;
   const cheap = costShare != null && costShare <= costPct + 1e-9;
-  const fresh = !held.includes(row.sym?.b ?? "");
+  const fresh = !held.includes(blockOf(row.sym));
   return {
     scored,
     positive,

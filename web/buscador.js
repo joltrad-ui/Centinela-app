@@ -5,7 +5,7 @@
 import { emptyBox } from "./ui.js";
 import { DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
-import { TWINS, correlationGroups, num, qualityDeals, nyToday, volatilities } from "./engine.js";
+import { TWINS, blockOf, correlationGroups, migrateBlockNames, num, qualityDeals, nyToday, volatilities } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
@@ -27,7 +27,7 @@ const DEFAULT_LV = [3, 4, 5];
 const norm = (text) => String(text ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 export function createBuscador(ctx) {
-  const { state, root, listSymbols, allSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig } = ctx;
+  const { state, root, listSymbols, allSymbols, blockOrder, bloques, readLocal, writeLocal, esc, header, foot, hoy, changeConfig } = ctx;
 
   /** Los filtros que se guardan y se comparten con las combinaciones guardadas, saneados. */
   const cleanFilters = (f = {}) => ({
@@ -71,6 +71,27 @@ export function createBuscador(ctx) {
     .slice(0, MAX_PRESETS)
     .map((p) => ({ n: p.n.trim().slice(0, 20), f: cleanFilters(p.f) }));
   const keepPresets = () => writeLocal(LS_PRESETS, presets);
+  // Cuando los bloques cambian (mes, umbral de Reglas), el filtro de Bloque y las combinaciones guardadas pasan a los bloques
+  // nuevos de sus nombres; uno que ya no existe se quita (si no, filtraría sin que se viera la opción para quitarlo).
+  bloques.onChange((before, now) => {
+    let changed = false;
+    const next = migrateBlockNames(bs.blocks, before, now);
+    if (JSON.stringify(next) !== JSON.stringify(bs.blocks)) {
+      bs.blocks = next;
+      keep();
+      changed = true;
+    }
+    let presetsChanged = false;
+    for (const p of presets) {
+      const moved = migrateBlockNames(p.f.blocks, before, now);
+      if (JSON.stringify(moved) !== JSON.stringify(p.f.blocks)) {
+        p.f.blocks = moved;
+        presetsChanged = true;
+      }
+    }
+    if (presetsChanged) keepPresets();
+    return changed || presetsChanged;
+  });
   const snapshot = () => Object.fromEntries(FILTER_KEYS.map((k) => [k, structuredClone(bs[k])]));
   const sameFilters = (f) => JSON.stringify(cleanFilters(f)) === JSON.stringify(cleanFilters(snapshot()));
 
@@ -83,7 +104,8 @@ export function createBuscador(ctx) {
     const today = nyToday();
     // Un deal que ya pasó su vencimiento sigue en Mis deals hasta que se cierra, pero ya no cuenta como "tengo".
     const mine = (readLocal(LS_MISDEALS) ?? []).filter((d) => d && typeof d.s === "string" && !d.closedAt && !(typeof d.expiry === "string" && d.expiry.slice(0, 10) < today));
-    const held = [...new Set([...(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : []), ...mine.map((d) => d.b).filter(Boolean)])];
+    // Bloques abiertos: los de Mis bloques y los de los deals sin cerrar, con el bloque efectivo de su símbolo.
+    const held = bloques.held(Array.isArray(hoyLs.held) ? hoyLs.held.filter((b) => typeof b === "string") : [], mine);
     const symbols = listSymbols();
     const key = JSON.stringify([state.scan?.at, state.hist?.at, rules, price, held, today, symbols.map((sym) => sym.s)]);
     if (cache.key !== key) {
@@ -133,7 +155,7 @@ export function createBuscador(ctx) {
       { key: "q", on: q !== "", label: "la búsqueda", test: (d) => matches(d.sym, q), drop: () => (bs.q = "") },
       { key: "lv", on: bs.lv.length < ALL_LV.length, label: "el filtro de Nivel", test: (d) => bs.lv.includes(d.level), drop: () => (bs.lv = [...ALL_LV]) },
       { key: "days", on: Boolean(days), label: `Vence hasta ${days} d`, test: (d) => d.row.dte <= days, drop: () => (bs.days = null) },
-      { key: "blk", on: bs.blocks.length > 0, label: "el filtro de Bloque", test: (d) => bs.blocks.includes(d.sym.b ?? ""), drop: () => (bs.blocks = []) },
+      { key: "blk", on: bs.blocks.length > 0, label: "el filtro de Bloque", test: (d) => bs.blocks.includes(blockOf(d.sym)), drop: () => (bs.blocks = []) },
       { key: "w", on: Boolean(bs.w), label: `Ancho hasta $${bs.w}`, test: (d) => d.row.width * 100 <= bs.w + 1e-6, drop: () => (bs.w = null) },
       { key: "pr", on: Boolean(bs.pr), label: `Prob. hasta ${bs.pr} %`, test: (d) => (d.row.prob ?? 100) <= bs.pr + 1e-9, drop: () => (bs.pr = null) },
       { key: "hide", on: bs.hide, label: "Ocultar fuera de Reglas", test: (d) => d.ok, drop: () => (bs.hide = false) },
@@ -181,7 +203,7 @@ export function createBuscador(ctx) {
     const blocks = [...blockOrder(), ""].filter((b, i, list) => list.indexOf(b) === i);
     const groups = blocks
       .map((block) => {
-        const names = all.filter((s) => (s.b ?? "") === block);
+        const names = all.filter((s) => blockOf(s) === block);
         if (!names.length) return "";
         return `<div class="bs-block"><p class="xs muted">${esc(block || "Sin bloque")}</p><div class="bs-chips">${names
           .map((s) => {
@@ -213,7 +235,7 @@ export function createBuscador(ctx) {
 
   /** Los filtros, en el orden de la pantalla Deals de antes: lo que más se toca arriba (nivel y las tres barras) y el resto plegado. */
   function filters(d0) {
-    const present = new Set(d0.deals.map((d) => d.sym.b ?? ""));
+    const present = new Set(d0.deals.map((d) => blockOf(d.sym)));
     const blocks = blockOrder().filter((b) => present.has(b));
     const days = daysRange();
     const n = activeFilters();

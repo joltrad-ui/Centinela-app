@@ -619,3 +619,83 @@ test("Buscador: filtro de volatilidad (IV alta / IV baja) y la ficha con media d
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test("Buscador: UNH llega a $10 de ancho y MRK se queda en $5", { skip }, async () => {
+  const page = await open(390);
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="filters-open"]').click();
+  for (const l of [0, 1, 2]) await page.locator(`[data-bs="lv"][data-v="${l}"]`).click();
+  await page.locator('[data-bs="one"]').click();
+  const widths = async (q) => {
+    await page.fill("#bs-q", q);
+    await page.waitForTimeout(400);
+    return page.$$eval("#bs-list .fi-dr", (els) => els.map((e) => Number(e.innerText.match(/ancho \$(\d+)/)?.[1])).filter(Boolean));
+  };
+  const unh = await widths("UnitedHealth");
+  assert.ok(unh.length > 0, "UNH sale en el Buscador");
+  assert.ok(unh.includes(1000), `UNH con spreads de $10 (${unh})`);
+  const mrk = await widths("Merck");
+  assert.ok(mrk.length > 0, "MRK sale en el Buscador");
+  assert.ok(Math.max(...mrk) <= 500, `MRK como mucho $5 (${mrk})`);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
+
+test("Bloques: lo guardado con un grupo que ya no existe pasa a los bloques de sus nombres y Hoy lo avisa", { skip }, async () => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 800 } });
+  await context.addInitScript(() => {
+    if (sessionStorage.getItem("bloquesProbados")) return;
+    sessionStorage.setItem("bloquesProbados", "1");
+    localStorage.setItem("centinela.bloques.v1", JSON.stringify({ members: { "Grupo de VIEJO": ["NVDA", "AMZN"], Metales: ["GLD", "SLV"] }, notice: false }));
+    localStorage.setItem("centinela.hoy.v1", JSON.stringify({ held: ["Grupo de VIEJO", "Metales"] }));
+    localStorage.setItem("centinela.buscador.v1", JSON.stringify({ blocks: ["Grupo de VIEJO"] }));
+    localStorage.setItem("centinela.buscador.guardados.v1", JSON.stringify([{ n: "Viejo", f: { blocks: ["Grupo de VIEJO", "Nada"] } }]));
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(BASE);
+  await page.waitForSelector(".hoy-grid, .stats");
+  let text = "";
+  for (let i = 0; i < 40 && !/Los bloques han cambiado/.test(text); i++) {
+    await page.waitForTimeout(250);
+    text = await page.locator("main").innerText();
+  }
+  assert.match(text, /Los bloques han cambiado este mes: revisa Mis bloques/);
+  const ls = (key) => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), key);
+  assert.deepEqual((await ls("centinela.hoy.v1")).held, ["Tecnología grande", "Metales"]);
+  assert.deepEqual((await ls("centinela.buscador.v1")).blocks, ["Tecnología grande"]);
+  assert.deepEqual((await ls("centinela.buscador.guardados.v1"))[0].f.blocks, ["Tecnología grande"], "un bloque que no existe se quita");
+  // Al abrir Mis bloques, el aviso se va.
+  await page.locator('[data-hoy="filters-open"]').click();
+  await page.locator('[data-hoy="held-open"]').click();
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-hoy="held"][data-v="Tecnología grande"][aria-pressed="true"]').count(), 1);
+  assert.doesNotMatch(await page.locator("main").innerText(), /Los bloques han cambiado/);
+  // Reglas: el umbral nuevo y la fecha de corte.
+  await goTab(page, "Reglas");
+  const reglas = await page.locator("main").innerText();
+  assert.match(reglas, /Caer juntos para agrupar bloques/);
+  assert.match(reglas, /40 %/);
+  assert.match(reglas, /Bloques calculados con cierres hasta el \d+ \w+/);
+  // La ficha dice en qué bloque cuenta el nombre: medido y suelto, o nuevo en la lista.
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="filters-open"]').click();
+  await page.locator('[data-bs="reset"]').click(); // quita el filtro de Bloque (Tecnología grande, ya migrado)
+  await page.waitForTimeout(300);
+  for (const l of [0, 1, 2]) await page.locator(`[data-bs="lv"][data-v="${l}"]`).click();
+  const blockLineOf = async (q) => {
+    await page.fill("#bs-q", q);
+    await page.waitForTimeout(400);
+    await page.locator("#bs-list .fi-dr").first().click();
+    await page.waitForSelector(".fi-blk");
+    const line = await page.locator(".fi-blk").innerText();
+    await page.locator(".fi-x").click();
+    await page.waitForTimeout(200);
+    return line;
+  };
+  assert.equal(await blockLineOf("NVIDIA"), "Bloque: Tecnología grande (no cae junto a ningún grupo)");
+  assert.equal(await blockLineOf("UnitedHealth"), "Bloque: Defensivos (nuevo en la lista: se mide desde el mes que viene)");
+  assert.deepEqual(errors, []);
+  await context.close();
+});
