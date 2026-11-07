@@ -1,0 +1,27 @@
+Registro de deals de Centinela: una fila por deal y día, un archivo por mes (AAAA-MM.csv).
+Foto del día: los bull puts de todos los niveles (0 a 5) con rentab. esperada calculable, dentro y fuera de las reglas de fábrica, sobre la lista base. La foto es el primer barrido con el mercado abierto entre las 14:45 y las 15:45 de Nueva York; si no hay ninguno, el último barrido del día. Hasta el 30 oct 2026 solo se guardaban los de nivel 3 o más del último barrido.
+Solo datos de la lista pública: nada de lo que apunta nadie ni de sus reglas.
+
+fecha                 Día del barrido (hora de Nueva York).
+primera_aparicion     1 si es la primera vez que sale ese deal (mismo nombre, vencimiento y strikes); 0 si ya había salido otro día. El análisis usa solo las 1.
+nombre                Símbolo.
+vencimiento           Día en que vence.
+corto, largo          Strike que se vende y strike que se compra.
+ancho                 corto menos largo, en puntos (dólares por acción). Por contrato son ancho x 100 dólares.
+cobro_neto            Dólares por contrato que se cobran, ya descontada la comisión de abrir.
+nivel                 3, 4 o 5.
+rentab_esperada       (cobro neto menos pérdida esperada) / lo que se arriesga, en %.
+error                 El ± del cálculo de la pérdida esperada, en dólares por contrato.
+perdida_historia      Pérdida esperada con 5 años de precios, en dólares por contrato.
+perdida_volatilidad   Pérdida esperada con la volatilidad reciente, en dólares por contrato.
+desacuerdo            Valor absoluto de la diferencia entre esos dos cálculos, en dólares por contrato. Solo se guarda: no cambia ninguna regla.
+prob_mercado          Probabilidad de acabar por debajo del corto que sale de los precios del mercado, en %.
+bloque                Bloque de la lista base.
+grupo                 Nombres que se mueven casi igual (correlación diaria de 250 días de 0,85 o más), unidos con +.
+resultados_en_plazo   1 si el nombre presenta resultados antes del vencimiento.
+cierre_vencimiento    Cierre del subyacente el día del vencimiento (vacío hasta que vence).
+resultado             Dólares por contrato: cobro neto menos la pérdida al vencimiento (como mucho el ancho x 100). Vacío hasta que vence.
+estado                ganado si el resultado es positivo, perdido si no; vacío hasta que vence.
+hora_ny               Hora de Nueva York (HH:MM) del barrido que dio la foto de ese día. Vacío en las filas guardadas antes del 31 oct 2026.
+en_ventana            si si el barrido cayó entre las 14:45 y las 15:45 de Nueva York (la franja de la foto); no si fue un barrido de reserva (ninguno cayó en la franja, así que vale el último con el mercado abierto). Vacío en las filas antiguas.
+dentro_reglas         si si el deal cumple las reglas de fábrica; no si Centinela no lo habría propuesto (se guarda para poder comparar niveles bajos). Vacío en las filas antiguas, que son todas si.
