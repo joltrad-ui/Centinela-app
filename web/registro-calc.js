@@ -29,6 +29,7 @@ export const COLUMNS = [
   ["horaNy", "hora_ny", "s"],
   ["enVentana", "en_ventana", "y"],
   ["dentroReglas", "dentro_reglas", "y"],
+  ["bloqueEf", "bloque_efectivo", "s"],
 ];
 
 /** Lo que significa cada columna, para quien lea el CSV sin la app (se publica como registro/columnas.txt). */
@@ -59,6 +60,7 @@ estado                ganado si el resultado es positivo, perdido si no; vacío 
 hora_ny               Hora de Nueva York (HH:MM) del barrido que dio la foto de ese día. Vacío en las filas guardadas antes del 31 oct 2026.
 en_ventana            si si el barrido cayó entre las 14:45 y las 15:45 de Nueva York (la franja de la foto); no si fue un barrido de reserva (ninguno cayó en la franja, así que vale el último con el mercado abierto). Vacío en las filas antiguas.
 dentro_reglas         si si el deal cumple las reglas de fábrica; no si Centinela no lo habría propuesto (se guarda para poder comparar niveles bajos). Vacío en las filas antiguas, que son todas si.
+bloque_efectivo       Bloque que cuenta para el punto "bloque nuevo" del nivel: "Grupo de X" si el nombre cae junto a otros (tramos de 20 sesiones en su 13 % peor, a la vez al menos el 40 % de las veces, con 5 años de cierres hasta el último día de mercado del mes anterior); si no, el de la lista. Umbral de fábrica. Vacío en las filas guardadas antes del 7 nov 2026.
 `;
 
 const csvCell = (value) => {

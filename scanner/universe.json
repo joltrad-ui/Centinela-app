@@ -218,6 +218,18 @@
      "s": "JPM",
      "n": "JPMorgan Chase",
      "k": "stock"
+    },
+    {
+     "s": "UNH",
+     "n": "UnitedHealth",
+     "k": "stock",
+     "alta": "2026-11-07"
+    },
+    {
+     "s": "MRK",
+     "n": "Merck",
+     "k": "stock",
+     "alta": "2026-11-07"
     }
    ]
   },

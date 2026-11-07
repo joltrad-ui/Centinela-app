@@ -1090,12 +1090,12 @@ test("reglas: los valores nuevos del registro y los grupos tienen de fábrica y 
   assert.deepEqual([x.corrMin, x.sigReal, x.sigGroup], [0.99, 10, 6]);
 });
 
-const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", horaNy: "15:10", enVentana: true, dentroReglas: true, ...extra });
+const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", horaNy: "15:10", enVentana: true, dentroReglas: true, bloqueEf: "Grupo de SPY", ...extra });
 
 test("registro: el CSV se escribe y se lee igual, con comas y comillas dentro del texto", () => {
   const rows = [sample(), sample({ nombre: 'A"B', resultados: true, cierre: 101.5, resultado: 60, estado: "ganado", primera: false })];
   const text = toCsv(rows);
-  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado,hora_ny,en_ventana,dentro_reglas$/);
+  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado,hora_ny,en_ventana,dentro_reglas,bloque_efectivo$/);
   assert.deepEqual(parseCsv(text), rows);
   assert.deepEqual(parseCsv("fecha,nombre\nbasura"), [], "filas con otra forma se saltan");
 });
@@ -1171,7 +1171,7 @@ test("registro: dayRows guarda todos los niveles, dentro y fuera de Reglas, con 
   const at = Date.parse("2026-10-05T19:10:00Z"); // 15:10 en Nueva York (horario de verano)
   // Una cadena con horquillas estrechas (la de arriba las tiene anchas y las Reglas la apartan).
   const sy = { ...sym, b: "Prueba", er: { d: "2026-10-12" }, x: [["2026-10-30", 0.4, [[70, 0.02, 0.03, 500, 0.5, -0.01], [75, 0.04, 0.05, 800, 0.46, -0.02], [80, 0.1, 0.12, 900, 0.44, -0.04], [85, 0.3, 0.32, 800, 0.42, -0.09], [90, 1.0, 1.02, 1200, 0.4, -0.2]]]] };
-  const rows = dayRows({ symbols: [sy], hist, today, groups, at });
+  const rows = dayRows({ symbols: [sy], hist, today, groups, blocks: { of: { XYZ: "Grupo de XYZ" } }, at });
   const r0 = DEFAULT_RULES;
   const all = qualityDeals([sy], { rules: r0, fee: r0.equalFee, gapPct: r0.equalGapPct, safety: r0.levelSafety, marginK: r0.levelMargin, errVolPct: r0.errVolPct, errHistK: r0.errHistK, hist, held: [], price: "nat", maxProb: r0.maxProb, maxWidth: r0.width }, today).deals;
   assert.ok(rows.length > 0);
@@ -1181,6 +1181,7 @@ test("registro: dayRows guarda todos los niveles, dentro y fuera de Reglas, con 
   for (const r of rows) {
     assert.equal(r.grupo, "XYZ");
     assert.equal(r.bloque, "Prueba");
+    assert.equal(r.bloqueEf, "Grupo de XYZ", "el bloque efectivo va en su columna; el de la lista no cambia");
     assert.equal(r.resultados, true, "resultados el 12 oct, antes de vencer");
     assert.equal(r.desacuerdo, Math.round(Math.abs(r.perdHist - r.perdVol) * 100) / 100);
     assert.equal(r.estado, "");
@@ -1296,4 +1297,184 @@ test("registro: las filas guardadas antes de las columnas nuevas se leen y se es
   assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10 }]).n, 1);
   assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10, dentroReglas: false }]).n, 0, "lo de fuera de Reglas no entra en el análisis");
   assert.equal(analyze([{ ...rows[0], estado: "ganado", resultado: 10, nivel: 2 }]).n, 0, "los niveles 0 a 2 solo se guardan");
+});
+
+// ---------- bloques por "caer juntos" ----------
+import { COFALL_MIN_CLOSES, averageLinkage, blockCutoff, blockOf, closesUntil, coFallBreaches, coFallPair, effectiveBlocks, migrateBlockNames } from "../web/engine.js";
+
+/** Paseos al azar con semilla: `moves(n, seed)` da n rendimientos diarios; `fromMoves` los convierte en cierres. */
+function moves(n, seed, vol = 0.012) {
+  let x = seed;
+  const rnd = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+  return Array.from({ length: n }, () => vol * Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd()));
+}
+const fromMoves = (m) => {
+  const out = [100];
+  for (const r of m) out.push(out[out.length - 1] * Math.exp(r));
+  return out;
+};
+/** Una serie que sigue a otra (`base`) con un poco de ruido propio. */
+const follow = (base, seed, noise = 0.002) => fromMoves(base.map((r, i) => r + moves(base.length, seed, noise)[i]));
+
+test("bloques: caer juntos da 100 % con dos nombres iguales y cerca del 13 % con dos independientes", () => {
+  const a = fromMoves(moves(1300, 11));
+  const b = fromMoves(moves(1300, 12345));
+  const ba = coFallBreaches(a);
+  assert.equal(ba.length, a.length - 20, "un tramo de 20 sesiones por sesión");
+  const share = ba.reduce((s, v) => s + v, 0) / ba.length;
+  assert.ok(share >= 0.13 && share < 0.14, `perfora el 13 % peor (${share})`);
+  assert.equal(coFallPair(ba, coFallBreaches(a)), 1);
+  const ind = coFallPair(ba, coFallBreaches(b));
+  assert.ok(ind > 0.03 && ind < 0.25, `independientes: ${ind}`);
+  // "Perfora" incluye el tramo del corte: con todos los tramos iguales, perforan todos.
+  assert.equal(coFallBreaches(Array(30).fill(100)).every((v) => v === 1), true);
+  // Se alinean por el final: una serie más corta solo cuenta los tramos que tienen las dos.
+  assert.equal(coFallPair(coFallBreaches(a), coFallBreaches(a.slice(400))) > 0.8, true);
+});
+
+test("bloques: el enlace medio une primero el par más alto y deja entrar a C según el umbral", () => {
+  const P = { "A|B": 0.9, "B|C": 0.85, "A|C": 0.1 };
+  const pair = (x, y) => P[x < y ? `${x}|${y}` : `${y}|${x}`];
+  // A–B (90 %) se une primero; C entra con la media del grupo (85 + 10) / 2 = 47,5 %.
+  assert.deepEqual(averageLinkage(["A", "B", "C"], pair, 0.4), [["A", "B", "C"]]);
+  assert.deepEqual(averageLinkage(["A", "B", "C"], pair, 0.7), [["A", "B"], ["C"]], "con 70 % C se queda fuera (y B no se va con C)");
+  assert.deepEqual(averageLinkage(["A", "B", "C"], pair, 0.95), [["A"], ["B"], ["C"]]);
+  // A igualdad, el par cuyo primer miembro va antes en la lista.
+  const tie = (x, y) => ({ "A|B": 0.6, "B|C": 0.6, "A|C": 0 })[x < y ? `${x}|${y}` : `${y}|${x}`];
+  assert.deepEqual(averageLinkage(["A", "B", "C"], tie, 0.5), [["A", "B"], ["C"]]);
+});
+
+test("bloques: corte del mes y cierres hasta el corte", () => {
+  assert.equal(blockCutoff("2026-11-07"), "2026-10-30", "el 31 oct es sábado");
+  assert.equal(blockCutoff("2026-11-01"), "2026-10-30");
+  assert.equal(blockCutoff("2026-12-15"), "2026-11-30");
+  assert.equal(blockCutoff("2027-01-04"), "2026-12-31");
+  assert.equal(blockCutoff("2026-12-01"), "2026-11-30");
+  // Del 30 oct al 5 nov hay 4 sesiones (2, 3, 4 y 5 nov): se quitan del final.
+  const c = Array.from({ length: 10 }, (_, i) => i);
+  assert.deepEqual(closesUntil(c, "2026-11-05", "2026-10-30"), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(closesUntil(c, "2026-10-30", "2026-10-30"), c);
+  assert.equal(closesUntil(c, "2026-10-29", "2026-10-30"), null, "cierres atrasados");
+});
+
+// Una lista pequeña con dos grupos claros: SPY, QQQ y NVDA caen juntos; GLD y SLV también; RTX y TLT van por libre.
+const base = moves(1300, 3);
+const metal = moves(1300, 7, 0.01);
+const BL_LIST = [
+  { s: "SPY", b: "Bolsa" },
+  { s: "XSP", b: "Bolsa" },
+  { s: "QQQ", b: "Bolsa" },
+  { s: "RTX", b: "Bolsa" },
+  { s: "NVDA", b: "Tecnología" },
+  { s: "GLD", b: "Metales" },
+  { s: "SLV", b: "Metales" },
+  { s: "IBIT", b: "Bitcoin" },
+  { s: "TLT", b: "Bonos" },
+];
+const BL_HIST = {
+  SPY: { c: fromMoves(base) },
+  XSP: { c: fromMoves(base) },
+  QQQ: { c: follow(base, 21) },
+  RTX: { c: fromMoves(moves(1300, 99)) },
+  NVDA: { c: follow(base, 31, 0.004) },
+  GLD: { c: fromMoves(metal) },
+  SLV: { c: follow(metal, 41) },
+  IBIT: { c: fromMoves(moves(COFALL_MIN_CLOSES - 50, 51)) },
+  TLT: { c: fromMoves(moves(1300, 61)) },
+};
+
+test("bloques: los grupos de 2 o más son bloque propio, los sueltos siguen en su bloque de la lista", () => {
+  const out = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  assert.equal(out.mode, "month");
+  assert.equal(out.cutoff, "2026-10-30");
+  assert.deepEqual(out.groups, ["Grupo de SPY", "Grupo de GLD"], "se llaman por su primer miembro en el orden de la lista");
+  assert.deepEqual(out.members["Grupo de SPY"], ["SPY", "XSP", "QQQ", "NVDA"], "XSP va siempre con SPY");
+  assert.deepEqual(out.members["Grupo de GLD"], ["GLD", "SLV"]);
+  assert.equal(out.of.RTX, "Bolsa");
+  assert.equal(out.of.TLT, "Bonos");
+  assert.equal(out.of.IBIT, "Bitcoin", "con menos de 750 cierres no se mide y sigue en su bloque");
+  assert.equal(out.measured.has("IBIT"), false);
+  assert.equal(out.measured.has("XSP"), false, "XSP no se mide");
+  // Orden: primero los grupos (por su primer miembro) y después los bloques de la lista que no se quedan vacíos.
+  assert.deepEqual(out.order, ["Grupo de SPY", "Grupo de GLD", "Bolsa", "Bitcoin", "Bonos"]);
+  assert.ok(out.share.NVDA > 0.5 && out.share.NVDA <= 1, "la ficha enseña cuánto cae junto al resto del grupo");
+  assert.equal(out.share.XSP, out.share.SPY);
+  // Con un umbral imposible no hay grupos: todos en su bloque de la lista.
+  const none = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 1.01 });
+  assert.deepEqual(none.order, ["Bolsa", "Tecnología", "Metales", "Bitcoin", "Bonos"]);
+});
+
+test("bloques: con los cierres hasta el corte; atrasados, los del mes anterior; sin cierres, los de la lista", () => {
+  // Las sesiones posteriores al corte no cuentan: añadir cierres después del 30 oct no cambia nada este mes.
+  const plus = Object.fromEntries(Object.entries(BL_HIST).map(([s, v]) => [s, { c: [...v.c, ...Array(4).fill(1)] }]));
+  const a = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  const b = effectiveBlocks({ list: BL_LIST, hist: plus, last: "2026-11-05", today: "2026-11-07", threshold: 0.4 });
+  assert.deepEqual(b.members, a.members);
+  assert.equal(b.share.NVDA, a.share.NVDA);
+  const late = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-20", today: "2026-11-07", threshold: 0.4 });
+  assert.equal(late.mode, "previous");
+  assert.equal(late.cutoff, "2026-09-30");
+  assert.deepEqual(late.groups, ["Grupo de SPY", "Grupo de GLD"]);
+  const old = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-09-01", today: "2026-11-07", threshold: 0.4 });
+  assert.equal(old.mode, "list");
+  assert.deepEqual(old.order, ["Bolsa", "Tecnología", "Metales", "Bitcoin", "Bonos"]);
+  assert.equal(effectiveBlocks({ list: BL_LIST, hist: null, last: null, today: "2026-11-07" }).mode, "list");
+});
+
+test("bloques: un nombre dado de alta después del corte no se mide hasta el mes siguiente", () => {
+  const list = [...BL_LIST, { s: "AMD", b: "Tecnología", alta: "2026-11-07" }];
+  const hist = { ...BL_HIST, AMD: { c: follow(base, 71) } };
+  const nov = effectiveBlocks({ list, hist, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  assert.equal(nov.of.AMD, "Tecnología");
+  assert.equal(nov.waiting.has("AMD"), true);
+  assert.deepEqual(nov.members["Grupo de SPY"], ["SPY", "XSP", "QQQ", "NVDA"], "los bloques no cambian a mitad de mes");
+  const dec = effectiveBlocks({ list, hist, last: "2026-11-30", today: "2026-12-02", threshold: 0.4 });
+  assert.equal(dec.of.AMD, "Grupo de SPY");
+});
+
+test("bloques: lo guardado (Mis bloques, filtro de Bloque) pasa a los bloques nuevos de sus nombres", () => {
+  const now = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  // Primera vez: lo guardado son bloques de la lista.
+  const listMembers = { Bolsa: ["SPY", "XSP", "QQQ", "RTX"], Tecnología: ["NVDA"], Metales: ["GLD", "SLV"], Bitcoin: ["IBIT"], Bonos: ["TLT"] };
+  assert.deepEqual(migrateBlockNames(["Tecnología"], listMembers, now), ["Grupo de SPY"]);
+  assert.deepEqual(migrateBlockNames(["Bolsa"], listMembers, now), ["Grupo de SPY", "Bolsa"], "un bloque de la lista pasa a los bloques de sus nombres");
+  assert.deepEqual(migrateBlockNames(["Metales", "Bonos"], listMembers, now), ["Grupo de GLD", "Bonos"]);
+  // Un grupo que se deshace (otro mes u otro umbral) pasa a los bloques de los nombres que tenía.
+  const high = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 1.01 });
+  assert.deepEqual(migrateBlockNames(["Grupo de GLD"], now.members, high), ["Metales"]);
+  assert.deepEqual(migrateBlockNames(["Grupo de SPY"], now.members, high), ["Bolsa", "Tecnología"]);
+  // Lo que no estaba antes: se queda si existe y se quita si no.
+  assert.deepEqual(migrateBlockNames(["Bonos", "Grupo de Nadie", 7], {}, now), ["Bonos"]);
+});
+
+test("bloques: el punto «bloque nuevo» mira el bloque efectivo; sin él, el de la lista", () => {
+  const row = (s) => ({ sym: s, retExp: 5, net: 100, expected: 10, err: 5, marginHist: 10, marginRecent: 10, roundTrip: 10 });
+  const nvda = { s: "NVDA", b: "Tecnología", be: "Grupo de SPY" };
+  assert.equal(blockOf(nvda), "Grupo de SPY");
+  assert.equal(blockOf({ s: "X", b: "Bolsa" }), "Bolsa");
+  assert.equal(dealChecks(row(nvda), { held: ["Grupo de SPY"] }).fresh, false, "un deal de SPY abierto quita el punto a NVDA");
+  assert.equal(dealChecks(row(nvda), { held: ["Tecnología"] }).fresh, true, "el bloque de la lista ya no cuenta");
+  assert.equal(dealChecks(row({ s: "RTX", b: "Bolsa" }), { held: ["Bolsa"] }).fresh, false);
+});
+
+test("bloques: el umbral de Reglas (blockCoFall) va de 25 a 70 % de 5 en 5, 40 % de fábrica", () => {
+  assert.equal(DEFAULT_RULES.blockCoFall, 0.4);
+  assert.equal(normalizeRules({ v: 3 }).blockCoFall, 0.4);
+  assert.equal(normalizeRules({ v: 3, blockCoFall: 0.9 }).blockCoFall, 0.7);
+  assert.equal(normalizeRules({ v: 3, blockCoFall: 0.1 }).blockCoFall, 0.25);
+  assert.equal(normalizeRules({ v: 3, blockCoFall: 0.43 }).blockCoFall, 0.45);
+  assert.equal(normalizeRules({ v: 3, blockCoFall: 0.35 }).blockCoFall, 0.35);
+  assert.equal(normalizeRules({ v: 3, blockCoFall: 0.55, maxProb: 12 }).maxProb, 12, "no migra otras reglas (RULES_V no sube)");
+});
+
+test("UNH y MRK: en la lista base (Defensivos), UNH con ancho de $10 y MRK con $5", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const universe = JSON.parse(await readFile(new URL("../scanner/universe.json", import.meta.url), "utf8"));
+  const names = universe.bloques.flatMap((b) => b.nombres.map((n) => n.s));
+  assert.equal(names.length, 44);
+  const def = universe.bloques.find((b) => b.nombre === "Defensivos").nombres.map((n) => n.s);
+  assert.deepEqual(def.slice(-2), ["UNH", "MRK"]);
+  assert.equal(widthCap("UNH"), 10);
+  assert.equal(widthCap("MRK"), 5);
+  assert.equal(widthCap("AAPL"), 5);
 });

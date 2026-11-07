@@ -1,9 +1,9 @@
 // Pestaña Reglas: los topes, los interruptores y los números que mandan en toda la app.
 
-import { PROB_OFF } from "./engine.js";
+import { DEFAULT_RULES, PROB_OFF, blockCutoff, labelOf, nyToday } from "./engine.js";
 
 export function createReglas(ctx) {
-  const { state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG } = ctx;
+  const { state, bloques, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG } = ctx;
 
   function stepper(path, label, hint, min, max, step, format) {
     const value = path.split(".").reduce((obj, key) => obj[key], state.config);
@@ -15,6 +15,22 @@ export function createReglas(ctx) {
         <button data-step="${path}" data-dir="1" data-min="${min}" data-max="${max}" data-by="${step}" aria-label="Subir ${esc(label)}">+</button>
       </div>
     </div>`;
+  }
+
+  /** De cuándo son los bloques de caer juntos y con qué cierres. */
+  function blocksLine() {
+    if (!state.scan?.symbols?.length) return "";
+    const info = bloques.info();
+    const want = labelOf(blockCutoff(nyToday()));
+    const text =
+      info.mode === "month"
+        ? `Bloques calculados con cierres hasta el ${labelOf(info.cutoff)}.`
+        : info.mode === "previous"
+          ? `Los cierres no llegan al ${want}: se usan los bloques del mes anterior, con cierres hasta el ${labelOf(info.cutoff)}.`
+          : state.hist?.symbols
+            ? `Los cierres no llegan al ${want} ni al corte del mes anterior: se usan los bloques de la lista.`
+            : "Sin cierres diarios: se usan los bloques de la lista.";
+    return `<p class="small muted" style="margin:8px 0 2px">${esc(text)} Cambian una vez al mes. El barrido y el Registro usan siempre el ${Math.round(DEFAULT_RULES.blockCoFall * 100)} % de fábrica.</p>`;
   }
 
   function gate(key, title, hint, inner = "") {
@@ -104,8 +120,10 @@ export function createReglas(ctx) {
 
       <section class="block">
         ${sectionHead("Grupos y Registro")}
-        <p class="small muted">La correlación agrupa en el Buscador. Los otros dos solo cambian cuándo las señales del Registro se encienden: avisan, no cambian ninguna regla.</p>
+        <p class="small muted">Caer juntos forma los bloques del punto «bloque nuevo» del nivel. La correlación agrupa en el Buscador. Los otros dos solo cambian cuándo las señales del Registro se encienden: avisan, no cambian ninguna regla.</p>
         <div class="panel">
+          ${stepper("rules.blockCoFall", "Caer juntos para agrupar bloques", "Los que caen fuerte a la vez al menos este % de las veces son un bloque (independientes: 13 %).", 0.25, 0.7, 0.05, (n) => `${Math.round(n * 100)} %`)}
+          ${blocksLine()}
           ${stepper("rules.corrMin", "Correlación para agrupar", "Dos nombres con esta correlación o más (rendimientos diarios, 250 días) son el mismo grupo.", 0.5, 0.99, 0.01, (n) => num(n, 2))}
           ${stepper("rules.sigReal", "Real por debajo de lo esperado", "La señal salta si el resultado real medio queda más de este % por debajo de lo esperado.", 10, 90, 5, p0)}
           ${stepper("rules.sigGroup", "Pierden a la vez", "La señal salta si en un vencimiento pierden tantos nombres de un mismo grupo.", 2, 6, 1, (n) => `${n} nombres`)}

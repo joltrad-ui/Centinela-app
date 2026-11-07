@@ -12,7 +12,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_RULES, correlationGroups, daysBetween, nyToday, qualityDeals } from "../web/engine.js";
+import { DEFAULT_RULES, correlationGroups, daysBetween, effectiveBlocks, nyToday, qualityDeals } from "../web/engine.js";
 import { COLUMN_HELP, keyOf, parseCsv, resolveRows, toCsv } from "../web/registro-calc.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -34,9 +34,10 @@ export function photoTime(at) {
  *  dentro de la franja es la foto, y fuera es una de reserva que el siguiente barrido sustituirá. */
 export const takesPhoto = (existing, today) => !existing.some((row) => row.fecha === today && row.enVentana === true);
 
-/** Los deals de este barrido, de todos los niveles, con las reglas de fábrica. `groups` viene de correlationGroups.
+/** Los deals de este barrido, de todos los niveles, con las reglas de fábrica. `groups` viene de correlationGroups y
+ *  `blocks` de effectiveBlocks (con el umbral de fábrica; sin él, `bloque_efectivo` queda vacío).
  *  `at` es la hora del barrido (para `hora_ny` y `en_ventana`). */
-export function dayRows({ symbols, hist, today, groups, at, rules = DEFAULT_RULES }) {
+export function dayRows({ symbols, hist, today, groups, blocks = null, at, rules = DEFAULT_RULES }) {
   const time = photoTime(at ?? Date.now());
   const out = qualityDeals(
     symbols,
@@ -65,6 +66,7 @@ export function dayRows({ symbols, hist, today, groups, at, rules = DEFAULT_RULE
       desacuerdo: r2(Math.abs(r.histLoss - r.recentLoss)),
       prob: r.prob == null ? null : r1(r.prob),
       bloque: d.sym.b ?? "",
+      bloqueEf: blocks?.of?.[d.sym.s] ?? "",
       grupo: groups?.of?.[d.sym.s] ?? d.sym.s,
       resultados: earnDte != null && earnDte >= 0 && earnDte <= r.dte + 2,
       cierre: null,
@@ -143,9 +145,12 @@ async function main() {
   const names = [...new Set(universe.bloques.flatMap((block) => block.nombres.map((row) => row.s)))];
   const groups = correlationGroups(hist, names, DEFAULT_RULES.corrMin);
   const today = scan.today ?? nyToday(new Date(scan.at));
+  // Bloques efectivos con el umbral de fábrica, nunca con el del dueño.
+  const list = universe.bloques.flatMap((block) => block.nombres.map((row) => (typeof row.alta === "string" ? { s: row.s, b: block.nombre, alta: row.alta } : { s: row.s, b: block.nombre })));
+  const blocks = effectiveBlocks({ list, hist, last: file.last, today, threshold: DEFAULT_RULES.blockCoFall });
   const dir = path.join(out, "registro");
   const existing = await readRegistry(dir);
-  const todayRows = dayRows({ symbols: scan.symbols, hist, today, groups, at: scan.at });
+  const todayRows = dayRows({ symbols: scan.symbols, hist, today, groups, blocks, at: scan.at });
   const keepToday = !takesPhoto(existing, today);
   const { rows, resolved, added, first } = updateRows(existing, todayRows, { today, hist, last: file.last ?? today, keepToday });
   await writeRegistry(dir, rows, { example: Boolean(scan.example) });

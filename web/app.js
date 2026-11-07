@@ -12,6 +12,7 @@ import {
   rulesLine,
 } from "./engine.js";
 import { createHoy } from "./hoy.js";
+import { createBloques } from "./bloques.js";
 import { notice, sectionHead } from "./ui.js";
 import { createBuscador } from "./buscador.js";
 import { createReglas } from "./reglas.js";
@@ -744,8 +745,9 @@ function readSummary(scan) {
 }
 
 
-/** Bloques en el orden de la lista base; los nombres sin bloque van al final. */
+/** Los bloques efectivos (grupos de caer juntos y bloques de la lista), en su orden: los de Mis bloques y del Buscador. */
 function blockOrder() {
+  if (state.scan?.symbols?.some((sym) => sym.b)) return bloques.info().order;
   const order = [...(state.scan?.blocks ?? [])];
   for (const sym of state.scan?.symbols ?? []) if (sym.b && !order.includes(sym.b)) order.push(sym.b);
   return order;
@@ -779,13 +781,15 @@ const goTab = (tab) => {
   window.scrollTo(0, 0);
   render();
 };
-const hoy = createHoy({ state, render, goTab, listSymbols, blockOrder, readLocal, writeLocal, esc, header, foot });
+// Bloques efectivos: grupos de caer juntos mezclados con los de la lista (bloques.js).
+const bloques = createBloques({ state, readLocal, writeLocal });
+const hoy = createHoy({ state, render, goTab, listSymbols, blockOrder, bloques, readLocal, writeLocal, esc, header, foot });
 // El Buscador sustituye a Lista y a Deals: todos los deals de todas las acciones con el esquema de la ficha (buscador.js).
-const buscador = createBuscador({ state, root, listSymbols, allSymbols: allListSymbols, blockOrder, readLocal, writeLocal, esc, header, foot, hoy, changeConfig });
+const buscador = createBuscador({ state, root, listSymbols, allSymbols: allListSymbols, blockOrder, bloques, readLocal, writeLocal, esc, header, foot, hoy, changeConfig });
 const reload = () => void load().then(loadHist, loadHist);
 const conexion = createConexion({ state, root, esc, readLocal, writeLocal, render, ghReady, reload, sectionHead, LS_COPIED, LS_BRIDGE, LS_GH });
 const copia = createCopia({ state, root, esc, readLocal, writeLocal, render, sectionHead, notice });
-const reglas = createReglas({ state, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG });
+const reglas = createReglas({ state, bloques, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG });
 const registro = createRegistro({ state, render, esc, num, sectionHead, header, foot, embed: Boolean(EMBED) });
 const avisos = createAvisos({ state, esc, when, sectionHead, changeConfig, foot, syncLine, isPublic });
 
@@ -800,6 +804,7 @@ function dock() {
 }
 
 function render() {
+  if (state.scan?.symbols?.length) bloques.info(); // deja en cada nombre su bloque efectivo (`sym.be`) antes de pintar
   const view =
     state.tab === "hoy" ? hoy.view() : state.tab === "deals" ? hoy.mis() : state.tab === "registro" ? registro.view() : state.tab === "reglas" ? reglas.view() : state.tab === "avisos" ? avisos.view() : buscador.view();
   const before = root.querySelector(".sheet");
