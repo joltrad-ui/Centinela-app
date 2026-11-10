@@ -82,7 +82,13 @@ const fixed = { AAPL: [333.69, 0.26], NVDA: [233.95, 0.44], MSFT: [517.53, 0.22]
 const STEP = { UNH: 10 };
 const earnings = {};
 
+// Cada nombre tiene su propia semilla, sacada de su símbolo: añadir o quitar nombres de la lista no cambia los números inventados de los demás.
+const SALT = Number(process.env.SALT ?? 131); // con 131 la muestra tiene de todo: nombres con y sin deals, varios motivos, SPY y XSP con nivel alto y ningún grupo por azar
+const seedOf = (symbol) => [...symbol].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 2147483647, SALT) + 1;
+
 for (const symbol of symbols) {
+  seed = seedOf(symbol === "XSP" ? "SPY" : symbol); // XSP es el mismo índice que SPY: misma semilla, y así sus cadenas se parecen
+  for (let i = 0; i < 12; i++) rnd(); // unas vueltas para que símbolos parecidos no salgan con números parecidos
   const [basePrice, atm] = fixed[symbol] ?? [20 + Math.floor(rnd() * 600), 0.14 + rnd() * 0.6];
   const S = Math.round(basePrice * (1 + shift / 100) * 100) / 100;
   const step = STEP[symbol] ?? (S < 50 ? 1 : S < 200 ? 2.5 : S > 600 && ["SPY", "QQQ", "XSP"].includes(symbol) ? 1 : 5);

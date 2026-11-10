@@ -20,7 +20,7 @@ const pick = (list) => list[Math.floor(rnd() * list.length)];
 const universe = JSON.parse(await readFile(path.join(here, "..", "scanner", "universe.json"), "utf8"));
 const blockOf = new Map(universe.bloques.flatMap((block) => block.nombres.map((row) => [row.s, block.nombre])));
 const GROUPS = { SPY: "SPY+XSP+QQQ+IWM", XSP: "SPY+XSP+QQQ+IWM", QQQ: "SPY+XSP+QQQ+IWM", IWM: "SPY+XSP+QQQ+IWM", GLD: "GLD+SLV", SLV: "GLD+SLV" };
-const names = ["SPY", "XSP", "QQQ", "IWM", "GLD", "SLV", "XLE", "AAPL", "MSFT", "KO", "COST", "TLT", "DIA", "EEM"].filter((s) => blockOf.has(s));
+const names = ["SPY", "XSP", "QQQ", "IWM", "GLD", "SLV", "XLE", "AAPL", "MSFT", "KO", "WMT", "TLT", "DIA", "EEM"].filter((s) => blockOf.has(s));
 
 // Cuatro vencimientos, el más reciente hace unos días.
 const expiries = [-118, -86, -52, -18].map((back) => {

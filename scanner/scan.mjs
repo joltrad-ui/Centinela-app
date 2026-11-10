@@ -143,6 +143,12 @@ async function loadUniverse(config) {
       if (typeof row.c === "string") feeds.set(symbol, { c: row.c, r: Array.isArray(row.r) ? row.r : null });
     }
   }
+  // Los nombres quitados de la lista (`bajas`, con su fecha): no se barren, pero van en `lista` para que los bloques de
+  // "caer juntos" de este mes no se recalculen sin ellos (`effectiveBlocks`). Es tan público como universe.json.
+  for (const row of base.bajas ?? []) {
+    const symbol = cleanSymbol(row?.s);
+    if (symbol && !symbols.includes(symbol) && typeof row.baja === "string") list.push({ s: symbol, baja: row.baja });
+  }
   for (const raw of PUBLIC ? [] : [...config.favorites, ...config.extra]) {
     const symbol = cleanSymbol(raw);
     if (symbol && !symbols.includes(symbol)) symbols.push(symbol);

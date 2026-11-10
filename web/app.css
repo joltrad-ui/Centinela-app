@@ -620,4 +620,15 @@ nav.dock button span:not(.tag):not(.badge) { overflow: hidden; text-overflow: el
 .rg-grp b { font-weight: 500; }
 .rg-grp .pill { align-self: start; }
 .rg-note { margin: 8px 2px 0; }
+.rg-days { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+.rg-days li { display: flex; justify-content: space-between; align-items: baseline; padding: 7px 0; font-size: 0.875rem; }
+.rg-days li:nth-child(2) { border-top: 0; }
+.rg-days b { font-weight: 500; }
+.bs-none { margin-top: 16px; border-top: 1px solid var(--line); }
+.bs-none-h { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 48px; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.bs-none-l { list-style: none; margin: 8px 0 0; padding: 4px 14px; background: var(--surface); box-shadow: var(--border); border-radius: var(--r-card); }
+.bs-none-l li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; }
+.bs-none-l li + li { border-top: 1px solid var(--line); }
+.bs-none-l b { font-weight: 500; }
+.bs-none-l span { text-align: right; }
 .rg-more { margin-top: 8px; }

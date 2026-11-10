@@ -669,7 +669,7 @@ test("hoy: el nivel es 0 sin rentab. esperada positiva y suma un punto por compr
   // queda 20 − 12 = 8 con un error de 4: cabe 2 veces
   const base = { sym: { b: "Energía" }, retExp: 2, marginHist: 5, marginRecent: 8, net: 20, expected: 12, err: 4, roundTrip: 6 };
   assert.equal(LEVEL_COST_PCT, 40);
-  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, safe: true, safety: "margin", room: 2, cheap: true, fresh: true, costShare: 30, level: 5 }); // cabe 2 veces: todo a favor y firme
+  assert.deepEqual(dealChecks(base), { scored: true, positive: true, both: true, safe: true, safety: "margin", room: 2, cheap: true, fresh: true, costShare: 30, level: 5, badYear: true, badYearLeft: 2 }); // cabe 2 veces: todo a favor y firme
   assert.equal(dealChecks(base, { held: ["Energía"] }).level, 3); // repite bloque
   assert.equal(dealChecks({ ...base, marginHist: -1 }).level, 5); // con "margen" cuenta lo que queda, no el signo de cada cálculo
   assert.equal(dealChecks({ ...base, marginHist: -1 }, { safety: "both" }).level, 3); // con "los dos cálculos", uno solo no basta
@@ -1090,12 +1090,12 @@ test("reglas: los valores nuevos del registro y los grupos tienen de fábrica y 
   assert.deepEqual([x.corrMin, x.sigReal, x.sigGroup], [0.99, 10, 6]);
 });
 
-const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", horaNy: "15:10", enVentana: true, dentroReglas: true, bloqueEf: "Grupo de SPY", ...extra });
+const sample = (extra = {}) => ({ fecha: "2026-10-01", primera: true, nombre: "SPY", vencimiento: "2026-10-16", corto: 100, largo: 95, ancho: 5, neto: 60, nivel: 4, retExp: 3.5, err: 4, perdHist: 12, perdVol: 20, desacuerdo: 8, prob: 9.5, bloque: "Bolsa, EE. UU.", grupo: "SPY+XSP", resultados: false, cierre: null, resultado: null, estado: "", horaNy: "15:10", enVentana: true, dentroReglas: true, bloqueEf: "Grupo de SPY", malAnio: true, ...extra });
 
 test("registro: el CSV se escribe y se lee igual, con comas y comillas dentro del texto", () => {
   const rows = [sample(), sample({ nombre: 'A"B', resultados: true, cierre: 101.5, resultado: 60, estado: "ganado", primera: false })];
   const text = toCsv(rows);
-  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado,hora_ny,en_ventana,dentro_reglas,bloque_efectivo$/);
+  assert.match(text.split("\n")[0], /^fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,error,perdida_historia,perdida_volatilidad,desacuerdo,prob_mercado,bloque,grupo,resultados_en_plazo,cierre_vencimiento,resultado,estado,hora_ny,en_ventana,dentro_reglas,bloque_efectivo,aguanta_mal_anio$/);
   assert.deepEqual(parseCsv(text), rows);
   assert.deepEqual(parseCsv("fecha,nombre\nbasura"), [], "filas con otra forma se saltan");
 });
@@ -1467,14 +1467,215 @@ test("bloques: el umbral de Reglas (blockCoFall) va de 25 a 70 % de 5 en 5, 40 %
   assert.equal(normalizeRules({ v: 3, blockCoFall: 0.55, maxProb: 12 }).maxProb, 12, "no migra otras reglas (RULES_V no sube)");
 });
 
-test("UNH y MRK: en la lista base (Defensivos), UNH con ancho de $10 y MRK con $5", async () => {
+test("lista base: 36 nombres; UBER y GDX dentro con su bloque, su tipo y ancho de $5; fuera los 10 quitados", async () => {
   const { readFile } = await import("node:fs/promises");
   const universe = JSON.parse(await readFile(new URL("../scanner/universe.json", import.meta.url), "utf8"));
-  const names = universe.bloques.flatMap((b) => b.nombres.map((n) => n.s));
-  assert.equal(names.length, 44);
+  const rows = universe.bloques.flatMap((b) => b.nombres.map((n) => ({ ...n, b: b.nombre })));
+  const names = rows.map((n) => n.s);
+  assert.equal(names.length, 36);
+  assert.equal(new Set(names).size, 36, "sin repetidos");
   const def = universe.bloques.find((b) => b.nombre === "Defensivos").nombres.map((n) => n.s);
   assert.deepEqual(def.slice(-2), ["UNH", "MRK"]);
   assert.equal(widthCap("UNH"), 10);
   assert.equal(widthCap("MRK"), 5);
   assert.equal(widthCap("AAPL"), 5);
+  const uber = rows.find((n) => n.s === "UBER");
+  const gdx = rows.find((n) => n.s === "GDX");
+  assert.deepEqual([uber.b, uber.k, widthCap("UBER")], ["Consumo discrecional", "stock", 5]);
+  assert.deepEqual([gdx.b, gdx.k, widthCap("GDX")], ["Metales", "etf", 5]);
+  assert.match(uber.alta, /^\d{4}-\d{2}-\d{2}$/, "con fecha de alta: los bloques de caer juntos no los miden hasta el mes siguiente");
+  assert.equal(gdx.alta, uber.alta);
+  const quitados = ["COST", "LLY", "MA", "M", "NVS", "EQT", "SLB", "BMY", "RTX", "FXI"];
+  for (const s of quitados) assert.ok(!names.includes(s), `${s} ya no está en la lista`);
+  assert.deepEqual(universe.bajas.map((row) => row.s), quitados, "quedan apuntados como bajas, con su fecha");
+  assert.ok(universe.bajas.every((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.baja)));
+  // "Pagos" se queda solo con V y "Consumo discrecional" solo con UBER.
+  assert.deepEqual(universe.bloques.find((b) => b.nombre === "Pagos").nombres.map((n) => n.s), ["V"]);
+  assert.deepEqual(universe.bloques.find((b) => b.nombre === "Consumo discrecional").nombres.map((n) => n.s), ["UBER"]);
+});
+
+// ---------- nombres quitados de la lista ----------
+import { retiredNames } from "../scanner/cierres.mjs";
+import { daysWithDeal } from "../web/registro-calc.js";
+import { NO_DEAL_REASONS, RULES_V, noDealReason } from "../web/engine.js";
+
+test("bloques: al quitar un nombre, un grupo de dos se deshace y el otro vuelve a su bloque de la lista; los demás no cambian", () => {
+  const before = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  assert.deepEqual(before.members["Grupo de GLD"], ["GLD", "SLV"]);
+  // SLV y NVDA se quitan a mitad de mes (después del corte del 30 oct).
+  const list = [...BL_LIST.filter((row) => row.s !== "SLV" && row.s !== "NVDA"), { s: "SLV", baja: "2026-11-10" }, { s: "NVDA", baja: "2026-11-10" }];
+  const now = effectiveBlocks({ list, hist: BL_HIST, last: "2026-10-30", today: "2026-11-10", threshold: 0.4 });
+  assert.equal(now.of.GLD, "Metales", "el que queda solo vuelve a su bloque de la lista");
+  assert.equal(now.of.SLV, undefined, "el quitado ya no tiene bloque");
+  assert.equal(now.of.NVDA, undefined);
+  assert.deepEqual(now.groups, ["Grupo de SPY"]);
+  assert.deepEqual(now.members["Grupo de SPY"], ["SPY", "XSP", "QQQ"], "el resto del grupo sigue junto, sin el quitado");
+  assert.deepEqual(now.order, ["Grupo de SPY", "Bolsa", "Metales", "Bitcoin", "Bonos"], "Tecnología se queda vacío y no se enseña");
+  assert.equal(now.measured.has("SLV"), false);
+  assert.ok(now.share.QQQ > 0.5 && now.share.QQQ <= 1);
+  // Sin sus cierres (ya no se traen) o quitado antes del corte, el nombre simplemente no cuenta: nada falla.
+  const { SLV: _slv, NVDA: _nvda, ...rest } = BL_HIST;
+  assert.equal(effectiveBlocks({ list, hist: rest, last: "2026-10-30", today: "2026-11-10", threshold: 0.4 }).of.GLD, "Metales");
+  const old = list.map((row) => (row.baja ? { ...row, baja: "2026-10-15" } : row));
+  assert.deepEqual(effectiveBlocks({ list: old, hist: BL_HIST, last: "2026-10-30", today: "2026-11-10", threshold: 0.4 }).groups, ["Grupo de SPY"]);
+  // Lo guardado (Mis bloques, el filtro de Bloque) pasa a los bloques de ahora de los nombres que siguen.
+  assert.deepEqual(migrateBlockNames(["Grupo de GLD"], before.members, now), ["Metales"]);
+  assert.deepEqual(migrateBlockNames(["Grupo de SPY", "Bonos"], before.members, now), ["Grupo de SPY", "Bonos"]);
+  assert.deepEqual(migrateBlockNames(["Tecnología"], { Tecnología: ["NVDA"] }, now), [], "un bloque que se queda sin nombres se quita de lo guardado");
+});
+
+test("cierres: un nombre quitado se sigue trayendo solo hasta que acaba el mes de su baja", () => {
+  const universe = { bloques: [], bajas: [{ s: "COST", baja: "2026-11-10" }, { s: "VIEJO", baja: "2026-10-15" }, { s: 7 }] };
+  assert.deepEqual(retiredNames(universe, "2026-11-12"), ["COST"]);
+  assert.deepEqual(retiredNames(universe, "2026-12-01"), [], "en diciembre el corte es el 30 nov: ya no se pide");
+  assert.deepEqual(retiredNames({ bloques: [] }, "2026-11-12"), []);
+});
+
+test("nombres quitados: un favorito, un nombre apartado (off) y un deal apuntado de un nombre que ya no está no rompen nada", () => {
+  const config = normalizeConfig({ favorites: ["COST", "SPY"], off: ["FXI", "SPY"], extra: ["MA"], rules: { v: 3 } });
+  assert.deepEqual(config.favorites, ["COST", "SPY"]);
+  assert.deepEqual(config.off, ["FXI", "SPY"]);
+  // El barrido de ahora no trae COST: la lista de avisos y la de deals lo ignoran sin error.
+  const scan = [tight("SPY")];
+  const ranked = rankUniverse(scan.filter((s) => !config.off.includes(s.s)), config.rules, config.order, today);
+  assert.equal(ranked.rows.length, 0);
+  assert.doesNotThrow(() => favoriteDeals(scan, config.favorites, config.rules, config.order, today));
+  // Un deal apuntado de COST: su estado se calcula con lo apuntado; sin precio nuevo no falla y se puede cerrar.
+  const deal = { s: "COST", expiry: "2026-12-18", shortStrike: 900, longStrike: 895, credit: 0.4, contracts: 1, level: 4 };
+  assert.doesNotThrow(() => dealStatus(deal, null, "2026-11-10"));
+  assert.doesNotThrow(() => dealStatus(deal, 950, "2026-11-10"));
+  assert.doesNotThrow(() => levelRecord([{ ...deal, closedAt: 1, result: 38 }]));
+  // Sin el nombre en la lista, su bloque efectivo no existe: los bloques abiertos usan el que tenía el deal al apuntarlo.
+  const blocks = effectiveBlocks({ list: BL_LIST, hist: BL_HIST, last: "2026-10-30", today: "2026-11-07", threshold: 0.4 });
+  assert.equal(blocks.of.COST, undefined);
+});
+
+// ---------- aguanta un mal año ----------
+test("aguanta un mal año: cobras neto − k × se espera pagar > 0; sin cierres no hay dato; no cambia el nivel", () => {
+  const row = { sym: { b: "Energía" }, retExp: 3, marginHist: 10, marginRecent: 20, net: 30, expected: 15, err: 4, roundTrip: 6 };
+  const d = dealChecks(row);
+  assert.equal(DEFAULT_RULES.badYearK, 1.5);
+  assert.deepEqual([d.badYear, d.badYearLeft], [true, 7.5], "30 − 1,5 × 15 = 7,5");
+  const hard = dealChecks(row, { badYearK: 2.25 });
+  assert.deepEqual([hard.badYear, hard.badYearLeft], [false, -3.75]);
+  assert.equal(dealChecks(row, { badYearK: 2 }).badYear, false, "justo en 0 no aguanta");
+  assert.equal(hard.level, d.level, "es un dato: el nivel no cambia");
+  const bare = dealChecks({ sym: { b: "Energía" }, retExp: null, net: 30, roundTrip: 6 });
+  assert.deepEqual([bare.badYear, bare.badYearLeft], [null, null], "sin cierres para puntuar no hay dato");
+  // La regla: 1,5 de fábrica, de 1 a 3 de 0,25 en 0,25, sin subir la versión de las reglas.
+  assert.equal(normalizeRules({ v: 3 }).badYearK, 1.5);
+  assert.equal(normalizeRules({ v: 3, badYearK: 9 }).badYearK, 3);
+  assert.equal(normalizeRules({ v: 3, badYearK: 0.2 }).badYearK, 1);
+  assert.equal(normalizeRules({ v: 3, badYearK: 1.6 }).badYearK, 1.5);
+  assert.equal(normalizeRules({ v: 3, badYearK: 2.25 }).badYearK, 2.25);
+  assert.equal(normalizeRules({ v: 3, badYearK: 2, maxProb: 12 }).maxProb, 12, "no migra otras reglas (RULES_V no sube)");
+  assert.equal(RULES_V, 3);
+});
+
+const MA_GOOD = [[70, 0.02, 0.03, 500, 0.5, -0.01], [75, 0.04, 0.05, 800, 0.46, -0.02], [80, 0.1, 0.12, 900, 0.44, -0.04], [85, 0.3, 0.32, 800, 0.42, -0.09], [90, 1.0, 1.02, 1200, 0.4, -0.2]];
+const maChain = (rows, expiry = "2026-10-30", s = "XYZ") => ({ s, p: 100, c: 0, er: null, b: "Prueba", x: [[expiry, 0.4, rows]] });
+const maSeries = (seed, step) => {
+  let s = seed;
+  let price = 100;
+  const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647) - 0.5;
+  const c = Array.from({ length: 1300 }, () => (price *= Math.exp(rand() * step)));
+  return { d: "2021-10-05", c: c.map((v) => (v * 100) / c.at(-1)) };
+};
+const MA_CALM = maSeries(5, 0.03);
+const MA_WILD = maSeries(7, 0.087);
+
+test("aguanta un mal año: el Buscador y el Registro reciben el dato con el k que toca", () => {
+  const r0 = DEFAULT_RULES;
+  const opts = { rules: r0, fee: r0.equalFee, gapPct: r0.equalGapPct, hist: { XYZ: MA_WILD }, held: [], price: "nat", maxProb: 30, maxWidth: 10 };
+  const deals = qualityDeals([maChain(MA_GOOD)], opts, today).deals;
+  assert.ok(deals.length > 0);
+  for (const d of deals) {
+    assert.equal(d.checks.badYearLeft, Math.round((d.row.net - 1.5 * d.row.expected) * 100) / 100);
+    assert.equal(d.checks.badYear, d.checks.badYearLeft > 0);
+  }
+  // El filtro del Buscador: Aguanta / No aguanta parten la lista en dos sin perder ninguno.
+  const yes = deals.filter((d) => d.checks.badYear === true);
+  const no = deals.filter((d) => d.checks.badYear === false);
+  assert.equal(yes.length + no.length, deals.length);
+  // Con un k más duro (Reglas), aguantan los mismos o menos; el nivel de cada deal no cambia.
+  const hard = qualityDeals([maChain(MA_GOOD)], { ...opts, badYearK: 3 }, today).deals;
+  assert.ok(hard.filter((d) => d.checks.badYear).length <= yes.length);
+  assert.deepEqual(hard.map((d) => d.level), deals.map((d) => d.level));
+  // El Registro: columna aguanta_mal_anio, siempre con el k de fábrica, y sobrevive a escribir y leer el CSV.
+  const rows = dayRows({ symbols: [maChain(MA_GOOD)], hist: { XYZ: MA_WILD }, today, groups: null, at: Date.parse("2026-10-05T19:10:00Z") });
+  const reg = qualityDeals([maChain(MA_GOOD)], { ...opts, maxProb: r0.maxProb, maxWidth: r0.width }, today).deals;
+  assert.deepEqual(rows.map((r) => r.malAnio).sort(), reg.map((d) => d.checks.badYear).sort());
+  assert.deepEqual(parseCsv(toCsv(rows)).map((r) => r.malAnio), rows.map((r) => r.malAnio));
+  // Una fila antigua (sin la columna) queda vacía.
+  const oldCsv = toCsv(rows).split("\n").map((line) => line.split(",").slice(0, -1).join(",")).join("\n");
+  assert.ok(parseCsv(oldCsv).every((r) => r.malAnio === null));
+});
+
+// ---------- por qué un nombre no da deals ----------
+test("motivo por nombre: el de la etapa más lejana a la que llega alguno de sus spreads", () => {
+  const RR = (extra = {}) => normalizeRules({ v: 3, ...extra });
+  const why = (sym, rules = RR(), series = MA_CALM, price = "nat") => noDealReason(sym, { rules, series, price }, today);
+  // Con deal dentro de Reglas no hay motivo.
+  assert.equal(why(maChain(MA_GOOD)), "");
+  // 1. Sin opciones en el plazo: sin cadena, o con vencimientos fuera del plazo de Reglas.
+  assert.equal(why({ ...maChain(MA_GOOD), x: [] }), "sin opciones en el plazo");
+  assert.equal(why(maChain(MA_GOOD, "2027-03-19")), "sin opciones en el plazo");
+  // 2. Ningún strike con la prob. de Reglas: solo hay strikes pegados al precio.
+  const near = [[90, 1.0, 1.02, 1200, 0.4, -0.2], [95, 2.4, 2.42, 900, 0.4, -0.33], [97.5, 3.6, 3.62, 900, 0.4, -0.45]];
+  assert.equal(why(maChain(near)), "ningún strike con la prob. de Reglas");
+  // 3. No llega al cobro mínimo: puts con la prob. de Reglas, pero baratos.
+  const cheap = [[70, 0.01, 0.02, 500, 0.5, -0.01], [75, 0.02, 0.03, 800, 0.46, -0.02], [80, 0.04, 0.05, 900, 0.44, -0.04], [85, 0.08, 0.09, 800, 0.42, -0.09], [90, 0.15, 0.16, 1200, 0.4, -0.1]];
+  assert.equal(why(maChain(cheap)), "no llega al cobro mínimo");
+  // 4. Horquilla ancha: cobra bastante, pero entre bid y ask hay demasiado.
+  const wide = MA_GOOD.map(([k, bid, ask, ...rest]) => [k, bid, Math.round((ask + 0.3) * 100) / 100, ...rest]);
+  assert.equal(why(maChain(wide)), "horquilla ancha");
+  assert.equal(why(maChain(wide), RR(), MA_CALM, "mid"), "", "a precio medio la horquilla no aparta, como en el Buscador");
+  // 5. No cubre el coste de salir: con una comisión alta, lo cobrado neto no paga entrar y salir.
+  const thin = [[80, 0.05, 0.06, 900, 0.44, -0.04], [85, 0.1, 0.11, 800, 0.42, -0.09], [90, 0.4, 0.41, 1200, 0.4, -0.2]];
+  assert.equal(why(maChain(thin), RR({ equalFee: 20 })), "no cubre el coste de salir");
+  assert.equal(why(maChain(thin)), "", "con la comisión de fábrica sí tiene deal");
+  // 6. Rentab. esperada baja: pasa todo lo anterior y se queda en la rentab. esperada mínima.
+  assert.equal(why(maChain(MA_GOOD), RR({ minRetExp: 5 }), MA_WILD), "rentab. esperada baja");
+  // Casos de borde: sin cierres no se puede puntuar; un interruptor de Reglas encendido.
+  assert.equal(why(maChain(MA_GOOD), RR(), null), "sin cierres para puntuar");
+  assert.equal(why(maChain(MA_GOOD), RR({ gates: { loss: true, lossMin: 20, lossMax: 30 } })), "lo apartan tus interruptores");
+  // El motivo coincide con lo que enseña el Buscador: sin motivo ⇔ algún deal dentro de Reglas.
+  for (const [sym, rules, series] of [[maChain(MA_GOOD), RR(), MA_CALM], [maChain(wide), RR(), MA_CALM], [maChain(cheap), RR(), MA_CALM], [maChain(MA_GOOD), RR({ minRetExp: 5 }), MA_WILD]]) {
+    const deals = qualityDeals([sym], { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, hist: { XYZ: series }, held: [], price: "nat", maxProb: 30, maxWidth: 10 }, today).deals;
+    assert.equal(deals.some((d) => d.ok), why(sym, rules, series) === "");
+  }
+  assert.ok(NO_DEAL_REASONS.includes("horquilla ancha"));
+});
+
+// ---------- Registro: días con algún deal ----------
+test("registro: días con algún deal por nombre, de menos a más, sobre los últimos días registrados", () => {
+  const csv = [
+    "fecha,primera_aparicion,nombre,vencimiento,corto,largo,ancho,cobro_neto,nivel,rentab_esperada,dentro_reglas",
+    "2026-11-02,1,SPY,2026-12-18,600,595,5,40,4,3.1,sí",
+    "2026-11-02,1,SPY,2026-12-18,595,590,5,30,3,2.1,sí", // dos deals el mismo día cuentan un día
+    "2026-11-02,1,GLD,2026-12-18,300,295,5,30,2,1.1,sí",
+    "2026-11-02,1,AAPL,2026-12-18,250,245,5,30,3,1.1,no", // fuera de Reglas: no cuenta
+    "2026-11-03,0,SPY,2026-12-18,600,595,5,41,4,3.2,sí",
+    "2026-11-03,1,GLD,2026-12-18,300,295,5,30,0,-0.4,sí", // nivel 0 (rentab. esperada no positiva): no cuenta
+    "2026-11-03,1,TLT,2026-12-18,90,85,5,25,3,1.5,", // fila antigua sin dentro_reglas: cuenta como dentro
+    "2026-11-04,0,SPY,2026-12-18,600,595,5,42,5,3.3,sí",
+    "2026-11-04,1,UBER,2026-12-18,62.5,57.5,5,34,3,2,sí",
+  ].join("\n");
+  const names = [{ s: "SPY" }, { s: "GLD" }, { s: "AAPL" }, { s: "TLT" }, { s: "UBER", alta: "2026-11-04" }, { s: "MRK" }];
+  const t = daysWithDeal(parseCsv(csv), names, 30);
+  assert.equal(t.days, 3);
+  assert.deepEqual(t.rows, [
+    { s: "AAPL", n: 0, of: 3 },
+    { s: "MRK", n: 0, of: 3 },
+    { s: "GLD", n: 1, of: 3 },
+    { s: "TLT", n: 1, of: 3 },
+    { s: "UBER", n: 1, of: 1 }, // dado de alta el 4 nov: solo se compara con los días desde entonces
+    { s: "SPY", n: 3, of: 3 },
+  ]);
+  // Solo los últimos N días registrados.
+  const last2 = daysWithDeal(parseCsv(csv), names, 2);
+  assert.equal(last2.days, 2);
+  assert.deepEqual(last2.rows.find((r) => r.s === "SPY"), { s: "SPY", n: 2, of: 2 });
+  assert.deepEqual(last2.rows.find((r) => r.s === "GLD"), { s: "GLD", n: 0, of: 2 });
+  assert.deepEqual(daysWithDeal([], names).rows.every((r) => r.n === 0 && r.of === 0), true);
 });

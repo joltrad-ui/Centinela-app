@@ -5,7 +5,7 @@
 import { emptyBox } from "./ui.js";
 import { DEAL_ORDERS, DEAL_ORDER_DEFAULT } from "./hoy-calc.js";
 import { PR, W, choiceRow, filterBars, foldRow, moreHead, morePanel } from "./filtros.js";
-import { TWINS, blockOf, correlationGroups, migrateBlockNames, num, qualityDeals, nyToday, volatilities } from "./engine.js";
+import { TWINS, blockOf, correlationGroups, migrateBlockNames, noDealReason, num, qualityDeals, nyToday, volatilities } from "./engine.js";
 
 const LS = "centinela.buscador.v1";
 const LS_TENGO = "centinela.tengo.v1";
@@ -42,8 +42,9 @@ export function createBuscador(ctx) {
     margin: f.margin === true || f.margin === "yes" ? "yes" : f.margin === "no" ? "no" : "all", // punto de seguridad: todos, solo con margen o solo sin margen (antes era un booleano)
     tengo: f.tengo === "hide" || f.tengo === "only" ? f.tengo : "all",
     vol: f.vol === "high" || f.vol === "low" ? f.vol : "all", // IV frente a la volatilidad realizada: todas, IV alta o IV baja
+    bad: f.bad === "yes" || f.bad === "no" ? f.bad : "all", // aguanta un mal año (cobras neto menos k veces lo que se espera pagar): todos, aguanta o no aguanta
   });
-  const FILTER_KEYS = ["lv", "days", "blocks", "w", "pr", "hide", "earn", "trend", "margin", "tengo", "vol"];
+  const FILTER_KEYS = ["lv", "days", "blocks", "w", "pr", "hide", "earn", "trend", "margin", "tengo", "vol", "bad"];
 
   const saved = readLocal(LS) ?? {};
   const bs = {
@@ -57,9 +58,10 @@ export function createBuscador(ctx) {
     fOpen: saved.fOpen === true, // "Más filtros": comprimidos de fábrica
     open: "", // la fila de filtros desplegada (blk, hide, guardados), como "Mis bloques" de Hoy
     help: false, // la explicación de los filtros abierta; solo en memoria
+    noneOpen: false, // "Sin deals hoy" desplegado; solo en memoria
     mark: false, // en el panel de acciones, tocar marca "la tengo" en vez de quitar o poner
   };
-  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, one: bs.one, tengo: bs.tengo, ord: bs.ord, ordV: ORD_V, fOpen: bs.fOpen });
+  const keep = () => writeLocal(LS, { lv: bs.lv, days: bs.days, blocks: bs.blocks, w: bs.w, pr: bs.pr, hide: bs.hide, earn: bs.earn, trend: bs.trend, margin: bs.margin, bad: bs.bad, one: bs.one, tengo: bs.tengo, ord: bs.ord, ordV: ORD_V, fOpen: bs.fOpen });
 
   let tengoList = (Array.isArray(readLocal(LS_TENGO)) ? readLocal(LS_TENGO) : []).filter((s) => typeof s === "string").slice(0, 200);
   const keepTengo = () => writeLocal(LS_TENGO, tengoList);
@@ -111,7 +113,7 @@ export function createBuscador(ctx) {
     if (cache.key !== key) {
       const out = qualityDeals(
         symbols,
-        { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: state.hist?.symbols ?? null, held, price, maxProb: PR_MAX, maxWidth: 10 },
+        { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, badYearK: rules.badYearK, hist: state.hist?.symbols ?? null, held, price, maxProb: PR_MAX, maxWidth: 10 },
         today,
       );
       cache = { key, out };
@@ -126,7 +128,16 @@ export function createBuscador(ctx) {
       cache.volRatio = ratios;
       cache.volKey = key;
     }
-    return { deals: cache.out.deals, price, volRatio: cache.volRatio, openNames: new Set(mine.map((d) => d.s)) };
+    if (!cache.none || cache.noneKey !== key) {
+      // Los nombres de la lista (sin los quitados por él) que hoy no tienen ningún deal dentro de Reglas, cada uno con su motivo.
+      // No dependen de los filtros del Buscador. Se calcula en el dispositivo y no se guarda.
+      const has = new Set(cache.out.deals.filter((d) => d.ok).map((d) => d.sym.s));
+      cache.none = symbols
+        .filter((sym) => !has.has(sym.s))
+        .map((sym) => ({ sym, why: noDealReason(sym, { rules, series: state.hist?.symbols?.[sym.s] ?? null, price }, today) || `prob. por encima del ${PR_MAX} % que enseña el Buscador` }));
+      cache.noneKey = key;
+    }
+    return { deals: cache.out.deals, none: cache.none, price, volRatio: cache.volRatio, openNames: new Set(mine.map((d) => d.s)) };
   }
 
   /** Las acciones que "tengo": las que tienen un deal abierto en Mis deals y las marcadas a mano. */
@@ -162,6 +173,7 @@ export function createBuscador(ctx) {
       { key: "earn", on: bs.earn, label: "Ocultar resultados", test: (d) => !(d.row.earnInside && d.sym.er), drop: () => (bs.earn = false) },
       { key: "trend", on: bs.trend, label: "Ocultar tendencia", test: (d) => !(d.row.trend ?? []).length, drop: () => (bs.trend = false) },
       { key: "margin", on: bs.margin !== "all", label: "el filtro de Margen", test: (d) => (bs.margin === "yes") === Boolean(d.checks.safe), drop: () => (bs.margin = "all") },
+      { key: "bad", on: bs.bad !== "all", label: "el filtro de Mal año", test: (d) => d.checks.badYear != null && (bs.bad === "yes") === d.checks.badYear, drop: () => (bs.bad = "all") },
       { key: "vol", on: bs.vol !== "all", label: "el filtro de Volatilidad", test: (d) => { const r = d0.volRatio.get(d.sym.s); return r != null && (bs.vol === "high" ? r >= VOL_HIGH : r <= VOL_LOW); }, drop: () => (bs.vol = "all") },
       { key: "tengo", on: bs.tengo !== "all", label: "Las que tengo", test: (d) => (bs.tengo === "hide" ? !tengo.has(d.sym.s) : tengo.has(d.sym.s)), drop: () => (bs.tengo = "all") },
     ].filter((c) => c.on);
@@ -188,6 +200,7 @@ export function createBuscador(ctx) {
   const HELP = [
     ["Nivel", "0 = la rentab. esperada no es positiva. Si lo es, parte de 1 y suma un punto por cada comprobación: margen (lo que queda supera el error del cálculo), costes razonables (ida y vuelta hasta el 40 % de lo cobrado) y bloque nuevo (no tienes ya uno abierto de ese bloque). El 5 exige además el doble de margen."],
     ["Margen", "Con = lo que queda tras restar lo que se espera pagar supera el error del cálculo (1 vez de fábrica; se cambia en Reglas, pestaña Hoy). Sin = no lo supera. Puede salir bien igualmente, pero su beneficio esperado es menor que la incertidumbre de la cuenta."],
+    ["Mal año", "Aguanta = lo que cobras, ya sin comisión, menos 1,5 veces lo que se espera pagar sigue en positivo (1,5 de fábrica; se cambia en Reglas, pestaña Hoy). En 2015, 2018 y 2022 se pagó entre 1,3 y 1,5 veces lo previsto. Es un dato: no cambia el nivel ni el orden."],
     ["Volatilidad", "IV alta = la volatilidad implícita a 30 días es al menos 1,2 veces lo que el valor se ha movido de verdad (la realizada reciente, de 20 a 60 sesiones): las opciones están caras frente a su movimiento. IV baja = como mucho 0,8 veces. Sin cierres guardados, el valor no tiene dato y no sale en ninguna."],
     ["Las que tengo", "Acciones con un deal abierto en Mis deals, más las que marques a mano en Acciones, Marcar las que tengo. Ocultar las quita de la lista; Solo deja únicamente esas. Se guardan solo en este dispositivo."],
   ];
@@ -230,7 +243,7 @@ export function createBuscador(ctx) {
 
   /** Cuántos filtros hay puestos (el nivel de fábrica no cuenta). */
   function activeFilters() {
-    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin !== "all", bs.vol !== "all", bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
+    return [bs.blocks.length > 0, bs.w != null, bs.pr != null, activeDays() != null, bs.hide, bs.earn, bs.trend, bs.margin !== "all", bs.bad !== "all", bs.vol !== "all", bs.tengo !== "all", bs.q.trim() !== "", JSON.stringify(bs.lv) !== JSON.stringify(DEFAULT_LV)].filter(Boolean).length;
   }
 
   /** Los filtros, en el orden de la pantalla Deals de antes: lo que más se toca arriba (nivel y las tres barras) y el resto plegado. */
@@ -256,6 +269,7 @@ export function createBuscador(ctx) {
         <hr class="fi-sep">
         ${blocks.length > 1 ? fold("blk", "Bloque", blockOpts) : ""}
         ${choiceRow("Margen", 'data-bs="margin"', [["all", "Todos"], ["yes", "Con"], ["no", "Sin"]], bs.margin)}
+        ${choiceRow("Mal año", 'data-bs="bad"', [["all", "Todos"], ["yes", "Aguanta"], ["no", "No aguanta"]], bs.bad)}
         ${choiceRow("Volatilidad", 'data-bs="vol"', [["all", "Todas"], ["high", "IV alta"], ["low", "IV baja"]], bs.vol)}
         ${choiceRow("Las que tengo", 'data-bs="tengo"', [["all", "Todas"], ["hide", "Ocultar"], ["only", "Solo"]], bs.tengo)}
         ${fold("hide", "Ocultar", hideOpts)}
@@ -327,6 +341,18 @@ export function createBuscador(ctx) {
     return `<ul class="fi-dlist">${shown.map((d) => hoy.dealRow(d, { withName: true, note: [groupNote(d) || twinNote(d), variants.get(d.sym.s) ? `+${variants.get(d.sym.s)} más de ${esc(d.sym.s)}` : ""].filter(Boolean).join(" · ") })).join("")}</ul>${more}`;
   }
 
+  /** "Sin deals hoy (N nombres)": plegada al final de la lista; abierta, una fila por nombre con su motivo. */
+  function noneHtml(d0) {
+    const n = d0.none.length;
+    if (!n) return "";
+    const head = `<button class="bs-none-h" data-bs="none" aria-expanded="${bs.noneOpen}"><span>Sin deals hoy (${n} ${n === 1 ? "nombre" : "nombres"})</span><span class="muted">${bs.noneOpen ? "▴" : "▾"}</span></button>`;
+    if (!bs.noneOpen) return `<div class="bs-none">${head}</div>`;
+    return `<div class="bs-none">${head}
+      <p class="xs muted">Nombres de tu lista sin ningún deal dentro de tus Reglas, con el punto más lejano al que llega alguno de sus spreads. No depende de los filtros de arriba.</p>
+      <ul class="bs-none-l">${d0.none.map(({ sym, why }) => `<li><b>${esc(sym.s)}</b><span class="small muted">${esc(why)}</span></li>`).join("")}</ul>
+    </div>`;
+  }
+
   /** La barra de encima de la lista: "Uno por nombre" y cuántos hay. Se repinta al escribir en la caja. */
   function countHtml(d0) {
     const list = filtered(d0);
@@ -342,13 +368,14 @@ export function createBuscador(ctx) {
     const d0 = data();
     return `<div class="bs">
       ${header("Buscador", false)}
-      <div class="bs-search"><input id="bs-q" class="bs-q" type="search" placeholder="Buscar acción: COST, Costco, energía…" value="${esc(bs.q)}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar acción"></div>
+      <div class="bs-search"><input id="bs-q" class="bs-q" type="search" placeholder="Buscar acción: UBER, Uber, energía…" value="${esc(bs.q)}" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Buscar acción"></div>
       ${namesPanel(d0)}
       ${filters(d0)}
       <div id="bs-sum">${levelSummary(d0)}</div>
       <div class="bs-bar" id="bs-bar">${countHtml(d0)}</div>
       <div class="fi-sort sortbar eq" role="group" aria-label="Orden">${ORDERS.map(([id, label]) => `<button data-bs="ord" data-v="${id}" aria-pressed="${bs.ord === id}">${label}</button>`).join("")}</div>
       <div id="bs-list">${listHtml(d0)}</div>
+      ${noneHtml(d0)}
       ${foot()}
     </div>`;
   }
@@ -412,6 +439,7 @@ export function createBuscador(ctx) {
     }
     else if (act === "open") bs.open = bs.open === value ? "" : value;
     else if (act === "help") bs.help = !bs.help;
+    else if (act === "none") bs.noneOpen = !bs.noneOpen;
     else if (act === "preset") {
       const p = presets[Number(value)];
       if (p) Object.assign(bs, cleanFilters(p.f));
@@ -424,6 +452,7 @@ export function createBuscador(ctx) {
     else if (act === "earn") bs.earn = !bs.earn;
     else if (act === "trend") bs.trend = !bs.trend;
     else if (act === "vol") bs.vol = ["all", "high", "low"].includes(value) ? value : "all";
+    else if (act === "bad") bs.bad = ["all", "yes", "no"].includes(value) ? value : "all";
     else if (act === "margin") bs.margin = ["all", "yes", "no"].includes(value) ? value : "all";
     else if (act === "one") bs.one = !bs.one;
     else if (act === "ord") bs.ord = ORDERS.some(([id]) => id === value) ? value : DEAL_ORDER_DEFAULT;
@@ -433,9 +462,9 @@ export function createBuscador(ctx) {
     } else if (act === "drop") {
       criteria(data()).find((c) => c.key === value)?.drop();
     } else if (act === "reset") {
-      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", vol: "all", tengo: "all" });
+      Object.assign(bs, { q: "", lv: [...DEFAULT_LV], days: null, blocks: [], w: null, pr: null, hide: false, earn: false, trend: false, margin: "all", bad: "all", vol: "all", tengo: "all" });
     } else touched = false;
-    if (touched && act !== "names" && act !== "open" && act !== "help" && act !== "preset-del" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
+    if (touched && act !== "names" && act !== "open" && act !== "help" && act !== "none" && act !== "preset-del" && act !== "filters-open" && act !== "mode" && act !== "name" && act !== "all-on" && act !== "all-off" && act !== "clear-tengo") {
       bs.shown = SHOW;
       keep();
     }
