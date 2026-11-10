@@ -808,3 +808,39 @@ test("Nombres quitados de la lista: un deal apuntado, un favorito y un nombre ap
   assert.deepEqual(page.errors, []);
   await page.close();
 });
+
+test("El gesto atrás del teléfono cierra la ficha sin salir de la app", { skip }, async () => {
+  const page = await open(390);
+  const sheets = () => page.locator(".sheet").count();
+  const steps = () => page.evaluate(() => window.history.length);
+  const base = await steps();
+  const cell = page.locator('button.lv[data-hoy="cell"]:not(.lvh)').first();
+  // Atrás cierra la ficha y la app sigue en pantalla.
+  await cell.click();
+  assert.equal(await sheets(), 1);
+  await page.goBack();
+  assert.equal(await sheets(), 0, "atrás cierra la ficha");
+  assert.equal(await page.locator(".dock").count(), 1, "la app sigue abierta");
+  // Elegir otro deal dentro de la ficha no añade pasos: un solo atrás la cierra.
+  await cell.click();
+  await page.locator('.fi-dr[data-hoy="pick"]').nth(1).click();
+  await page.locator('.fi-dr[data-hoy="pick"]').nth(0).click();
+  assert.equal(await steps(), base + 1, "un solo paso por ficha");
+  await page.goBack();
+  assert.equal(await sheets(), 0, "un solo atrás basta");
+  // Cerrar con la ✕ deshace el paso: no queda un atrás de sobra.
+  await cell.click();
+  await page.locator('[data-hoy="close"].fi-x').click();
+  await page.waitForFunction(() => window.history.state?.ficha !== true);
+  assert.equal(await sheets(), 0);
+  // Y abrir otra justo después sigue cerrándose con atrás.
+  await cell.click();
+  await page.locator('[data-hoy="close"].fi-x').click();
+  await cell.click();
+  await page.waitForFunction(() => window.history.state?.ficha === true);
+  assert.equal(await sheets(), 1, "la ficha abierta justo después de cerrar otra no se cierra sola");
+  await page.goBack();
+  assert.equal(await sheets(), 0);
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});

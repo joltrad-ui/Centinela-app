@@ -818,9 +818,31 @@ function render() {
   // Al pulsar dentro de la ficha (otro bull put, otro orden) se queda donde estaba.
   const after = root.querySelector(".sheet");
   if (keep && after && after.getAttribute("aria-label") === keep.name) after.scrollTop = keep.top;
+  syncBack(Boolean(after));
   if (state.tab === "hoy") scheduleWarm();
   if (state.tab === "registro") void registro.load();
 }
+
+// El gesto o el botón "atrás" del teléfono cierra la ficha en vez de salir de la app: al abrirla se apunta un paso
+// en el historial del navegador y, al cerrarla de otro modo (✕, fuera, Escape), ese paso se deshace.
+let undoing = false; // hay un "atrás" nuestro en camino (la ficha se cerró con la ✕)
+function syncBack(open) {
+  try {
+    const marked = window.history.state?.ficha === true;
+    if (open && !marked && !undoing) window.history.pushState({ ficha: true }, "");
+    else if (!open && marked && !undoing) {
+      undoing = true;
+      window.history.back();
+    }
+  } catch {} // sin historial (página incrustada): la ficha se cierra como siempre
+}
+window.addEventListener("popstate", (event) => {
+  if (undoing) {
+    // Era el nuestro. Si entretanto se abrió otra ficha, se vuelve a apuntar su paso en vez de cerrarla.
+    undoing = false;
+    syncBack(Boolean(root.querySelector(".sheet")));
+  } else if (event.state?.ficha !== true) hoy.escape();
+});
 
 // Con Hoy en pantalla, en un rato libre se calculan los deals del Buscador: al abrirlo ya están (la caché es por barrido, reglas, precio y acciones).
 let warmPending = false;
@@ -917,6 +939,11 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "Escape") hoy.escape();
 });
+
+// Tras recargar con la ficha abierta no hay ficha: se quita la marca para que el primer "atrás" no se gaste en nada.
+try {
+  if (window.history.state?.ficha === true) window.history.replaceState(null, "");
+} catch {}
 
 // Abrir donde lo dejaste, y enterarse solo de que vuelve o se va la conexión.
 const lastTab = readLocal(LS_TAB);

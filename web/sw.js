@@ -1,7 +1,7 @@
 // Primero la red; si no hay conexión, la última copia guardada.
 // La red se pregunta siempre ("no-cache"): si no, el navegador reutiliza durante 10 minutos
 // lo que ya tenía y una versión recién publicada no aparece al recargar.
-const CACHE = "centinela-v11";
+const CACHE = "centinela-v12";
 const SHELL = ["./", "index.html", "app.css", "app.js", "engine.js", "hoy.js", "buscador.js", "bloques.js", "ui.js", "reglas.js", "avisos.js", "conexion.js", "copia.js", "hoy-calc.js", "hoy-vistas.js", "filtros.js", "registro.js", "registro-calc.js", "manifest.webmanifest", "icons/icon-192.png", "fonts/ibm-plex-sans-latin.woff2", "fonts/newsreader-latin.woff2"];
 
 self.addEventListener("install", (event) => {
