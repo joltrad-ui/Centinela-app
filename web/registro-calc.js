@@ -30,6 +30,7 @@ export const COLUMNS = [
   ["enVentana", "en_ventana", "y"],
   ["dentroReglas", "dentro_reglas", "y"],
   ["bloqueEf", "bloque_efectivo", "s"],
+  ["malAnio", "aguanta_mal_anio", "y"],
 ];
 
 /** Lo que significa cada columna, para quien lea el CSV sin la app (se publica como registro/columnas.txt). */
@@ -61,6 +62,7 @@ hora_ny               Hora de Nueva York (HH:MM) del barrido que dio la foto de 
 en_ventana            si si el barrido cayó entre las 14:45 y las 15:45 de Nueva York (la franja de la foto); no si fue un barrido de reserva (ninguno cayó en la franja, así que vale el último con el mercado abierto). Vacío en las filas antiguas.
 dentro_reglas         si si el deal cumple las reglas de fábrica; no si Centinela no lo habría propuesto (se guarda para poder comparar niveles bajos). Vacío en las filas antiguas, que son todas si.
 bloque_efectivo       Bloque que cuenta para el punto "bloque nuevo" del nivel: "Grupo de X" si el nombre cae junto a otros (tramos de 20 sesiones en su 13 % peor, a la vez al menos el 40 % de las veces, con 5 años de cierres hasta el último día de mercado del mes anterior); si no, el de la lista. Umbral de fábrica. Vacío en las filas guardadas antes del 7 nov 2026.
+aguanta_mal_anio      si si el cobro neto menos 1,5 veces la pérdida esperada (la media de perdida_historia y perdida_volatilidad) sigue en positivo; no si no. El 1,5 es el de fábrica: en 2015, 2018 y 2022 se pagó entre 1,3 y 1,5 veces lo previsto. Solo se guarda: no cambia el nivel. Vacío en las filas guardadas antes de añadir la columna (nov 2026).
 `;
 
 const csvCell = (value) => {
@@ -171,6 +173,28 @@ export function resolveRows(rows, hist, lastDate) {
     done++;
   }
   return done;
+}
+
+/** "Días con algún deal": por cada nombre de `names` ([{ s, alta }], la lista en su orden), en cuántos de los últimos `max` días
+ *  registrados tuvo al menos un deal dentro de las reglas de fábrica con rentab. esperada mayor que 0 (`dentro_reglas` = sí y
+ *  nivel de 1 o más; las filas antiguas sin `dentro_reglas` cuentan como dentro). Un nombre dado de alta después solo se
+ *  compara con los días desde su alta. Ordenado de menos a más (a igualdad, el orden de la lista). */
+export function daysWithDeal(rows, names, max = 30) {
+  const days = [...new Set((rows ?? []).map((row) => row.fecha))].sort().slice(-max);
+  const from = days[0] ?? "";
+  const hit = new Map();
+  for (const row of rows ?? []) {
+    if (row.fecha < from || row.dentroReglas === false || !(row.nivel >= 1)) continue;
+    if (!hit.has(row.nombre)) hit.set(row.nombre, new Set());
+    hit.get(row.nombre).add(row.fecha);
+  }
+  const out = (names ?? []).map((name, i) => {
+    const of = typeof name.alta === "string" ? days.filter((day) => day >= name.alta).length : days.length;
+    const got = hit.get(name.s);
+    return { s: name.s, n: got ? days.filter((day) => got.has(day) && !(typeof name.alta === "string" && day < name.alta)).length : 0, of, i };
+  });
+  out.sort((a, b) => a.n - b.n || a.i - b.i);
+  return { days: days.length, from, to: days.at(-1) ?? "", rows: out.map(({ s, n, of }) => ({ s, n, of })) };
 }
 
 // ---------- análisis ----------

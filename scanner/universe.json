@@ -45,11 +45,6 @@
      "k": "etf"
     },
     {
-     "s": "RTX",
-     "n": "RTX (defensa)",
-     "k": "stock"
-    },
-    {
      "s": "HYG",
      "n": "Bonos high yield",
      "k": "etf"
@@ -123,16 +118,6 @@
      "s": "USO",
      "n": "Petróleo",
      "k": "etf"
-    },
-    {
-     "s": "EQT",
-     "n": "EQT (gas natural)",
-     "k": "stock"
-    },
-    {
-     "s": "SLB",
-     "n": "SLB (servicios petroleros)",
-     "k": "stock"
     }
    ]
   },
@@ -148,6 +133,12 @@
      "s": "SLV",
      "n": "Plata",
      "k": "etf"
+    },
+    {
+     "s": "GDX",
+     "n": "Mineras de oro",
+     "k": "etf",
+     "alta": "2026-11-10"
     }
    ]
   },
@@ -162,11 +153,6 @@
     {
      "s": "EEM",
      "n": "Emergentes",
-     "k": "etf"
-    },
-    {
-     "s": "FXI",
-     "n": "China grandes",
      "k": "etf"
     }
    ]
@@ -195,26 +181,6 @@
      "k": "stock"
     },
     {
-     "s": "COST",
-     "n": "Costco",
-     "k": "stock"
-    },
-    {
-     "s": "LLY",
-     "n": "Eli Lilly",
-     "k": "stock"
-    },
-    {
-     "s": "BMY",
-     "n": "Bristol-Myers Squibb",
-     "k": "stock"
-    },
-    {
-     "s": "NVS",
-     "n": "Novartis",
-     "k": "stock"
-    },
-    {
      "s": "JPM",
      "n": "JPMorgan Chase",
      "k": "stock"
@@ -237,9 +203,10 @@
    "nombre": "Consumo discrecional",
    "nombres": [
     {
-     "s": "M",
-     "n": "Macy's",
-     "k": "stock"
+     "s": "UBER",
+     "n": "Uber",
+     "k": "stock",
+     "alta": "2026-11-10"
     }
    ]
   },
@@ -249,11 +216,6 @@
     {
      "s": "V",
      "n": "Visa",
-     "k": "stock"
-    },
-    {
-     "s": "MA",
-     "n": "Mastercard",
      "k": "stock"
     }
    ]
@@ -278,5 +240,48 @@
     }
    ]
   }
- ]
+ ],
+ "bajas": [
+  {
+   "s": "COST",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "LLY",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "MA",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "M",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "NVS",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "EQT",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "SLB",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "BMY",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "RTX",
+   "baja": "2026-11-10"
+  },
+  {
+   "s": "FXI",
+   "baja": "2026-11-10"
+  }
+ ],
+ "nota_bajas": "Nombres quitados de la lista, con su fecha. No se barren ni se enseñan; solo cuentan para que los bloques del mes en que se quitaron no se recalculen a medias. Pasado ese mes se pueden borrar de aquí."
 }

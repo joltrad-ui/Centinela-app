@@ -162,6 +162,7 @@ export function createHoy(ctx) {
         marginK: rules.levelMargin,
         errVol: rules.errVolPct,
         errHistK: rules.errHistK,
+        badYearK: rules.badYearK,
         hist: state.hist?.symbols ?? null,
         held: heldBlocks(),
         price: hoy.price,
@@ -198,7 +199,7 @@ export function createHoy(ctx) {
     if (nameCache.key !== key) {
       const out = qualityDeals(
         [sym],
-        { rules, fee: o.opts.fee, gapPct: o.opts.gapPct, safety: o.opts.safety, marginK: o.opts.marginK, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist: o.opts.hist, held: o.opts.held, price: hoy.price, maxProb: 30, maxWidth: 10 },
+        { rules, fee: o.opts.fee, gapPct: o.opts.gapPct, safety: o.opts.safety, marginK: o.opts.marginK, errVolPct: rules.errVolPct, errHistK: rules.errHistK, badYearK: rules.badYearK, hist: o.opts.hist, held: o.opts.held, price: hoy.price, maxProb: 30, maxWidth: 10 },
         o.today,
       );
       nameCache = { key, deals: out.deals };
@@ -345,6 +346,7 @@ export function createHoy(ctx) {
           ${bar == null ? "" : `<div class="fi-bar" role="img" aria-label="De lo que cobras, ${num(bar, 0)} % se aparta para pérdidas y ${num(100 - bar, 0)} % es tuyo"><i class="r" style="width:${bar.toFixed(1)}%"></i><i class="g" style="width:${(100 - bar).toFixed(1)}%"></i></div>`}
           ${left > 0 || share == null ? "" : `<p class="fi-cap small muted">Lo que cobras no cubre lo que se espera pagar.</p>`}
           ${row.retExp == null ? "" : `<p class="fi-short small" id="fi-retexp"><span class="muted">Rentab. esperada</span><b class="num ${tone(row.retExp)}">${row.retExp > 0 ? "+" : ""}${num(row.retExp, 1)} %</b>${row.balanceHist == null || row.balanceHist >= 999 ? "" : `<span class="xs muted fi-short-n">Equilibrio (cobras neto ÷ se espera pagar) <b class="num">${num(row.balanceHist, 1)}</b></span>`}</p>`}
+          ${checks.badYearLeft == null ? "" : `<p class="fi-short small" id="fi-badyear"><span class="muted">En un mal año (se paga ${num(o.rules.badYearK, 2).replace(/,?0+$/, "")} veces lo esperado)</span><span>${checks.badYear ? "quedan" : "faltan"} <b class="num ${tone(checks.badYearLeft)}">$${num(Math.abs(checks.badYearLeft), Number.isInteger(checks.badYearLeft) ? 0 : 2)}</b></span></p>`}
           <p class="fi-short small"><span class="muted">Si el cálculo se queda corto</span><span class="num ${tone(worst)}"><b>${usdS(worst)}</b>${worstPct == null ? "" : ` · ${worstPct < 0 ? "−" : ""}${num(Math.abs(worstPct), 0)} %`}</span></p>
         </div>`
       : `<div class="fi-ticket">

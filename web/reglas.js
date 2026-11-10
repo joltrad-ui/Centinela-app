@@ -115,6 +115,8 @@ export function createReglas(ctx) {
           ${stepper("rules.errVolPct", "Error: volatilidad", "Cuánto se supone que puede variar la volatilidad reciente en el plazo del deal. ±10 % de fábrica.", 10, 40, 5, (n) => `±${n} %`)}
           ${stepper("rules.errHistK", "Error: historia", "Por cuánto se multiplica el error de la media de 5 años. ×1 de fábrica.", 1, 3, 0.5, (n) => `×${num(n, 1)}`)}
           <p class="small muted" style="margin:8px 0 2px">Nota: estos dos solo cambian el error (el ± de la ficha, la barra de Barras, el suelo y el punto de seguridad), no lo que se espera pagar ni el nivel 0. Medido con 5 años de los 32 nombres, la volatilidad del mes siguiente varió de verdad unos ±35 % y el error de la historia se quedó corto unas 2 veces. Si ves el mercado peor, sube a ±35 % y ×2: con el barrido del 7 oct, el nivel 4 pasaba de 37 casillas a 12.</p>
+          ${stepper("rules.badYearK", "Mal año: se paga … veces lo esperado", "Un deal aguanta un mal año si cobras neto menos estas veces lo que se espera pagar sigue en positivo.", 1, 3, 0.25, (n) => `${num(n, 2).replace(/,?0+$/, "")} ${n === 1 ? "vez" : "veces"}`)}
+          <p class="small muted" style="margin:8px 0 2px">Nota: en 2015, 2018 y 2022 se pagó entre 1,3 y 1,5 veces lo previsto. Es un dato de la ficha y un filtro del Buscador: no cambia el nivel ni el orden.</p>
         </div>
       </section>
 

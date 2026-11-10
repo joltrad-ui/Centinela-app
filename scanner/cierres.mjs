@@ -11,7 +11,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { nyToday, sessionsBetween } from "../web/engine.js";
+import { blockCutoff, nyToday, sessionsBetween } from "../web/engine.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = {};
@@ -116,6 +116,12 @@ export function checkSeries(series, today) {
   return "";
 }
 
+/** Los nombres quitados de la lista (`bajas` de universe.json) cuya baja es posterior al corte de los bloques de este mes. */
+export function retiredNames(universe, today) {
+  const cutoff = blockCutoff(today);
+  return (universe.bajas ?? []).filter((row) => typeof row?.s === "string" && typeof row.baja === "string" && row.baja > cutoff).map((row) => row.s);
+}
+
 /** Último día cuyo cierre ya es definitivo: hoy si la bolsa ya ha cerrado, si no ayer. */
 function lastClosedDay(now = new Date()) {
   const today = nyToday(now);
@@ -126,7 +132,10 @@ function lastClosedDay(now = new Date()) {
 async function main() {
   const today = FIXTURES ? nyToday() : lastClosedDay();
   const universe = JSON.parse(await readFile(path.join(ROOT, "scanner", "universe.json"), "utf8"));
-  const names = [...new Set(universe.bloques.flatMap((block) => block.nombres.map((row) => row.s)))];
+  const listed = [...new Set(universe.bloques.flatMap((block) => block.nombres.map((row) => row.s)))];
+  // Un nombre quitado de la lista (`bajas`) se sigue trayendo hasta que acaba el mes en que se quitó: los bloques de
+  // "caer juntos" de ese mes se formaron con él y no se recalculan a mitad de mes. Después deja de pedirse.
+  const names = [...listed, ...retiredNames(universe, nyToday()).filter((s) => !listed.includes(s))];
   // Los índices (XSP) tienen otro código en CBOE (_XSP); la historia se guarda con el símbolo de la app.
   const codes = new Map(universe.bloques.flatMap((block) => block.nombres.filter((row) => row.c).map((row) => [row.s, row.c])));
   log(`Cierres de ${names.length} nombres`);
@@ -156,7 +165,8 @@ async function main() {
   }
   if (bad.length) throw new Error(`Control fallido, no se publica: ${bad.join("; ")}`);
   const got = Object.keys(symbols).length;
-  if (got < names.length * 0.8) throw new Error(`Solo hay historia de ${got} de ${names.length} nombres (sin respuesta: ${missing.join(", ")}); no se publica`);
+  const gotListed = listed.filter((symbol) => symbols[symbol]).length; // el control cuenta solo la lista, no los quitados que aún se traen
+  if (gotListed < listed.length * 0.8) throw new Error(`Solo hay historia de ${gotListed} de ${listed.length} nombres (sin respuesta: ${missing.join(", ")}); no se publica`);
 
   await mkdir(OUT, { recursive: true });
   // Si no ha cambiado nada (fin de semana, festivo), se conserva la hora anterior

@@ -30,6 +30,7 @@ export const DEFAULT_RULES = {
   levelMargin: 1, // pestaña "Hoy": cuántas veces el error tiene que caber en lo que queda, de 0,5 a 3
   errVolPct: 10, // pestaña "Hoy": cuánto se supone que puede variar la volatilidad reciente al calcular el error, en %, de 10 a 40
   errHistK: 1, // pestaña "Hoy": por cuánto se multiplica el error de la historia de 5 años, de 1 a 3
+  badYearK: 1.5, // pestaña "Hoy": "aguanta un mal año" = cobras neto menos estas veces lo que se espera pagar sigue en positivo; de 1 a 3 de 0,25 en 0,25. Es un dato y un filtro: no cambia el nivel
   equalGapPct: 35, // pestaña "Igual riesgo": horquilla máxima del spread, en % del crédito a precio medio; por encima, la fila se aparta
   blockCoFall: 0.4, // Bloques: dos grupos se unen si caen juntos (tramos de 20 sesiones en su 13 % peor) al menos esta parte de las veces; de 0,25 a 0,70
   corrMin: 0.85, // Buscador: correlación (rendimientos diarios, 250 días) a partir de la cual dos nombres son el mismo grupo; de 0,5 a 0,99
@@ -261,6 +262,9 @@ export function closesUntil(closes, last, cutoff) {
  *  propio, "Grupo de X" (X = su primer miembro en el orden de la lista); los demás nombres siguen en su bloque de la lista.
  *  - `list`: los nombres de la lista base en su orden, [{ s, b }], con `alta` (fecha) si se añadieron hace poco: un nombre
  *    dado de alta después del corte no se mide hasta el mes siguiente (los bloques no cambian a mitad de mes).
+ *    Una fila con `baja` (fecha) es un nombre quitado de la lista: ya no tiene bloque, pero si se quitó después del corte
+ *    sigue contando para formar los grupos de este mes (así los demás grupos no se recalculan a mitad de mes); después se saca
+ *    de su grupo, y un grupo que se queda con un solo nombre deja de serlo: ese nombre vuelve a su bloque de la lista.
  *  - `hist`: { símbolo: { c: cierres } } y `last`, el último cierre del archivo.
  *  Se calculan con los cierres hasta el corte del mes de `today`. Si los cierres no llegan al corte, con el del mes anterior
  *  (`mode: "previous"`); si tampoco, los de la lista (`mode: "list"`).
@@ -268,7 +272,9 @@ export function closesUntil(closes, last, cutoff) {
  *  `members` (bloque → nombres), `groups` (los nombres de los grupos), `share` (nombre → media de caer junto al resto de su
  *  grupo, de 0 a 1), `measured` (nombres medidos), `waiting` (dados de alta después del corte), `cutoff`, `mode` y `pair(a, b)`. */
 export function effectiveBlocks({ list, hist, last, today = nyToday(), threshold = DEFAULT_RULES.blockCoFall }) {
-  const names = (list ?? []).filter((row) => row && typeof row.s === "string");
+  const rows = (list ?? []).filter((row) => row && typeof row.s === "string");
+  const names = rows.filter((row) => typeof row.baja !== "string");
+  const gone = new Set(rows.filter((row) => typeof row.baja === "string" && !names.some((n) => n.s === row.s)).map((row) => row.s));
   const index = new Map(names.map((row, i) => [row.s, i]));
   const listOf = new Map(names.map((row) => [row.s, row.b ?? ""]));
   let cutoff = blockCutoff(today);
@@ -281,8 +287,9 @@ export function effectiveBlocks({ list, hist, last, today = nyToday(), threshold
   const breaches = new Map();
   const waiting = new Set(); // dados de alta después del corte: se miden desde el mes siguiente
   if (mode !== "list") {
-    for (const row of names) {
-      if (COFALL_FOLLOWS[row.s]) continue;
+    for (const row of [...names, ...rows.filter((r) => gone.has(r.s))]) {
+      if (COFALL_FOLLOWS[row.s] || breaches.has(row.s)) continue;
+      if (gone.has(row.s) && !(row.baja > cutoff)) continue; // quitado antes del corte: ya no cuenta
       if (typeof row.alta === "string" && row.alta > cutoff) {
         waiting.add(row.s);
         continue;
@@ -293,14 +300,17 @@ export function effectiveBlocks({ list, hist, last, today = nyToday(), threshold
       if (b) breaches.set(row.s, b);
     }
   }
-  const measured = [...breaches.keys()];
+  const measuredAll = [...breaches.keys()];
+  const measured = measuredAll.filter((s) => !gone.has(s));
   const memo = new Map();
   const pair = (a, b) => {
     const key = a < b ? `${a}|${b}` : `${b}|${a}`;
     if (!memo.has(key)) memo.set(key, coFallPair(breaches.get(a), breaches.get(b)));
     return memo.get(key);
   };
-  const clusters = averageLinkage(measured, pair, threshold).filter((c) => c.length > 1);
+  const clusters = averageLinkage(measuredAll, pair, threshold)
+    .map((c) => c.filter((s) => !gone.has(s)))
+    .filter((c) => c.length > 1);
   const of = {};
   const share = {};
   const groups = [];
@@ -415,6 +425,7 @@ export function normalizeRules(input) {
     levelMargin: Math.round(clamp(row.levelMargin, 0.5, 3, base.levelMargin) * 2) / 2,
     errVolPct: Math.round(clamp(row.errVolPct, 10, 40, base.errVolPct) / 5) * 5,
     errHistK: Math.round(clamp(row.errHistK, 1, 3, base.errHistK) * 2) / 2,
+    badYearK: Math.round(clamp(row.badYearK, 1, 3, base.badYearK) * 4) / 4,
     gates: {
       event: g.event === true,
       liquid: g.liquid === true,
@@ -1311,6 +1322,57 @@ export function assessSymbol(sym, rules, order, today = nyToday(), series = null
   return { status, best: near[0] ?? null, spreads: near, all: spreads, stage };
 }
 
+/** Los motivos por los que un nombre no da ningún deal dentro de Reglas, en el orden de las etapas (de la más cercana a la más lejana). */
+export const NO_DEAL_REASONS = [
+  "sin opciones en el plazo",
+  "ningún strike con la prob. de Reglas",
+  "ningún strike con el % abajo de Reglas",
+  "no llega al cobro mínimo",
+  "prob. sin medir en el mercado",
+  "horquilla ancha",
+  "no cubre el coste de salir",
+  "sin cierres para puntuar",
+  "rentab. esperada baja",
+  "lo apartan tus interruptores",
+];
+
+/** Por qué un nombre no tiene hoy ningún deal dentro de Reglas: el motivo de la etapa más lejana a la que llega alguno de
+ *  sus spreads. Etapas, en orden: tener opciones en el plazo, un strike con la prob. (y el % abajo, si la regla está puesta),
+ *  el cobro mínimo, las puertas de precio (`gateReason`: prob. medida en el mercado, horquilla, coste de salir), tener cierres
+ *  para puntuar, la rentab. esperada mínima y los interruptores. Devuelve "" si algún spread lo supera todo (el nombre tiene deal).
+ *  `opts`: { rules, series (cierres del nombre), price: "nat" | "mid" }. A precio medio la horquilla y el coste de salir
+ *  no apartan (como en `qualityDeals`). No guarda ni publica nada: se calcula con las Reglas de quien mira. */
+export function noDealReason(sym, opts, today = nyToday()) {
+  const { rules, series = null, price = "nat" } = opts;
+  const R = (text) => NO_DEAL_REASONS.indexOf(text);
+  if (!(sym?.p > 0)) return NO_DEAL_REASONS[0];
+  const res = assessSymbol(sym, rules, "rentexp", today, series);
+  if (res.status === "sin-cadena" || res.status === "sin-plazo") return NO_DEAL_REASONS[0];
+  const credito = STAGES.indexOf("credito");
+  let best = res.all.tooCheap ? R("no llega al cobro mínimo") : R("ningún strike con la prob. de Reglas");
+  const reach = (rank) => {
+    if (rank > best) best = rank;
+  };
+  for (const sp of res.all) {
+    if (sp.stage < 1) continue; // no pasa la prob.: el punto de partida
+    if (sp.stage < 2) reach(R("ningún strike con el % abajo de Reglas"));
+    else if (sp.stage <= credito) reach(R("no llega al cobro mínimo"));
+    else {
+      // Pasa prob., % abajo, ancho y cobro: ahora las puertas de precio, con las mismas cuentas que el Buscador.
+      const row = spreadRow(sym, sp.expiry, sp.shortStrike, sp.longStrike, rules.equalFee, today);
+      const gate = row.status !== "ok" ? "horquilla" : price === "mid" ? (row.probSrc === "formula" ? "prob" : atMid(row, rules.equalFee) ? "" : "horquilla") : gateReason(row, rules.equalGapPct);
+      if (gate.startsWith("prob")) reach(R("prob. sin medir en el mercado"));
+      else if (gate.startsWith("horquilla")) reach(R("horquilla ancha"));
+      else if (gate) reach(R("no cubre el coste de salir"));
+      else if (sp.retExp == null) reach(R("sin cierres para puntuar"));
+      else if (sp.fails.includes("rentab. esperada baja")) reach(R("rentab. esperada baja"));
+      else if (!sp.ok) reach(R("lo apartan tus interruptores"));
+      else return "";
+    }
+  }
+  return NO_DEAL_REASONS[best];
+}
+
 export function statusLabel(status) {
   if (status === "entrada") return "Entrada";
   if (status === "no-pasa") return "No pasa";
@@ -1470,7 +1532,9 @@ export const blockOf = (sym) => sym?.be ?? sym?.b ?? "";
 /** Las comprobaciones de un deal y su nivel (0 a 5 con la regla "margin"; 0 a 4 con "both"; 0 a 3 si el punto de seguridad no cuenta). `held` = bloques que ya están abiertos.
  *  Punto de seguridad (`opts.safety`, regla `levelSafety`): "margin" = lo que queda (cobras neto menos lo que se espera pagar)
  *  supera `opts.marginK` veces el error del cálculo; "both" = los dos cálculos salen en positivo; "off" = no cuenta.
- *  `room` = lo que queda partido por su error (null si no hay error calculado); `both` se da siempre, sea cual sea la regla. */
+ *  `room` = lo que queda partido por su error (null si no hay error calculado); `both` se da siempre, sea cual sea la regla.
+ *  "Aguanta un mal año" (`opts.badYearK`, regla `badYearK`): `badYearLeft` = cobras neto menos k veces lo que se espera pagar, en
+ *  dólares por contrato, y `badYear` = si queda en positivo. Sin cierres para puntuar, los dos son null. Es un dato: no entra en el nivel. */
 export function dealChecks(row, opts = {}) {
   const held = Array.isArray(opts.held) ? opts.held : [];
   const costPct = opts.costPct ?? LEVEL_COST_PCT;
@@ -1486,7 +1550,11 @@ export function dealChecks(row, opts = {}) {
   const costShare = row.roundTrip != null && row.net > 0 ? (row.roundTrip / row.net) * 100 : null;
   const cheap = costShare != null && costShare <= costPct + 1e-9;
   const fresh = !held.includes(blockOf(row.sym));
+  const badYearK = opts.badYearK ?? DEFAULT_RULES.badYearK;
+  const badYearLeft = scored && row.expected != null ? r2(row.net - badYearK * row.expected) : null;
   return {
+    badYear: badYearLeft == null ? null : badYearLeft > 0,
+    badYearLeft,
     scored,
     positive,
     both,

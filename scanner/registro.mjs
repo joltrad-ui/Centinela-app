@@ -41,7 +41,7 @@ export function dayRows({ symbols, hist, today, groups, blocks = null, at, rules
   const time = photoTime(at ?? Date.now());
   const out = qualityDeals(
     symbols,
-    { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, hist, held: [], price: "nat", maxProb: rules.maxProb, maxWidth: rules.width },
+    { rules, fee: rules.equalFee, gapPct: rules.equalGapPct, safety: rules.levelSafety, marginK: rules.levelMargin, errVolPct: rules.errVolPct, errHistK: rules.errHistK, badYearK: rules.badYearK, hist, held: [], price: "nat", maxProb: rules.maxProb, maxWidth: rules.width },
     today,
   );
   const rows = [];
@@ -75,6 +75,7 @@ export function dayRows({ symbols, hist, today, groups, blocks = null, at, rules
       horaNy: time.hora,
       enVentana: time.enVentana,
       dentroReglas: d.ok,
+      malAnio: d.checks.badYear, // con el k de fábrica (`rules` son siempre las de fábrica): nada personal
     });
   }
   return rows;
@@ -146,7 +147,10 @@ async function main() {
   const groups = correlationGroups(hist, names, DEFAULT_RULES.corrMin);
   const today = scan.today ?? nyToday(new Date(scan.at));
   // Bloques efectivos con el umbral de fábrica, nunca con el del dueño.
-  const list = universe.bloques.flatMap((block) => block.nombres.map((row) => (typeof row.alta === "string" ? { s: row.s, b: block.nombre, alta: row.alta } : { s: row.s, b: block.nombre })));
+  const list = [
+    ...universe.bloques.flatMap((block) => block.nombres.map((row) => (typeof row.alta === "string" ? { s: row.s, b: block.nombre, alta: row.alta } : { s: row.s, b: block.nombre }))),
+    ...(universe.bajas ?? []).filter((row) => typeof row?.s === "string" && typeof row.baja === "string").map((row) => ({ s: row.s, baja: row.baja })),
+  ];
   const blocks = effectiveBlocks({ list, hist, last: file.last, today, threshold: DEFAULT_RULES.blockCoFall });
   const dir = path.join(out, "registro");
   const existing = await readRegistry(dir);

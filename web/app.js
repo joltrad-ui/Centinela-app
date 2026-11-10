@@ -790,7 +790,12 @@ const reload = () => void load().then(loadHist, loadHist);
 const conexion = createConexion({ state, root, esc, readLocal, writeLocal, render, ghReady, reload, sectionHead, LS_COPIED, LS_BRIDGE, LS_GH });
 const copia = createCopia({ state, root, esc, readLocal, writeLocal, render, sectionHead, notice });
 const reglas = createReglas({ state, bloques, esc, num, sectionHead, changeConfig, refreshBox, syncLine, foot, conexion, copia, DEFAULT_CONFIG });
-const registro = createRegistro({ state, render, esc, num, sectionHead, header, foot, embed: Boolean(EMBED) });
+// La lista base en su orden, para la tabla "Días con algún deal" del Registro: la que publica el barrido (`lista`, sin los quitados de la lista) o, sin ella, los nombres del barrido.
+const listNames = () => {
+  const lista = (state.scan?.lista ?? []).filter((row) => row && typeof row.s === "string" && typeof row.baja !== "string");
+  return lista.length ? lista : allListSymbols().map((sym) => ({ s: sym.s }));
+};
+const registro = createRegistro({ state, render, esc, num, sectionHead, header, foot, listNames, embed: Boolean(EMBED) });
 const avisos = createAvisos({ state, esc, when, sectionHead, changeConfig, foot, syncLine, isPublic });
 
 function dock() {

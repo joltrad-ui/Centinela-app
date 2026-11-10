@@ -1,11 +1,11 @@
 // Pestaña "Registro": lo que Centinela ha ido proponiendo, comprobado al vencer. Lee registro/ (CSV de la rama de datos)
 // y lo analiza en el dispositivo (registro-calc.js). Solo enseña y avisa: no cambia ninguna regla.
-import { analyze, parseCsv } from "./registro-calc.js";
+import { analyze, daysWithDeal, parseCsv } from "./registro-calc.js";
 import { emptyBox } from "./ui.js";
 
 const FRESH_MS = 10 * 60_000; // no se vuelve a descargar si se bajó hace menos
 
-export function createRegistro({ state, render, esc, num, sectionHead, header, foot, embed = false }) {
+export function createRegistro({ state, render, esc, num, sectionHead, header, foot, listNames = () => [], embed = false }) {
   const reg = { status: "idle", rows: [], at: 0, example: false, all: false };
 
   async function text(url) {
@@ -92,6 +92,17 @@ export function createRegistro({ state, render, esc, num, sectionHead, header, f
       <p class="xs muted rg-note">Solo deals ya vencidos, contados una vez (su primera aparición). Las señales avisan; no cambian ninguna regla.</p>`;
   }
 
+  /** "Días con algún deal": por nombre de la lista, en cuántos de los últimos 30 días registrados dio algo. Solo el dato. */
+  function daysTable() {
+    const names = listNames();
+    if (!names.length) return "";
+    const t = daysWithDeal(reg.rows, names, 30);
+    if (!t.days) return "";
+    return `${sectionHead("Días con algún deal", `${t.days} ${t.days === 1 ? "día" : "días"}`)}
+      <ul class="rg-tb rg-days">${t.rows.map((r) => `<li><b>${esc(r.s)}</b><span class="num muted">${r.n} de ${r.of}</span></li>`).join("")}</ul>
+      <p class="xs muted rg-note">En cuántos de los últimos ${t.days === 1 ? "día registrado" : `${t.days} días de mercado registrados`} tuvo cada nombre al menos un deal dentro de Reglas con rentab. esperada mayor que 0. Con las reglas de fábrica, no con las tuyas. De menos a más.</p>`;
+  }
+
   function view() {
     let inner;
     let meta = "";
@@ -102,7 +113,7 @@ export function createRegistro({ state, render, esc, num, sectionHead, header, f
     } else {
       const a = analyze(reg.rows, state.config.rules);
       meta = `${a.months} ${a.months === 1 ? "vencimiento" : "vencimientos"} · ${num(a.n, 0)} ${a.n === 1 ? "deal resuelto" : "deals resueltos"} · desde el ${esc(a.dayLabel(a.since || "1970-01-01"))}`;
-      inner = a.n ? body(a, state.config.rules) : `<p class="small muted" style="margin-top:14px">Hay deals guardados, pero ninguno ha vencido todavía. Cuando venzan, aquí saldrán los resultados.</p>`;
+      inner = `${a.n ? body(a, state.config.rules) : `<p class="small muted" style="margin-top:14px">Hay deals guardados, pero ninguno ha vencido todavía. Cuando venzan, aquí saldrán los resultados.</p>`}${daysTable()}`;
     }
     return `
       ${header("Registro", false, true)}

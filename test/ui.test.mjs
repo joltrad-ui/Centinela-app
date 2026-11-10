@@ -699,3 +699,112 @@ test("Bloques: lo guardado con un grupo que ya no existe pasa a los bloques de s
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test("Mal año, Sin deals hoy y Días con algún deal: filtro, ficha, regla, motivos y tabla", { skip }, async () => {
+  for (const width of [360, 390]) {
+    const page = await open(width);
+    // Buscador: el filtro "Mal año" parte los deals en Aguanta y No aguanta.
+    await goTab(page, "Buscador");
+    await page.locator('[data-bs="filters-open"]').click();
+    for (const l of [0, 1, 2]) await page.locator(`[data-bs="lv"][data-v="${l}"]`).click();
+    await page.locator('[data-bs="one"]').click();
+    await page.waitForTimeout(300);
+    const count = async () => Number((await page.locator("#bs-bar").innerText()).match(/(\d+) de \d+ deals?/)[1]);
+    const all = await count();
+    await page.locator('[data-bs="bad"][data-v="yes"]').click();
+    await page.waitForTimeout(300);
+    const yes = await count();
+    await page.locator('[data-bs="bad"][data-v="no"]').click();
+    await page.waitForTimeout(300);
+    const no = await count();
+    assert.ok(yes > 0 && no > 0, `aguantan ${yes}, no aguantan ${no}`);
+    assert.equal(yes + no, all, "todos los deals puntuados caen en uno de los dos lados");
+    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem("centinela.buscador.v1")))).bad, "no", "el filtro se guarda");
+    assert.ok(await noOverflow(page));
+    // La ficha de uno que no aguanta dice cuánto falta; la de uno que aguanta, cuánto queda.
+    await page.locator('[data-hoy="cell"]').first().click();
+    await page.waitForSelector("#fi-badyear");
+    assert.match(await page.locator("#fi-badyear").innerText(), /En un mal año \(se paga 1,5 veces lo esperado\)\s*faltan \$\d/);
+    await page.locator(".fi-x").click();
+    await page.locator('[data-bs="bad"][data-v="yes"]').click();
+    await page.waitForTimeout(300);
+    await page.locator('[data-hoy="cell"]').first().click();
+    await page.waitForSelector("#fi-badyear");
+    assert.match(await page.locator("#fi-badyear").innerText(), /quedan \$\d/);
+    assert.ok(await noOverflow(page));
+    await page.locator(".fi-x").click();
+    await page.locator('[data-bs="bad"][data-v="all"]').click();
+    // "Sin deals hoy": plegada al final; abierta, una fila por nombre con su motivo. No depende de los filtros.
+    const head = page.locator('[data-bs="none"]');
+    const n = Number((await head.innerText()).match(/Sin deals hoy \((\d+) nombres?\)/)[1]);
+    assert.ok(n > 0);
+    assert.equal(await page.locator(".bs-none-l li").count(), 0, "plegada de fábrica");
+    await head.click();
+    await page.waitForTimeout(200);
+    const rows = await page.$$eval(".bs-none-l li", (els) => els.map((e) => [e.querySelector("b").innerText, e.querySelector("span").innerText]));
+    assert.equal(rows.length, n);
+    const reasons = ["sin opciones en el plazo", "ningún strike con la prob. de Reglas", "no llega al cobro mínimo", "horquilla ancha", "no cubre el coste de salir", "rentab. esperada baja"];
+    for (const [name, why] of rows) assert.ok(reasons.includes(why), `${name}: ${why}`);
+    assert.ok(new Set(rows.map((r) => r[1])).size >= 2, "la muestra enseña más de un motivo");
+    await page.locator('[data-bs="lv"][data-v="5"]').click(); // un filtro del Buscador no cambia la lista de nombres sin deals
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator(".bs-none-l li").count(), n);
+    assert.ok(await noOverflow(page));
+    // Reglas: el número del mal año, 1,5 de fábrica y de 0,25 en 0,25.
+    await goTab(page, "Reglas");
+    const field = page.locator('.field:has([data-step="rules.badYearK"])');
+    assert.match(await field.innerText(), /Mal año: se paga … veces lo esperado/);
+    assert.equal((await field.locator(".stepper span").innerText()).trim(), "1,5 veces");
+    await field.locator('[data-dir="1"]').click();
+    await page.waitForTimeout(200);
+    assert.equal((await page.locator('.field:has([data-step="rules.badYearK"]) .stepper span').innerText()).trim(), "1,75 veces");
+    assert.match(await page.locator("main").innerText(), /En 2015, 2018 y 2022 se pagó entre 1,3 y 1,5 veces lo previsto/i);
+    await page.locator('.field:has([data-step="rules.badYearK"]) [data-dir="-1"]').click();
+    // Registro: la tabla "Días con algún deal", con la nota de las reglas de fábrica.
+    await goTab(page, "Registro");
+    await page.waitForSelector(".rg-days");
+    const days = await page.$$eval(".rg-days li", (els) => els.map((e) => e.innerText.replace(/\s+/g, " ").trim()));
+    assert.equal(days.length, 36, "un nombre de la lista por fila");
+    for (const d of days) assert.match(d, /^[A-Z]+ \d+ de \d+$/);
+    const nums = days.map((d) => Number(d.match(/ (\d+) de/)[1]));
+    assert.deepEqual(nums, [...nums].sort((a, b) => a - b), "de menos a más");
+    assert.match(await page.locator("main").innerText(), /Con las reglas de fábrica, no con las tuyas/);
+    assert.ok(await noOverflow(page));
+    assert.deepEqual(page.errors, []);
+    await page.close();
+  }
+});
+
+test("Nombres quitados de la lista: un deal apuntado, un favorito y un nombre apartado que ya no están no rompen nada", { skip }, async () => {
+  const page = await open(390);
+  await page.evaluate(() => {
+    const expiry = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    localStorage.setItem("centinela.misdeals.v1", JSON.stringify([{ id: "q1", s: "COST", b: "Defensivos", expiry, short: 900, long: 895, credit: 0.6, qty: 1, fee: 1.4, openedAt: Date.now(), level: 4, retExp: 2, price0: 950, closedAt: null, result: null }]));
+    const config = JSON.parse(localStorage.getItem("centinela.config.v1") ?? "{}");
+    localStorage.setItem("centinela.config.v1", JSON.stringify({ ...config, favorites: ["COST", "SPY"], off: ["FXI", "RTX"] }));
+    localStorage.setItem("centinela.tengo.v1", JSON.stringify(["MA"]));
+    localStorage.setItem("centinela.hoy.v1", JSON.stringify({ held: ["Consumo discrecional", "Pagos"] }));
+  });
+  await page.reload();
+  await page.waitForSelector(".hoy-grid, .stats");
+  // Mis deals: el deal de COST se sigue viendo y se puede cerrar; solo le falta el precio nuevo.
+  await page.locator('[data-tab="deals"]').click();
+  assert.equal(await page.locator(".dl-card").count(), 1);
+  assert.match(await page.locator(".dl-card").innerText(), /COST/);
+  await page.locator(".dl-card .dl-main").click();
+  assert.match(await page.locator(".dl-act").innerText(), /Cerrar deal/);
+  // El resto de pantallas siguen funcionando, y ninguno de los quitados aparece en la lista de acciones.
+  for (const tab of ["Hoy", "Buscador", "Avisos", "Registro", "Reglas"]) {
+    await goTab(page, tab);
+    assert.ok(await noOverflow(page), `${tab} sin desborde`);
+  }
+  await goTab(page, "Buscador");
+  await page.locator('[data-bs="names"]').click();
+  const names = await page.locator(".bs-name").allInnerTexts();
+  assert.equal(names.length, 36);
+  for (const s of ["COST", "LLY", "MA", "M", "NVS", "EQT", "SLB", "BMY", "RTX", "FXI"]) assert.ok(!names.includes(s), `${s} no sale`);
+  assert.ok(names.includes("UBER") && names.includes("GDX"));
+  assert.match(await page.locator('[data-bs="names"]').innerText(), /36 de 36/, "un nombre apartado que ya no está en la lista no cuenta");
+  assert.deepEqual(page.errors, []);
+  await page.close();
+});
