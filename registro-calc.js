@@ -1,0 +1,318 @@
+// Registro de deals: el archivo de texto (CSV), el resultado al vencimiento y el análisis de la pestaña Registro.
+// Sin pantalla ni red: lo usan el barrido (scanner/registro.mjs) y la app (registro.js). Nada personal: solo lo que
+// propone Centinela con las reglas de fábrica sobre la lista base, que ya es pública.
+import { sessionsBetween, DEFAULT_RULES } from "./engine.js";
+
+/** Columnas del archivo, en orden: [campo, nombre en el CSV, tipo]. El mismo orden en todos los meses. */
+export const COLUMNS = [
+  ["fecha", "fecha", "s"],
+  ["primera", "primera_aparicion", "b"],
+  ["nombre", "nombre", "s"],
+  ["vencimiento", "vencimiento", "s"],
+  ["corto", "corto", "n"],
+  ["largo", "largo", "n"],
+  ["ancho", "ancho", "n"],
+  ["neto", "cobro_neto", "n"],
+  ["nivel", "nivel", "n"],
+  ["retExp", "rentab_esperada", "n"],
+  ["err", "error", "n"],
+  ["perdHist", "perdida_historia", "n"],
+  ["perdVol", "perdida_volatilidad", "n"],
+  ["desacuerdo", "desacuerdo", "n"],
+  ["prob", "prob_mercado", "n"],
+  ["bloque", "bloque", "s"],
+  ["grupo", "grupo", "s"],
+  ["resultados", "resultados_en_plazo", "b"],
+  ["cierre", "cierre_vencimiento", "n"],
+  ["resultado", "resultado", "n"],
+  ["estado", "estado", "s"],
+  ["horaNy", "hora_ny", "s"],
+  ["enVentana", "en_ventana", "y"],
+  ["dentroReglas", "dentro_reglas", "y"],
+  ["bloqueEf", "bloque_efectivo", "s"],
+  ["malAnio", "aguanta_mal_anio", "y"],
+];
+
+/** Lo que significa cada columna, para quien lea el CSV sin la app (se publica como registro/columnas.txt). */
+export const COLUMN_HELP = `Registro de deals de Centinela: una fila por deal y día, un archivo por mes (AAAA-MM.csv).
+Foto del día: los bull puts de todos los niveles (0 a 5) con rentab. esperada calculable, dentro y fuera de las reglas de fábrica, sobre la lista base. La foto es el primer barrido con el mercado abierto entre las 14:45 y las 15:45 de Nueva York; si no hay ninguno, el último barrido del día. Hasta el 30 oct 2026 solo se guardaban los de nivel 3 o más del último barrido.
+Solo datos de la lista pública: nada de lo que apunta nadie ni de sus reglas.
+
+fecha                 Día del barrido (hora de Nueva York).
+primera_aparicion     1 si es la primera vez que sale ese deal (mismo nombre, vencimiento y strikes); 0 si ya había salido otro día. El análisis usa solo las 1.
+nombre                Símbolo.
+vencimiento           Día en que vence.
+corto, largo          Strike que se vende y strike que se compra.
+ancho                 corto menos largo, en puntos (dólares por acción). Por contrato son ancho x 100 dólares.
+cobro_neto            Dólares por contrato que se cobran, ya descontada la comisión de abrir.
+nivel                 3, 4 o 5.
+rentab_esperada       (cobro neto menos pérdida esperada) / lo que se arriesga, en %.
+error                 El ± del cálculo de la pérdida esperada, en dólares por contrato.
+perdida_historia      Pérdida esperada con 5 años de precios, en dólares por contrato.
+perdida_volatilidad   Pérdida esperada con la volatilidad reciente, en dólares por contrato.
+desacuerdo            Valor absoluto de la diferencia entre esos dos cálculos, en dólares por contrato. Solo se guarda: no cambia ninguna regla.
+prob_mercado          Probabilidad de acabar por debajo del corto que sale de los precios del mercado, en %.
+bloque                Bloque de la lista base.
+grupo                 Nombres que se mueven casi igual (correlación diaria de 250 días de 0,85 o más), unidos con +.
+resultados_en_plazo   1 si el nombre presenta resultados antes del vencimiento.
+cierre_vencimiento    Cierre del subyacente el día del vencimiento (vacío hasta que vence).
+resultado             Dólares por contrato: cobro neto menos la pérdida al vencimiento (como mucho el ancho x 100). Vacío hasta que vence.
+estado                ganado si el resultado es positivo, perdido si no; vacío hasta que vence.
+hora_ny               Hora de Nueva York (HH:MM) del barrido que dio la foto de ese día. Vacío en las filas guardadas antes del 31 oct 2026.
+en_ventana            si si el barrido cayó entre las 14:45 y las 15:45 de Nueva York (la franja de la foto); no si fue un barrido de reserva (ninguno cayó en la franja, así que vale el último con el mercado abierto). Vacío en las filas antiguas.
+dentro_reglas         si si el deal cumple las reglas de fábrica; no si Centinela no lo habría propuesto (se guarda para poder comparar niveles bajos). Vacío en las filas antiguas, que son todas si.
+bloque_efectivo       Bloque que cuenta para el punto "bloque nuevo" del nivel: "Grupo de X" si el nombre cae junto a otros (tramos de 20 sesiones en su 13 % peor, a la vez al menos el 40 % de las veces, con 5 años de cierres hasta el último día de mercado del mes anterior); si no, el de la lista. Umbral de fábrica. Vacío en las filas guardadas antes del 7 nov 2026.
+aguanta_mal_anio      si si el cobro neto menos 1,5 veces la pérdida esperada (la media de perdida_historia y perdida_volatilidad) sigue en positivo; no si no. El 1,5 es el de fábrica: en 2015, 2018 y 2022 se pagó entre 1,3 y 1,5 veces lo previsto. Solo se guarda: no cambia el nivel. Vacío en las filas guardadas antes de añadir la columna (nov 2026).
+`;
+
+const csvCell = (value) => {
+  const text = value == null ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
+export function toCsv(rows) {
+  const lines = [COLUMNS.map(([, name]) => name).join(",")];
+  for (const row of rows) {
+    lines.push(
+      COLUMNS.map(([key, , type]) => {
+        const v = row[key];
+        return csvCell(type === "b" ? (v ? 1 : 0) : type === "y" ? (v == null ? "" : v ? "sí" : "no") : v);
+      }).join(","),
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function splitCsv(text) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quoted) {
+      if (ch === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      cell = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+    } else cell += ch;
+  }
+  if (cell !== "" || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Lee un CSV del registro. Las filas con otra forma se saltan. */
+export function parseCsv(text) {
+  const table = splitCsv(String(text ?? ""));
+  if (table.length < 2) return [];
+  const index = new Map(table[0].map((name, i) => [name.trim(), i]));
+  const out = [];
+  for (const cells of table.slice(1)) {
+    const row = {};
+    let ok = true;
+    for (const [key, name, type] of COLUMNS) {
+      const raw = index.has(name) ? (cells[index.get(name)] ?? "") : "";
+      if (type === "n") {
+        row[key] = raw === "" ? null : Number(raw);
+        if (row[key] != null && !Number.isFinite(row[key])) ok = false;
+      } else if (type === "b") row[key] = raw === "1";
+      else if (type === "y") row[key] = raw === "" ? null : ["sí", "si", "1"].includes(raw);
+      else row[key] = raw;
+    }
+    if (ok && row.fecha && row.nombre && row.vencimiento && row.corto != null && row.largo != null) out.push(row);
+  }
+  return out;
+}
+
+/** Clave de un deal: el mismo spread sale muchos días con esta misma clave. */
+export const keyOf = (row) => `${row.nombre}|${row.vencimiento}|${row.corto}|${row.largo}`;
+
+const addDay = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** Cierre del subyacente el día `date` (si no hubo sesión, el de la sesión anterior). null si la serie aún no llega. */
+export function closeOn(series, date) {
+  const closes = series?.c;
+  if (!Array.isArray(closes) || !series.d || date < series.d) return null;
+  let day = date;
+  for (let i = 0; i < 5 && sessionsBetween(addDay(day, -1), day) !== 1; i++) day = addDay(day, -1);
+  const index = day === series.d ? 0 : sessionsBetween(series.d, day);
+  const close = closes[index];
+  return index < closes.length && Number.isFinite(close) ? close : null;
+}
+
+/** Resultado por contrato al vencimiento: lo cobrado menos la pérdida (como mucho el ancho), en dólares. */
+export function resultOf(row, close) {
+  const loss = Math.min(Math.max(row.corto - close, 0), row.ancho) * 100;
+  return Math.round((row.neto - loss) * 100) / 100;
+}
+
+/** Apunta el resultado de las filas que ya vencieron y tienen cierre. Devuelve cuántas resolvió. */
+export function resolveRows(rows, hist, lastDate) {
+  let done = 0;
+  for (const row of rows) {
+    if (row.estado || row.vencimiento > lastDate) continue;
+    const close = closeOn(hist?.[row.nombre], row.vencimiento);
+    if (close == null) continue;
+    row.cierre = Math.round(close * 100) / 100;
+    row.resultado = resultOf(row, close);
+    row.estado = row.resultado > 0 ? "ganado" : "perdido";
+    done++;
+  }
+  return done;
+}
+
+/** "Días con algún deal": por cada nombre de `names` ([{ s, alta }], la lista en su orden), en cuántos de los últimos `max` días
+ *  registrados tuvo al menos un deal dentro de las reglas de fábrica con rentab. esperada mayor que 0 (`dentro_reglas` = sí y
+ *  nivel de 1 o más; las filas antiguas sin `dentro_reglas` cuentan como dentro). Un nombre dado de alta después solo se
+ *  compara con los días desde su alta. Ordenado de menos a más (a igualdad, el orden de la lista). */
+export function daysWithDeal(rows, names, max = 30) {
+  const days = [...new Set((rows ?? []).map((row) => row.fecha))].sort().slice(-max);
+  const from = days[0] ?? "";
+  const hit = new Map();
+  for (const row of rows ?? []) {
+    if (row.fecha < from || row.dentroReglas === false || !(row.nivel >= 1)) continue;
+    if (!hit.has(row.nombre)) hit.set(row.nombre, new Set());
+    hit.get(row.nombre).add(row.fecha);
+  }
+  const out = (names ?? []).map((name, i) => {
+    const of = typeof name.alta === "string" ? days.filter((day) => day >= name.alta).length : days.length;
+    const got = hit.get(name.s);
+    return { s: name.s, n: got ? days.filter((day) => got.has(day) && !(typeof name.alta === "string" && day < name.alta)).length : 0, of, i };
+  });
+  out.sort((a, b) => a.n - b.n || a.i - b.i);
+  return { days: days.length, from, to: days.at(-1) ?? "", rows: out.map(({ s, n, of }) => ({ s, n, of })) };
+}
+
+// ---------- análisis ----------
+
+export const MIN_MONTHS = 3; // vencimientos mensuales para que las señales se enciendan
+export const MIN_N = 20; // deals vencidos que hacen falta en cada lado de una comparación
+
+const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
+const sd = (list) => {
+  if (list.length < 2) return null;
+  const m = mean(list);
+  return Math.sqrt(list.reduce((a, b) => a + (b - m) ** 2, 0) / (list.length - 1));
+};
+
+/** Lo que se esperaba ganar en dólares por contrato: rentab. esperada sobre lo que se arriesga. */
+export const expectedUsd = (row) => (row.retExp == null ? null : (row.retExp / 100) * (row.ancho * 100 - row.neto));
+
+export function stat(list) {
+  const real = list.map((row) => row.resultado);
+  const exp = list.map(expectedUsd).filter((v) => v != null);
+  const ret = list.filter((row) => row.retExp != null).map((row) => row.retExp);
+  return {
+    n: list.length,
+    won: list.filter((row) => row.estado === "ganado").length,
+    pctWon: list.length ? (list.filter((row) => row.estado === "ganado").length / list.length) * 100 : null,
+    real: mean(real),
+    exp: mean(exp),
+    retExp: mean(ret),
+    sd: sd(real),
+  };
+}
+
+const usd = (n) => `${n > 0.5 ? "+" : n < -0.5 ? "−" : ""}$${Math.round(Math.abs(n)).toLocaleString("es-ES")}`;
+const dayLabel = (iso) => `${Number(iso.slice(8))} ${["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"][Number(iso.slice(5, 7)) - 1]}`;
+const joinNames = (list) => (list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} y ${list[list.length - 1]}`);
+
+/** Tres tramos de desacuerdo con el mismo número de deals: bajo, medio y alto. */
+function thirds(list) {
+  const sorted = [...list].sort((a, b) => a.desacuerdo - b.desacuerdo);
+  const cut = (i) => Math.round((sorted.length * i) / 3);
+  return { bajo: sorted.slice(0, cut(1)), medio: sorted.slice(cut(1), cut(2)), alto: sorted.slice(cut(2)) };
+}
+
+/** Todo lo que enseña la pestaña, con los deals ya vencidos y contados una vez (su primera aparición). */
+export function analyze(rows, rules = DEFAULT_RULES) {
+  const all = rows ?? [];
+  // El análisis sigue con lo que Centinela habría propuesto: nivel 3 o más y dentro de Reglas (los niveles 0 a 2 y lo de fuera solo se guardan).
+  const done = all.filter((row) => row.primera && row.estado && row.resultado != null && row.nivel >= 3 && row.dentroReglas !== false);
+  const months = new Set(done.map((row) => row.vencimiento.slice(0, 7)));
+  const since = all.reduce((min, row) => (!min || row.fecha < min ? row.fecha : min), "");
+  const level = (l) => done.filter((row) => row.nivel === l);
+  const byLevel = [5, 4, 3].map((l) => ({ level: l, ...stat(level(l)) }));
+  const hasDis = done.filter((row) => row.desacuerdo != null);
+  const t = thirds(hasDis);
+  const byDis = [["Bajo", t.bajo], ["Medio", t.medio], ["Alto", t.alto]].map(([label, list]) => ({ label, ...stat(list) }));
+
+  // Por grupo, y los vencimientos en que varios nombres del mismo grupo perdieron a la vez.
+  const groups = new Map();
+  for (const row of done) {
+    const key = row.grupo || row.nombre;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  }
+  const need = Math.round(rules.sigGroup ?? DEFAULT_RULES.sigGroup);
+  const events = [];
+  const byGroup = [...groups.entries()]
+    .map(([key, list]) => {
+      const lost = new Map();
+      for (const row of list) if (row.estado === "perdido") lost.set(row.vencimiento, [...(lost.get(row.vencimiento) ?? []), row.nombre]);
+      let together = 0;
+      for (const [expiry, names] of lost) {
+        const distinct = [...new Set(names)];
+        if (distinct.length >= need) {
+          together++;
+          events.push({ expiry, names: distinct, group: key });
+        }
+      }
+      return { key, names: key.split("+"), together, ...stat(list) };
+    })
+    .sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  events.sort((a, b) => (a.expiry < b.expiry ? 1 : a.expiry > b.expiry ? -1 : b.names.length - a.names.length));
+
+  const on = months.size >= MIN_MONTHS;
+  const total = stat(done);
+  const signals = [];
+  const lit = (color, title, text) => signals.push({ color: on ? color : "x", title, text: on ? text : `Se enciende con ${MIN_MONTHS} vencimientos mensuales; ahora hay ${months.size}.` });
+
+  // 1. El nivel 5 rinde más que el 3.
+  const l5 = byLevel[0];
+  const l3 = byLevel[2];
+  if (l5.n < MIN_N || l3.n < MIN_N) lit("a", "Nivel 5 frente a 3: todavía no se sabe", `Hay ${l5.n} deals vencidos de nivel 5 y ${l3.n} de nivel 3; hacen falta ${MIN_N} de cada.`);
+  else if (l5.real > l3.real) lit("g", "El nivel 5 rinde más que el 3", `Media real: nivel 5 ${usd(l5.real)}, nivel 3 ${usd(l3.real)}.`);
+  else lit("r", "El nivel 5 no rinde más que el 3", `Media real: nivel 5 ${usd(l5.real)}, nivel 3 ${usd(l3.real)}. El nivel no está ordenando bien.`);
+
+  // 2. El desacuerdo alto rinde peor que el bajo (y no cabe en el azar).
+  const lo = byDis[0];
+  const hi = byDis[2];
+  if (lo.n < MIN_N || hi.n < MIN_N) lit("a", "Desacuerdo: todavía no se sabe", `Hay ${hi.n} deals vencidos con desacuerdo alto y ${lo.n} con bajo; hacen falta ${MIN_N} de cada.`);
+  else {
+    const gap = lo.real - hi.real;
+    const se = Math.sqrt((lo.sd ** 2) / lo.n + (hi.sd ** 2) / hi.n);
+    const pair = `Alto ${usd(hi.real)} frente a bajo ${usd(lo.real)}`;
+    if (gap <= 0) lit("g", "El desacuerdo no predice pérdidas", `${pair}.`);
+    else if (se > 0 && gap > 2 * se) lit("r", "El desacuerdo predice pérdidas", `${pair}. Plantea meterlo en el error.`);
+    else lit("a", "Desacuerdo: todavía no se sabe", `${pair}, pero la diferencia cabe en el azar.`);
+  }
+
+  // 3. Lo real no queda muy por debajo de lo esperado.
+  const limit = (rules.sigReal ?? DEFAULT_RULES.sigReal) / 100;
+  if (total.n < MIN_N || total.exp == null) lit("a", "Lo real frente a lo esperado: todavía no se sabe", `Hay ${total.n} deals vencidos; hacen falta ${MIN_N}.`);
+  else if (total.real < total.exp - limit * Math.abs(total.exp)) lit("r", "Lo real queda por debajo de lo esperado", `Real ${usd(total.real)} de media; esperado ${usd(total.exp)}. La app es optimista; plantea endurecer el error.`);
+  else lit("g", "Lo real se acerca a lo esperado", `Real ${usd(total.real)} de media; esperado ${usd(total.exp)}. Dentro de lo previsto.`);
+
+  // 4. Ningún vencimiento con varios nombres de un mismo grupo perdiendo a la vez.
+  if (events.length) {
+    const e = events[0];
+    lit("r", "Un grupo perdió junto", `${dayLabel(e.expiry)}: ${e.names.length} nombres (${joinNames(e.names)}) en pérdida a la vez. Revisa el umbral de correlación.`);
+  } else lit("g", "Ningún grupo ha perdido junto", `En ningún vencimiento han perdido a la vez ${need} nombres o más del mismo grupo.`);
+
+  return { n: done.length, months: months.size, since, few: months.size < MIN_MONTHS, signals, byLevel, byDis, byGroup, total, dayLabel };
+}
