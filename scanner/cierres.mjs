@@ -12,6 +12,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { blockCutoff, nyToday, sessionsBetween } from "../web/engine.js";
+import { viaPuente } from "./puente.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = {};
@@ -46,7 +47,7 @@ async function fetchHistory(symbol, code = symbol) {
   let last;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(urlOf(code), { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
+      const res = await fetch(viaPuente(urlOf(code)), { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(30_000), redirect: "follow" });
       if (res.status === 404 || res.status === 403) return null;
       if (!res.ok) throw new Error(`respondió ${res.status}`);
       return await res.json();
