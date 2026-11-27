@@ -51,6 +51,7 @@ jobs:
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           CENTINELA_CONFIG: ${{ secrets.CENTINELA_CONFIG }}
+          CBOE_PUENTE: ${{ secrets.CBOE_PUENTE }}
           APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
         run: node scanner/scan.mjs --public --out out ${{ inputs.reemplazar && '--reemplazar' || '' }}
 

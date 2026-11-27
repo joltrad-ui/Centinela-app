@@ -69,6 +69,21 @@ Consecuencias:
 3. En la app: **Reglas → Avisos al móvil → Copiar configuración para avisos**. Crea otro secreto, nombre `CENTINELA_CONFIG`, y pega lo copiado.
 4. Cada vez que cambies las reglas y quieras que los avisos las sigan, repite el paso 3 (el secreto se sobrescribe).
 
+### Puente a CBOE (si CBOE bloquea a GitHub)
+
+Desde el 20 de noviembre de 2026, CBOE bloquea las lecturas que llegan desde los servidores de GitHub. El puente es un pequeño programa gratuito en Cloudflare (`puente/worker.js`) que pide los datos a CBOE en nombre del barrido. Solo reenvía datos de CBOE y solo con tu clave.
+
+1. Crea una cuenta gratuita en [dash.cloudflare.com](https://dash.cloudflare.com/sign-up).
+2. **Compute (Workers) → Create → Start with Hello World**, nombre `centinela-puente`, **Deploy**.
+3. **Edit code**: borra lo que hay, pega todo `puente/worker.js` y pulsa **Deploy**.
+4. **Settings → Variables and Secrets → Add**: tipo **Secret**, nombre `CLAVE`, valor 30 letras y números al azar. Guarda.
+5. Copia la dirección del Worker (`https://centinela-puente.TU-CUENTA.workers.dev`).
+6. En GitHub, crea el secreto `CBOE_PUENTE` con este valor (cambiando las dos partes):
+   `https://centinela-puente.TU-CUENTA.workers.dev/?k=TU-CLAVE&url=`
+7. Lanza **Actions → Barrido → Run workflow**. El registro dirá "Barrido de N nombres (CBOE por el puente)".
+
+Si borras el secreto `CBOE_PUENTE`, el barrido vuelve a pedir a CBOE directamente. El mismo valor sirve en la app como puente propio.
+
 ## En tu ordenador, sin GitHub
 
 Con Node.js 22, dentro de esta carpeta:
@@ -111,8 +126,9 @@ El nivel de 0 a 5, lo que "se espera pagar" y su error están explicados con det
 ## Carpetas
 
 - `web/`: la app (`engine.js` es el motor; `fonts/` las fuentes).
-- `scanner/`: `scan.mjs` (el barrido y los avisos), `cierres.mjs` (los cierres diarios de 5 años, una vez al día, carpeta `historia/`; un push no lo lanza), `registro.mjs` (el registro de deals, tras cada barrido con el mercado abierto; carpeta `registro/`) y `universe.json` (la lista base, por bloques).
+- `scanner/`: `scan.mjs` (el barrido y los avisos), `puente.mjs` (pasa las lecturas de CBOE por el puente si existe `CBOE_PUENTE`), `cierres.mjs` (los cierres diarios de 5 años, una vez al día, carpeta `historia/`; un push no lo lanza), `registro.mjs` (el registro de deals, tras cada barrido con el mercado abierto; carpeta `registro/`) y `universe.json` (la lista base, por bloques).
 - `.github/workflows/`: `publicar.yml`, `pruebas.yml`, `barrido.yml` y `cierres.yml`.
+- `puente/`: `worker.js`, el puente a CBOE en Cloudflare (ver "Puente a CBOE").
 - `scripts/`: `rama.sh` (escribe cada parte en `gh-pages` sin pisar las otras) y las herramientas de trabajo (`entrega.sh`, `produccion.sh`, `esperar-ci.sh`, `ver.mjs`, `ejemplo-fondo.sh`).
 - `config.json`: reglas de fábrica (públicas). `config.local.json`: lo que guardas tú en el modo ordenador, ignorado por git.
 - `test/`: pruebas del motor y de las pantallas, y el generador de datos de ejemplo.

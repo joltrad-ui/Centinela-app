@@ -32,6 +32,7 @@ import {
   readCboeChain,
   cboeUrl,
 } from "../web/engine.js";
+import { usaPuente, viaPuente } from "./puente.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = parseArgs(process.argv.slice(2));
@@ -80,7 +81,7 @@ async function getJson(url, headers = {}, timeout = 15_000, tries = 3) {
   for (let attempt = 0; attempt < tries; attempt++) {
     while (Date.now() < holdUntil) await sleep(holdUntil - Date.now() + Math.random() * 400);
     try {
-      const res = await fetch(url, {
+      const res = await fetch(viaPuente(url), {
         headers: { "User-Agent": UA, Accept: "application/json", ...headers },
         signal: AbortSignal.timeout(timeout),
         redirect: "follow",
@@ -90,7 +91,7 @@ async function getJson(url, headers = {}, timeout = 15_000, tries = 3) {
         if (!refusalLogged) {
           refusalLogged = true;
           const text = await res.text().catch(() => "");
-          const head = ["server", "via", "x-cache", "cf-ray", "x-amz-cf-pop", "content-type"]
+          const head = ["server", "x-puente", "via", "x-cache", "cf-ray", "x-amz-cf-pop", "content-type"]
             .map((name) => (res.headers.get(name) ? `${name}=${res.headers.get(name)}` : ""))
             .filter(Boolean)
             .join(" ");
@@ -510,7 +511,7 @@ export async function scanOnce({ force = false, replace = false } = {}) {
 
     const universe = await loadUniverse(config);
     const list = args.limit ? universe.symbols.slice(0, Number(args.limit)) : universe.symbols;
-    log(`Barrido de ${list.length} nombres`);
+    log(`Barrido de ${list.length} nombres${usaPuente() ? " (CBOE por el puente)" : ""}`);
 
     // Motivo de cada nombre sin lectura, para poder ver qué pasa desde la app.
     const why = new Map();
