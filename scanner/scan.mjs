@@ -73,6 +73,7 @@ const log = (...parts) => console.log(new Date().toISOString().slice(11, 19), ..
 // peticiones esperan un poco antes de seguir. Así el barrido se ajusta solo al ritmo que admite.
 let holdUntil = 0;
 let holdStep = 2_000;
+let refusalLogged = false;
 
 async function getJson(url, headers = {}, timeout = 15_000, tries = 3) {
   let last;
@@ -84,7 +85,19 @@ async function getJson(url, headers = {}, timeout = 15_000, tries = 3) {
         signal: AbortSignal.timeout(timeout),
         redirect: "follow",
       });
-      if (res.status === 404 || res.status === 403) return { status: res.status, body: null };
+      if (res.status === 404 || res.status === 403) {
+        // La primera negativa se apunta entera en el registro: así se distingue un bloqueo (403) de una dirección que ya no existe (404).
+        if (!refusalLogged) {
+          refusalLogged = true;
+          const text = await res.text().catch(() => "");
+          const head = ["server", "via", "x-cache", "cf-ray", "x-amz-cf-pop", "content-type"]
+            .map((name) => (res.headers.get(name) ? `${name}=${res.headers.get(name)}` : ""))
+            .filter(Boolean)
+            .join(" ");
+          log(`Primera negativa: ${url} -> ${res.status} ${head} | ${text.replace(/\s+/g, " ").slice(0, 300)}`);
+        }
+        return { status: res.status, body: null };
+      }
       if (res.status === 429) {
         const asked = Number(res.headers.get("retry-after")) * 1000;
         const wait = Math.min(asked > 0 ? asked : holdStep, 30_000);
@@ -158,6 +171,9 @@ async function loadUniverse(config) {
 
 // ---------- cadena de CBOE ----------
 
+// Código HTTP de la última lectura fallida de cada nombre, para que el motivo diga qué contestó CBOE.
+const chainStatus = new Map();
+
 async function fetchChain(symbol, feed = null) {
   if (FIXTURES) {
     const file = path.join(FIXTURES, `${symbol}.json`);
@@ -168,6 +184,7 @@ async function fetchChain(symbol, feed = null) {
   for (const variant of variants) {
     const res = await getJson(cboeUrl(variant));
     if (res.body) return res.body;
+    chainStatus.set(symbol, res.status);
   }
   return null;
 }
@@ -508,7 +525,11 @@ export async function scanOnce({ force = false, replace = false } = {}) {
         const body = await fetchChain(symbol, feed);
         const sym = body ? readChain(symbol, body, today, feed?.r ?? null) : null;
         if (!sym) {
-          why.set(symbol, body ? "cadena sin puts útiles" : "CBOE no tiene ese símbolo");
+          const status = chainStatus.get(symbol);
+          why.set(
+            symbol,
+            body ? "cadena sin puts útiles" : status === 403 ? "CBOE respondió 403 (acceso denegado)" : "CBOE no tiene ese símbolo",
+          );
           return null;
         }
         sym.n = universe.names.get(symbol) ?? symbol;
